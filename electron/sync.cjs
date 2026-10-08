@@ -6,7 +6,7 @@ class LibraryCoordinator {
   mutate(fn){const run=async()=>{const current=await this.store.read('library.json',null);const next=await fn(current);await this.store.write('library.json',next);return next;};this.queue=this.queue.then(run,run);return this.queue;}
 }
 class SyncServer {
-  constructor({store,coordinator,onChange,host,port=30377}){Object.assign(this,{store,coordinator,onChange,host,port=30377});this.server=null;this.pairing=null;this.devices=[];this.attempts=new Map();}
+  constructor({store,coordinator,onChange,host,port=30377}){Object.assign(this,{store,coordinator,onChange,host,port});this.server=null;this.pairing=null;this.devices=[];this.attempts=new Map();}
   async start(){
     if(this.server)return this.status();
     const addresses=Object.values(os.networkInterfaces()).flat().filter(x=>x&&x.family==='IPv4'&&!x.internal&&privateIP(x.address));

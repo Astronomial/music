@@ -32,7 +32,7 @@ enum NativeSmoke {
             let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 110250)!
             buffer.frameLength = buffer.frameCapacity
             for i in 0..<Int(buffer.frameLength) { buffer.floatChannelData![0][i] = sin(Float(i) * 440 * 2 * .pi / 22050) * 0.02 }
-            let file = try AVAudioFile(forWriting: url, settings: format.settings); try file.write(from: buffer)
+            do { let file = try AVAudioFile(forWriting: url, settings: format.settings); try file.write(from: buffer) }
             let tracks = merged.tracks.values.sorted { $0.id < $1.id }.map { track -> Track in var next = track; next.duration = 5; return next }
             let player = PlaybackController(resolver: FixtureResolver(url: url))
             var starts: [String] = [], feedback: [ListeningEvent] = []

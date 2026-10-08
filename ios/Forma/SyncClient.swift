@@ -49,6 +49,7 @@ private final class PinnedPCSession: NSObject, URLSessionDelegate, URLSessionTas
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }
 }
 actor SyncClient {
+    private struct Failure: Decodable { let error: String }
     private(set) var connection: PCConnection?
     private let account = "music.forma.pc-connection"
     init() {
@@ -91,7 +92,6 @@ actor SyncClient {
         let (bytes, response) = try await session.data(for: req)
         guard bytes.count <= 8 * 1024 * 1024 else { throw SyncError.tooLarge }
         guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-            struct Failure: Decodable { let error: String }
             throw SyncError.rejected((try? JSONDecoder().decode(Failure.self, from: bytes).error) ?? "ПК недоступен. Проверь сеть и разрешение брандмауэра.")
         }
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .millisecondsSince1970
