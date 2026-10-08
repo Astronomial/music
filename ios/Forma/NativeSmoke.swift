@@ -17,7 +17,7 @@ enum NativeSmoke {
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let report = dir.appendingPathComponent("smoke-result.json")
         func write(_ value: [String: Any]) { if let bytes = try? JSONSerialization.data(withJSONObject: value, options: .prettyPrinted) { try? bytes.write(to: report, options: .atomic) } }
-        write(["status": "running"])
+        write(["status": "running", "stage": "pairing"])
         var stage = "pairing"
         do {
             let args = ProcessInfo.processInfo.arguments

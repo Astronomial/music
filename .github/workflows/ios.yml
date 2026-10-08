@@ -34,9 +34,6 @@ jobs:
           -configuration Debug -sdk iphonesimulator
           -destination 'generic/platform=iOS Simulator'
           -derivedDataPath ios/.derived-data CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- build
-      - name: Check native background queue and encrypted PC sync
-        timeout-minutes: 7
-        run: python3 ios/Scripts/simulator_smoke.py
       - name: Build iPhone Release app
         run: >-
           xcodebuild -project ios/Forma.xcodeproj -scheme Forma
@@ -44,6 +41,7 @@ jobs:
           -destination 'generic/platform=iOS'
           -derivedDataPath ios/.derived-data CODE_SIGNING_ALLOWED=NO build
       - name: Package installable IPA for local signing
+        id: package
         run: |
           mkdir -p ios/package/Payload
           cp -R ios/.derived-data/Build/Products/Release-iphoneos/Forma.app ios/package/Payload/
@@ -51,13 +49,18 @@ jobs:
           zip -qry ../Forma-iOS-1.0.0-unsigned.ipa Payload
           cd ..
           shasum -a 256 Forma-iOS-1.0.0-unsigned.ipa > Forma-iOS-SHA256SUMS.txt
+      - name: Check native background queue and encrypted PC sync
+        timeout-minutes: 10
+        run: python3 ios/Scripts/simulator_smoke.py
       - uses: actions/upload-artifact@v4
+        if: always() && steps.package.conclusion == 'success'
         with:
           name: Forma-iOS-1.0.0
           path: |
             ios/Forma-iOS-1.0.0-unsigned.ipa
             ios/Forma-iOS-SHA256SUMS.txt
             ios/native-smoke-result.json
+            ios/native-smoke-console.txt
           if-no-files-found: error
       - name: Publish iOS download
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'

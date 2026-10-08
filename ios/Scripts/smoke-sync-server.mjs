@@ -10,4 +10,5 @@ state.likes=['yt_00000000000'];await store.write('library.json',state);
 const server=new SyncServer({store,coordinator:new LibraryCoordinator(store),host:'127.0.0.1',port:0});
 await server.start();await fs.writeFile(path.join(dir,'pair-code.txt'),server.status().pairing);
 console.log('Ready: ephemeral pinned TLS test server');
+process.on('SIGUSR1',async()=>{await fs.writeFile(path.join(dir,'pair-code.txt'),server.newPairing().pairing);});
 process.on('SIGTERM',async()=>{await server.stop();process.exit(0);});
