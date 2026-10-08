@@ -3,8 +3,14 @@ const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 export function features(t) {
   const f = {};
   if (t.genre) f[`genre:${t.genre}`] = 1.8;
+  for(const genre of t.discoveryGenres||[])if(!f[`genre:${genre}`])f[`genre:${genre}`]=0.35;
   if (t.mood) f[`mood:${t.mood}`] = 0.9;
   if (t.artistId) f[`artist:${t.artistId}`] = 1.2;
+  if(t.artist)f[`artistName:${t.artist.toLowerCase().replace(/ё/g,'е').trim()}`]=0.5;
+  if(t.source==='youtube'){
+    f[`seed:${t.id}`]=1.1;
+    for(const id of t.relatedTo||[])f[`seed:${id}`]=1.1;
+  }
   for (const tag of (t.tags || []).slice(0, 12)) f[`tag:${tag}`] = 0.55;
   return f;
 }
@@ -74,6 +80,7 @@ export function rankTracks(candidates, state, options = {}) {
     const popular = Math.min(1, Math.log1p(track.favoriteCount || 0) / 12);
     const noise = stableNoise(track.id, seed);
     let contextScore = context?.genres?.includes(track.genre) ? 0.6 : 0;
+    if(!contextScore&&context?.genres?.some(g=>track.discoveryGenres?.includes(g)))contextScore=0.3;
     if (context?.moods?.includes(track.mood)) contextScore += 0.55;
     const session = Math.max(0, cosine(vector, lastVector)) * 0.15;
     // Novel candidates still need a taste match: exploration is not random genre drift.
@@ -81,8 +88,8 @@ export function rankTracks(candidates, state, options = {}) {
     let score = 2.2 * affinity - 1.65 * avoidance + novelty + session + popular * 0.12 + noise * 0.06 + contextScore;
     const ownWeight = profile.weights.get(track.id) || 0;
     if (ownWeight < 0) score -= Math.min(1.8, Math.abs(ownWeight) * 0.3);
-    let reason = 'Новое из каталога Audius';
-    if (contextScore) reason = `Под настроение · ${track.mood || track.genre}`;
+    let reason = track.source==='local'?'Из твоей локальной музыки':`Новое из ${track.source==='youtube'?'YouTube':'Audius'}`;
+    if (contextScore) reason = track.mood||track.genre?`Под настроение · ${track.mood || track.genre}`:'Найдено в направлении подборки';
     else if (state.likes.includes(track.id)) reason = 'Из твоих любимых';
     else if (profile.positive[`artist:${track.artistId}`]) reason = 'Ты слушаешь этого исполнителя';
     else if (profile.positive[`genre:${track.genre}`]) reason = `В твоём вкусе · ${track.genre}`;

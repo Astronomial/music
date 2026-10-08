@@ -1,10 +1,11 @@
 const { app, BrowserWindow, ipcMain, protocol, net, shell, dialog } = require('electron');
 const path = require('node:path');
-const { pathToFileURL } = require('node:url');
+const { startStaticServer } = require('./static.cjs');
 const { Store } = require('./storage.cjs');
+const { folderFiles, importLocalFile } = require('./local.cjs');
 const { OfflineLibrary, validId } = require('./offline.cjs');
 protocol.registerSchemesAsPrivileged([{scheme:'forma-audio', privileges:{standard:true,secure:true,stream:true,supportFetchAPI:true}}]);
-let window, store, offline, api, apiKey = '', closing = false, closeTimer;
+let window, store, offline, api, uiServer, apiKey = '', closing = false, closeTimer;
 // Dev smoke tests use an explicit temporary profile on all operating systems.
 const testDataArg = process.argv.find(arg=>arg.startsWith('--forma-test-data='));
 if(!app.isPackaged&&testDataArg) app.setPath('userData',path.resolve(testDataArg.slice('--forma-test-data='.length)));
@@ -17,7 +18,7 @@ app.whenReady().then(async () => {
   offline = new OfflineLibrary(path.join(app.getPath('userData'),'Music'));
   await offline.init();
   const state = await store.read('library.json',null); apiKey = state?.settings?.apiKey || '';
-  protocol.handle('forma-audio', request => { const url = new URL(request.url); return url.hostname==='track' ? offline.respond(url.pathname.slice(1),request.headers.get('range')) : new Response(null,{status:404}); });
+  protocol.handle('forma-audio', request => { const url = new URL(request.url); return url.hostname==='track' ? offline.respond(url.pathname.slice(1),request.headers.get('range')) : url.hostname==='art'?offline.respondArt(url.pathname.slice(1)):new Response(null,{status:404}); });
   const handle = (name, fn) => ipcMain.handle(name,(event,...args)=> {
     if (event.sender !== window?.webContents || event.senderFrame !== window?.webContents.mainFrame) throw new Error('Недопустимый источник запроса');
     return fn(...args);
@@ -33,6 +34,37 @@ app.whenReady().then(async () => {
     await saveState(state);await store.queue;clearTimeout(closeTimer);closing=true;window.close();
   });
   handle('audius:request',(route,params)=>api.requestAudius(route,params,net.fetch,apiKey));
+  const { YouTubeCatalog } = await import('../src/core/youtube.mjs');
+  const catalog=new YouTubeCatalog(async()=>{
+    const {Innertube}=await import('youtubei.js');
+    return Innertube.create({lang:'en',location:'US',retrieve_player:false,generate_session_locally:true,fetch:(input,options={})=>{
+      const url=new URL(typeof input==='string'?input:input.url||input.href);
+      if(url.protocol!=='https:'||!(/(^|\.)youtube\.com$/.test(url.hostname)||url.hostname==='youtubei.googleapis.com'))throw new Error('Недопустимый адрес каталога.');
+      const timeout=AbortSignal.timeout(18000);return net.fetch(input,{...options,signal:options.signal?AbortSignal.any([options.signal,timeout]):timeout});
+    }});
+  });
+  handle('youtube:request',(route,params)=>catalog.request(route,params));
+  let localBusy=false;
+  handle('local:import',async kind=>{
+    if(localBusy)throw new Error('Дождись завершения импорта файлов.');localBusy=true;
+    try{
+      const chosen=await dialog.showOpenDialog(window,{title:kind==='folder'?'Выбери папку с музыкой':'Выбери музыкальные файлы',properties:kind==='folder'?['openDirectory']:['openFile','multiSelections'],filters:[{name:'Музыка',extensions:['mp3','flac','ogg','opus','wav','m4a','mp4']}]});
+      if(chosen.canceled)return {files:offline.list(),added:0,errors:[]};
+      const files=kind==='folder'?await folderFiles(chosen.filePaths[0]):chosen.filePaths;
+      const errors=[];let added=0;
+      for(const file of files)try{const before=Object.keys(offline.manifest).length;await importLocalFile(file,offline);if(Object.keys(offline.manifest).length>before)added++;}catch(e){errors.push({file:path.basename(file),error:e.message});}
+      return {files:offline.list(),added,errors};
+    }finally{localBusy=false;}
+  });
+
+  const { requestPublicYandexPlaylist } = await import('../src/core/yandex.mjs');
+  let importController;
+  handle('yandex:playlist',async url=>{
+    importController?.abort();const controller=new AbortController();importController=controller;
+    try{return await requestPublicYandexPlaylist(url,net.fetch,{signal:controller.signal});}
+    finally{if(importController===controller)importController=null;}
+  });
+  handle('yandex:cancel',()=>importController?.abort());
   handle('audio:sources',id=> {
     if (!validId(id)) throw new Error('Некорректный трек');
     return offline.manifest[id] ? [`forma-audio://track/${id}`] : api.API_HOSTS.map(host=>api.apiURL(host,`/tracks/${id}/stream`,apiKey?{api_key:apiKey}:{}));
@@ -61,22 +93,26 @@ app.whenReady().then(async () => {
     if(state.settings) delete state.settings.apiKey;
     await fs.writeFile(result.filePath,JSON.stringify(state,null,2)); return true;
   });
+  handle('youtube:open',id=>{if(!/^[\w-]{11}$/.test(id))throw new Error('Некорректная ссылка.');return shell.openExternal('https://www.youtube.com/watch?v='+id);});
   handle('window:control',action=> { if(action==='minimize') window.minimize(); if(action==='maximize') window.isMaximized()?window.unmaximize():window.maximize(); if(action==='close') window.close(); });
-  window = new BrowserWindow({width:1440,height:940,minWidth:1000,minHeight:680,frame:false,backgroundColor:'#101110',title:'Forma',icon:path.join(__dirname,'../build/icon.png'),webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,webSecurity:true}});
+  window = new BrowserWindow({width:1440,height:940,minWidth:1000,minHeight:680,frame:false,backgroundColor:'#06070b',title:'Forma',icon:path.join(__dirname,'../build/icon.png'),webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,webSecurity:true}});
   window.on('close',event=> {
     if(closing)return;
     event.preventDefault();window.webContents.send('app:closing');
     clearTimeout(closeTimer);closeTimer=setTimeout(async()=>{await store.queue.catch(()=>{});closing=true;window.close();},3000);
   });
   window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
-  const entry = pathToFileURL(path.join(__dirname,'../dist/index.html')).href;
+  const localUI=await startStaticServer(path.join(__dirname,'../dist'));uiServer=localUI.server;const entry=localUI.url;
   window.webContents.on('will-navigate',(e,url)=>{if(url!==entry)e.preventDefault();});
   window.webContents.session.setPermissionRequestHandler((_wc,_permission,cb)=>cb(false));
   window.webContents.session.webRequest.onHeadersReceived((details,callback)=> {
-    if(details.url===entry) callback({responseHeaders:{...details.responseHeaders,'Content-Security-Policy':["default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; media-src 'self' https: forma-audio: blob:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; frame-src 'none'"]}});
+    if(details.url===entry) callback({responseHeaders:{...details.responseHeaders,'Content-Security-Policy':["default-src 'self'; script-src 'self' https://www.youtube.com https://s.ytimg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob: forma-audio:; media-src 'self' https: forma-audio: blob:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; frame-src https://www.youtube.com https://www.youtube-nocookie.com"]}});
     else callback({responseHeaders:details.responseHeaders});
   });
-  await window.loadFile(path.join(__dirname,'../dist/index.html'));
+  app.setAppUserModelId('music.forma.desktop');
+  window.webContents.session.webRequest.onBeforeSendHeaders({urls:['https://www.youtube.com/*','https://www.youtube-nocookie.com/*']},(details,callback)=>callback({requestHeaders:{...details.requestHeaders,Referer:'https://music.forma.desktop/'}}));
+  window.on('minimize',()=>window.webContents.send('player:pause-youtube'));
+  await window.loadURL(entry);
 });
 app.on('window-all-closed',()=>app.quit());
-app.on('before-quit',()=>{for(const id of offline?.active.keys() || []) offline.cancel(id);});
+app.on('before-quit',()=>{uiServer?.close();for(const id of offline?.active.keys() || []) offline.cancel(id);});

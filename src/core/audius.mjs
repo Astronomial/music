@@ -1,7 +1,7 @@
 import { normalizeTrack } from './model.mjs';
 import { retrievalSeeds } from './recommender.mjs';
 export const API_HOSTS = ['https://api.audius.co', 'https://discoveryprovider.audius.co', 'https://audius-discovery-1.cultur3stake.com'];
-const allowedPath = /^\/(tracks\/(trending(?:\/underground)?|search|[a-zA-Z0-9]+(?:\/(?:stream|download))?)|users\/[a-zA-Z0-9]+\/tracks|playlists\/(trending|[a-zA-Z0-9]+\/tracks))$/;
+const allowedPath = /^\/(tracks\/(trending(?:\/underground)?|search|[a-zA-Z0-9]+(?:\/(?:stream|download))?)|users\/(search|[a-zA-Z0-9]+\/tracks)|playlists\/(trending|[a-zA-Z0-9]+\/tracks))$/;
 export function apiURL(host, path, params = {}) {
   if (!API_HOSTS.includes(host) || !allowedPath.test(path)) throw new Error('Недопустимый запрос Audius');
   const url = new URL('/v1' + path, host);

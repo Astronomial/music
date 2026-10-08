@@ -1,0 +1,7 @@
+{
+  "name": "Мой плейлист",
+  "tracks": [
+    {"title": "No Surprises", "artists": ["Radiohead"], "duration": 229},
+    {"title": "Something About Us", "artists": ["Daft Punk"], "duration": 232}
+  ]
+}

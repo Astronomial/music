@@ -74,8 +74,9 @@ class OfflineLibrary {
   async remove(id) {
     this.file(id);
     if (this.active.has(id)) throw new Error('Сначала отмени загрузку');
-    await fs.rm(this.file(id),{force:true}); delete this.manifest[id]; await this.persist(); return this.list();
+    await fs.rm(this.file(id),{force:true});await fs.rm(this.file(id)+'.cover',{force:true}); delete this.manifest[id]; await this.persist(); return this.list();
   }
+  async respondArt(id){if(!validId(id)||!this.manifest[id]?.coverMime)return new Response(null,{status:404});try{return new Response(await fs.readFile(this.file(id)+'.cover'),{headers:{'Content-Type':this.manifest[id].coverMime}});}catch{return new Response(null,{status:404});}}
   async respond(id, range) {
     if (!validId(id) || !this.manifest[id]) return new Response('Not found',{status:404});
     let size;

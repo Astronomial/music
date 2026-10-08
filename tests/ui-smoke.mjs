@@ -5,6 +5,7 @@ import path from 'node:path';
 const base=process.env.FORMA_TEST_URL||'http://localhost:5173';
 const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
 const page=await browser.newPage({viewport:{width:1440,height:1050}});const errors=[];
+await page.addInitScript(()=>{if(!localStorage.getItem('forma-library'))localStorage.setItem('forma-library',JSON.stringify({version:1,tracks:{},likes:[],playlists:[],events:[],hidden:[],settings:{provider:'audius'},onboarded:false}));});
 page.on('pageerror',e=>errors.push(e.message));
 // Fixtures never ship with the application. All API/audio requests are intercepted here.
 const titles=['Soft Focus','Night Current','Between the Lines','Slow Motion','Morning Light','Far From Home','Blue Hour','Sideways','Quiet Room','Warm Static','Lost in the City','New Perspective'];
@@ -15,6 +16,7 @@ await page.route(/https:\/\/.*\/v1\//,async route=>{
   const u=new URL(route.request().url());
   if(u.pathname.endsWith('/stream')){await route.fulfill({status:200,contentType:'audio/wav',body:audio,headers:{'accept-ranges':'bytes'}});return;}
   let data=tracks;
+  if(u.pathname.endsWith('/users/search')){await route.fulfill({json:{data:[{id:'Artist0',name:'Test Artist One',handle:'testone',track_count:4}]}});return;}
   if(u.pathname.endsWith('/search')){const q=u.searchParams.get('query');const g=u.searchParams.get('genre');data=tracks.filter(t=>(!q||`${t.title} ${t.user.name}`.toLowerCase().includes(q.toLowerCase()))&&(!g||t.genre===g));}
   await route.fulfill({json:{data}});
 });
@@ -46,8 +48,14 @@ try{
   assert.equal(await page.locator('.track-row').count(),1);
   await page.getByRole('textbox',{name:'Поиск треков и исполнителей'}).fill('Night');
   await page.getByRole('textbox',{name:'Поиск треков и исполнителей'}).press('Enter');
-  await page.getByRole('heading',{name:'Нашлось по запросу «Night»'}).waitFor();
+  await page.getByRole('heading',{name:'Поиск «Night»'}).waitFor();
+  await page.locator('.best-match').waitFor();
   assert.equal(await page.locator('.track-row').count(),1);
+  await page.getByRole('textbox',{name:'Поиск треков и исполнителей'}).fill('Test Artist One');
+  await page.locator('.artist-card').first().waitFor();
+  await page.locator('.artist-card').first().click();
+  await page.getByRole('heading',{name:'Test Artist One',exact:true}).waitFor();
+  await page.locator('.track-row').first().waitFor();
   await page.getByRole('button',{name:'Главная',exact:true}).click();
   await page.getByRole('button',{name:'Слушать волну',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('audio').currentTime>1);
@@ -57,9 +65,14 @@ try{
   await page.getByRole('button',{name:'Пауза',exact:true}).click();
   assert.equal(await page.locator('audio').evaluate(a=>a.paused),true);
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
+  await page.getByRole('button',{name:'Океан',exact:false}).click();
+  await page.getByRole('button',{name:'Крупный',exact:true}).click();
+  assert.equal(await page.locator('.app-shell').getAttribute('data-palette'),'ocean');
+  await page.screenshot({path:'artifacts/forma-settings.png',fullPage:true});
   await page.getByRole('switch',{name:'Только скачанная музыка'}).click();
   await page.getByText('Слушаем без интернета.',{exact:false}).waitFor();
   await page.reload();
+  assert.equal(await page.locator('.app-shell').getAttribute('data-palette'),'ocean');
   await page.getByRole('button',{name:'Любимые треки',exact:false}).first().click();
   assert.equal(await page.locator('.track-name strong').innerText(),firstTitle);
   await page.locator('.sidebar-playlists').getByRole('button',{name:'Вечерний маршрут'}).click();

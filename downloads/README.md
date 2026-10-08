@@ -1,6 +1,6 @@
 # Готовая Windows-сборка
 
-[Скачать Forma 1.0.0 для Windows x64](https://github.com/Astronomial/music/raw/refs/heads/main/downloads/Forma-1.0.0-Windows-x64.exe)
+[Скачать Forma 1.1.0 для Windows x64](https://github.com/Astronomial/music/raw/refs/heads/main/downloads/Forma-1.1.0-Windows-x64.exe)
 
 Сохрани `.exe` на компьютер и запусти. Установка и Node.js не нужны. Это portable-сборка для Windows 10/11 x64. Подробности запуска и ограничения проверки приведены в основном [README](../README.md).
 

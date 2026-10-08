@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import {musicSearchResponse} from './fixtures-youtube.mjs';
 const project=path.resolve('.');
 const dir=await fs.mkdtemp(path.join(os.tmpdir(),'forma-desktop-'));
+await fs.writeFile(path.join(dir,'library.json'),JSON.stringify({version:1,tracks:{},likes:[],playlists:[],events:[],hidden:[],settings:{provider:'audius'},onboarded:true}));
 const executable=process.env.FORMA_ELECTRON_PATH||path.join(project,'node_modules/electron/dist/electron');
 const desktopEnv={...process.env,XDG_CONFIG_HOME:dir,XDG_CACHE_HOME:path.join(dir,'cache')};
 const track={id:'DesktopTest',title:'Offline integration test',user:{id:'ArtistOne',name:'Test artist'},genre:'House',duration:20,is_downloadable:true,is_streamable:true};
@@ -16,27 +18,35 @@ async function launch(){
 }
 try{
   let launched=await launch();app=launched.instance;let page=launched.page;
-  await app.evaluate(({net},{track,audio})=>{
+  await app.evaluate(({net},{track,audio,youtubeFixture})=>{
     // Replace the main-process transport only in this test; production has no fixtures.
     net.fetch=async url=>{
-      const path=new URL(url).pathname;
+      const parsed=new URL(typeof url==='string'?url:url.url);const path=parsed.pathname;
+      if(parsed.hostname==='api.music.yandex.net')return Response.json({result:{title:'Public playlist',trackCount:1,tracks:[{track:{title:'Soft Focus',artists:[{name:'Test Artist'}],durationMs:200000}}]}});
+      if(path.endsWith('/search')&&parsed.hostname.includes('youtube'))return Response.json(youtubeFixture);
       if(path.endsWith('/download'))return new Response(Buffer.from(audio,'base64'),{headers:{'content-length':String(Buffer.from(audio,'base64').length)}});
       return Response.json({data:/\/tracks\/DesktopTest$/.test(path)?track:[track]});
     };
-  },{track,audio:wav().toString('base64')});
+  },{track,audio:wav().toString('base64'),youtubeFixture:musicSearchResponse()});
   assert.equal(await page.evaluate(()=>window.forma.desktop),true);
   assert.equal(await page.evaluate(()=>typeof window.require),'undefined');
-  await page.getByRole('button',{name:'Выберу позже'}).click();
+  const yt=await page.evaluate(()=>window.forma.catalogRequest('/tracks/search',{query:'Soft Focus'},'youtube'));assert.equal(yt[0].source,'youtube');assert.equal(yt[0].artist,'Test Artist');
+  const yandex=await page.evaluate(()=>window.forma.yandexPlaylist('https://music.yandex.ru/users/test/playlists/1'));assert.equal(yandex.tracks[0].title,'Soft Focus');
+
   await page.locator('.track-row').first().waitFor();
   await page.getByRole('button',{name:'Скачать Offline integration test',exact:true}).click();
   await page.waitForFunction(async()=>Object.keys(await window.forma.downloads()).length===1);
   await page.getByRole('button',{name:'Скачанное',exact:true}).click();
-  await page.locator('.track-name').click();
+  await page.locator('.track-name').first().click();
   await page.waitForFunction(()=>document.querySelector('audio').currentTime>1.6);
   assert.match(await page.locator('audio').evaluate(a=>a.src),/^forma-audio:/);
   await page.locator('audio').evaluate(a=>a.currentTime=12);
   await page.waitForFunction(()=>document.querySelector('audio').currentTime>12);
   await page.getByRole('button',{name:'Нравится текущий трек',exact:true}).click();
+  const localPath=path.join(dir,'Local Artist — Local Song.wav');await fs.writeFile(localPath,wav());
+  await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},localPath);
+  await page.getByRole('button',{name:'Добавить файлы',exact:true}).click();
+  await page.waitForFunction(async()=>Object.values(await window.forma.downloads()).some(f=>f.track.source==='local'));await fs.rm(localPath);
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
   await page.getByRole('switch',{name:'Только скачанная музыка'}).click();
   const dataPath=await app.evaluate(({app})=>app.getPath('userData'));
@@ -47,12 +57,12 @@ try{
   assert.ok(saved.likes.includes('DesktopTest'));assert.equal(saved.settings.offlineOnly,true);assert.ok(saved.events.some(e=>e.type==='listen'));
   launched=await launch();app=launched.instance;page=launched.page;
   await page.getByRole('button',{name:'Скачанное',exact:true}).click();
-  assert.equal(await page.locator('.track-row').count(),1);
-  await page.locator('.track-name').click();
+  assert.equal(await page.locator('.track-row').count(),2);
+  await page.locator('.track-name').first().click();
   await page.waitForFunction(()=>document.querySelector('audio').currentTime>0.5);
   await page.getByRole('button',{name:'Пауза',exact:true}).click();
-  await page.locator('.track-actions button').last().click();
+  await page.locator('.track-row').first().locator('.track-actions button').last().click();
   await page.getByRole('button',{name:'Удалить скачанный файл',exact:true}).click();
-  await page.waitForFunction(async()=>Object.keys(await window.forma.downloads()).length===0);
-  console.log('PASS: real Electron sandbox/preload, IPC download, audio protocol playback and seeking, close-save handshake, restart offline playback, download deletion.');
+  await page.waitForFunction(async()=>Object.keys(await window.forma.downloads()).length===1);
+  console.log('PASS: real Electron sandbox/preload, YouTube catalogue and public Yandex IPC (mock transport), native file-dialog import, IPC download, audio protocol playback and seeking, close-save handshake, restart offline playback, download deletion.');
 }finally{if(app)await app.close();await fs.rm(dir,{recursive:true,force:true});}
