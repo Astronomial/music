@@ -46,7 +46,7 @@ enum NativeSmoke {
             let tracks = merged.tracks.values.sorted { $0.id < $1.id }.map { track -> Track in var next = track; next.duration = 5; return next }
             let player = PlaybackController(resolver: FixtureResolver(url: url))
             var starts: [String] = [], feedback: [ListeningEvent] = []
-            player.onStarted = { starts.append($0.id) }; player.onFeedback = { feedback.append($0) }
+            player.onStarted = { starts.append($0.id); write(["status": "running", "stage": "playing", "nativeStarts": starts.count]) }; player.onFeedback = { feedback.append($0) }
             player.pulseNext = { exclude, _ in tracks.first { !exclude.contains($0.id) } }
             player.startPulse(tracks[0])
             for _ in 0..<100 {

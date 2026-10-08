@@ -26,7 +26,18 @@ with tempfile.TemporaryDirectory(prefix='forma-simulator-') as directory:
         print('Native app launched; waiting for report', flush=True)
         container = pathlib.Path(run('xcrun','simctl','get_app_container',device,'music.forma.ios','data'))
         report = container/'Documents/smoke-result.json'
-        time.sleep(5)
+        # Background only after native audio starts, as a user would after pressing Play.
+        # First simulator launch/TLS can take more than five seconds.
+        for _ in range(180):
+            if report.exists():
+                result = json.loads(report.read_text())
+                if result['status'] == 'failed':
+                    print(json.dumps(result, indent=2), flush=True)
+                    (root/'ios/native-smoke-result.json').write_text(json.dumps(result, indent=2))
+                    raise RuntimeError(result.get('error', 'Native startup failed'))
+                if result.get('nativeStarts', 0) > 0: break
+            time.sleep(.5)
+        else: raise RuntimeError('Native audio did not start in foreground')
         run('xcrun','simctl','openurl',device,'https://127.0.0.1:30377/') # Safari backgrounds Forma; audio must keep advancing.
         for _ in range(60):
             if report.exists():

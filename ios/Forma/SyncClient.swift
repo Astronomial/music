@@ -46,6 +46,7 @@ private final class PinnedPCSession: NSObject, URLSessionDelegate, URLSessionTas
         guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
               challenge.protectionSpace.host == connection.host, let trust = challenge.protectionSpace.serverTrust else { reject("Не удалось проверить адрес ПК."); return }
         // Populate the chain even when the OS initially distrusts our self-signed leaf.
+        SecTrustSetNetworkFetchAllowed(trust, false)
         _ = SecTrustEvaluateWithError(trust, nil)
         guard let chain = SecTrustCopyCertificateChain(trust) as? [SecCertificate], let certificate = chain.first else { reject("ПК не предоставил сертификат."); return }
         let fingerprint = SHA256.hash(data: SecCertificateCopyData(certificate) as Data).map { String(format: "%02x", $0) }.joined()
