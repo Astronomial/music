@@ -28,7 +28,8 @@ export function mergeTracks(state, tracks) {
   // Preserve library/history metadata while bounding the discovery cache.
   const keep = new Set([...state.likes, ...state.hidden, ...state.playlists.flatMap(p => p.trackIds), ...state.events.map(e => e.trackId)]);
   const ids = Object.keys(next);
-  if (ids.length > 6000) for (const id of ids) { if (Object.keys(next).length <= 6000) break; if (!keep.has(id)) delete next[id]; }
+  let count=ids.length;
+  if (count > 6000) for (const id of ids) { if (count <= 6000) break; if (!keep.has(id)){delete next[id];count--;} }
   return { ...state, tracks: next };
 }
 export function recordEvent(state, trackId, type, extra = {}, now = Date.now()) {

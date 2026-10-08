@@ -19,7 +19,7 @@ function nodes(page){return [...(page.contents||[])].flatMap(s=>s.contents||[]);
 
 // Public catalogue metadata only. Playback always goes through the official embedded player.
 export class YouTubeCatalog {
-  constructor(createClient){this.createClient=createClient;this.client=null;this.searches=new Map();this.artists=new Map();}
+  constructor(createClient){this.createClient=createClient;this.client=null;this.searches=new Map();this.artists=new Map();this.relatedCache=new Map();}
   async music(){if(!this.client)this.client=Promise.resolve(this.createClient()).catch(e=>{this.client=null;throw e;});return (await this.client).music;}
   async search(query,type,offset=0){
     const key=`${type}:${query}`;let entry=this.searches.get(key);
@@ -49,8 +49,14 @@ export class YouTubeCatalog {
   }
   async related(videoId){
     if(!validVideoID(videoId))throw new Error('Некорректный трек YouTube.');
-    const music=await this.music(),panel=await music.getUpNext(videoId,true);
-    return panel.contents.map(i=>youtubeTrack(i.primary||i,[`yt_${videoId}`])).filter(Boolean);
+    let entry=this.relatedCache.get(videoId);
+    if(!entry||Date.now()-entry.at>300000){
+      const promise=(async()=>{const music=await this.music(),panel=await music.getUpNext(videoId,true);return panel.contents.map(i=>youtubeTrack(i.primary||i,[`yt_${videoId}`])).filter(Boolean);})();
+      entry={at:Date.now(),promise};this.relatedCache.set(videoId,entry);
+      if(this.relatedCache.size>60)this.relatedCache.delete(this.relatedCache.keys().next().value);
+      promise.catch(()=>{if(this.relatedCache.get(videoId)===entry)this.relatedCache.delete(videoId);});
+    }
+    return entry.promise;
   }
   async request(route,params={}){
     const query=String(params.query||params.genre||'').trim().slice(0,160),offset=Math.max(0,Math.min(800,Number(params.offset)||0));

@@ -55,6 +55,7 @@ try{
   // The official player API is replaced here to isolate Forma's native window handling.
   await page.evaluate(()=>{window.YT={Player:class{
     constructor(node,options){this.options=options;this.id=options.videoId;this.state=2;this.time=0;const frame=document.createElement('iframe');frame.src='about:blank';node.replaceWith(frame);this.frame=frame;this.timer=setInterval(()=>{if(this.state===1)this.time+=.25;},250);setTimeout(()=>options.events.onReady({target:this}),20);window.testYTPlayer=this;}
+    loadVideoById({videoId}){this.id=videoId;this.time=0;this.playVideo();}cueVideoById({videoId}){this.id=videoId;this.time=0;this.pauseVideo();}
     playVideo(){this.state=1;this.options.events.onStateChange({data:1});}pauseVideo(){this.state=2;this.options.events.onStateChange({data:2});}getPlayerState(){return this.state;}getCurrentTime(){return this.time;}getDuration(){return 200;}getVideoData(){return{video_id:this.id};}seekTo(t){this.time=t;}setVolume(){}destroy(){clearInterval(this.timer);this.frame.remove();}
   }};});
   await page.getByRole('button',{name:'Настройки',exact:true}).click();

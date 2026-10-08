@@ -3,7 +3,26 @@ import {waveSettings,genresOf,blockedByPreferences,preferenceAffinity,activeSeed
 import {buildFeedbackModel,predictFeedback,feedbackReward} from './feedback.mjs';
 import {moodEvidence,MOOD_MIXES} from './mood-mixes.mjs';
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+// Tracks are replaced, never mutated, when catalogue metadata changes.
+const featureCache=new WeakMap(),vectorCache=new WeakMap();
+function rememberVector(vector){const entries=Object.entries(vector),norm=Math.sqrt(entries.reduce((sum,[,v])=>sum+v*v,0));const info={entries,norm};vectorCache.set(vector,info);return info;}
+function vectorInfo(vector){return vectorCache.get(vector)||{entries:Object.entries(vector),norm:Math.sqrt(Object.values(vector).reduce((sum,v)=>sum+v*v,0))};}
+export function playlistPulseContext(state,id){
+  const playlist=state.playlists.find(p=>p.id===id);
+  if(!playlist||!playlist.trackIds.some(id=>state.tracks[id]))return null;
+  return {playlistId:id,playlistName:playlist.name,discovery:0.75};
+}
+export function playlistSeedState(state,context){
+  if(!context?.playlistId)return state;
+  const playlist=state.playlists.find(p=>p.id===context.playlistId);
+  const seeds=new Set(playlist?.trackIds||[]);
+  // Unrelated listening must not become a retrieval anchor for this playlist.
+  // The ranker still reads the original state for shared feedback/session learning.
+  const events=state.events.filter(e=>seeds.has(e.trackId)||state.tracks[e.trackId]?.relatedTo?.some(id=>seeds.has(id)));
+  return {...state,events,likes:[],playlists:playlist?[playlist]:[],settings:{...state.settings,genres:[],playlistSource:'all',seedPlaylistIds:[]}};
+}
 export function features(t) {
+  if(featureCache.has(t))return featureCache.get(t);
   const f = {};
   const genreTraits=genresOf(t);
   for(const genre of genreTraits.values)f[`genre:${genre}`]=1.8*genreTraits.confidence;
@@ -15,13 +34,14 @@ export function features(t) {
     for(const id of t.relatedTo||[])f[`seed:${id}`]=1.1;
   }
   for (const tag of (t.tags || []).slice(0, 12)) f[`tag:${tag}`] = 0.55;
-  return f;
+  featureCache.set(t,f);rememberVector(f);return f;
 }
 export function cosine(a, b) {
-  let dot = 0, aa = 0, bb = 0;
-  for (const [k, v] of Object.entries(a)) { dot += v * (b[k] || 0); aa += v * v; }
-  for (const v of Object.values(b)) bb += v * v;
-  return aa && bb ? dot / Math.sqrt(aa * bb) : 0;
+  const ai=vectorInfo(a),bi=vectorInfo(b);
+  if(!ai.norm||!bi.norm)return 0;
+  const [entries,other]=ai.entries.length<=bi.entries.length?[ai.entries,b]:[bi.entries,a];
+  let dot=0;for(const [key,value] of entries)dot+=value*(other[key]||0);
+  return dot/(ai.norm*bi.norm);
 }
 export function eventWeight(e) {
   if (e.type === 'hide') return -7;
@@ -51,6 +71,7 @@ export function buildProfile(state, now = Date.now()) {
     for (const [key, value] of Object.entries(features(track))) target[key] = (target[key] || 0) + Math.abs(weight) * value;
   }
   for (const g of settings.genres) positive[`genre:${g}`] = (positive[`genre:${g}`] || 0) + 3;
+  rememberVector(positive);rememberVector(negative);
   return { positive, negative, weights, negativeEvidence };
 }
 export function trackSimilarity(a,b,vectorA=features(a),vectorB=features(b)) {
@@ -93,13 +114,16 @@ function sessionProfile(state,now){
     if(reward>=.7)positiveCount+=strength;else negativeCount+=strength;
     for(const [key,value] of Object.entries(features(t)))target[key]=(target[key]||0)+value*strength;
   }
+  rememberVector(positive);rememberVector(negative);
   return {positive,negative,positiveCount,negativeCount};
+}
+export function prepareRanking(state,now=Date.now(),context=null){
+  return {state,now,context,profile:buildProfile(playlistSeedState(state,context),now),settings:waveSettings(state.settings),feedback:buildFeedbackModel(state,now),recentTaste:sessionProfile(state,now)};
 }
 export function rankTracks(candidates, state, options = {}) {
   const { now = Date.now(), limit = 30, exclude = [], context = null, seed = Math.floor(now / 3600000), allowRecent = false } = options;
-  const profile = buildProfile(state, now);
-  const settings=waveSettings(state.settings);
-  const feedback=buildFeedbackModel(state,now),recentTaste=sessionProfile(state,now);
+  if(context?.playlistId&&!playlistPulseContext(state,context.playlistId))return [];
+  const {profile,settings,feedback,recentTaste}=options.prepared||prepareRanking(state,now,context);
   const anchors=[...profile.weights].filter(([,w])=>w>0).sort((a,b)=>b[1]-a[1]).slice(0,45).map(([id,w])=>({track:state.tracks[id],weight:w})).filter(a=>a.track).map(a=>({...a,vector:features(a.track)}));
   const banned = new Set([...state.hidden, ...exclude]);
   const recent = new Set(state.events.filter(e => e.type === 'play' && now - e.at < settings.repeatCooldown * 3600000).map(e => e.trackId));
@@ -108,6 +132,8 @@ export function rankTracks(candidates, state, options = {}) {
   const lastTrack = last && state.tracks[last.trackId];
   const lastVector = lastTrack ? features(lastTrack) : {};
   const discovery = context?.discovery??settings.discovery;
+  const liked=new Set(state.likes);
+  const contextSettings=context?.mood?{...settings,mood:context.mood==='night'?'any':context.mood,energy:context.energy||'any',vocals:context.vocals||'any',genres:[],preferredArtists:[]}:null;
   const unique = new Map(candidates.map(t => [t.id, t]));
   const ranked = [...unique.values()].filter(t => t.streamable && !banned.has(t.id) && !blockedByPreferences(t,settings) && (settings.includeLibrary||!library.has(t.id)) && (allowRecent || !recent.has(t.id)) && (!context?.mood||moodEvidence(t,context)>0)).map(track => {
     const vector = features(track);
@@ -123,7 +149,7 @@ export function rankTracks(candidates, state, options = {}) {
     let contextScore = context?.genres?.includes(track.genre) ? 0.6 : 0;
     if(!contextScore&&context?.genres?.some(g=>track.discoveryGenres?.includes(g)))contextScore=0.3;
     if (context?.moods?.includes(track.mood)) contextScore += 0.55;
-    if(context?.mood)contextScore=moodEvidence(track,context)*.8+preferenceAffinity(track,{...settings,mood:context.mood==='night'?'any':context.mood,energy:context.energy||'any',vocals:context.vocals||'any',genres:[],preferredArtists:[]}).score;
+    if(context?.mood)contextScore=moodEvidence(track,context)*.8+preferenceAffinity(track,contextSettings).score;
     // A played/skipped recommendation is evidence; merely showing a shelf is not.
     const session = cosine(vector,recentTaste.positive)*Math.min(1,recentTaste.positiveCount/2)*1.05-cosine(vector,recentTaste.negative)*Math.min(.6,recentTaste.negativeCount/4)+(recentTaste.positiveCount?0:Math.max(0,cosine(vector,lastVector))*.08);
     // Novel candidates still need a taste match: exploration is not random genre drift.
@@ -137,7 +163,7 @@ export function rankTracks(candidates, state, options = {}) {
     if (ownWeight < 0) score -= Math.min(1.8, Math.abs(ownWeight) * 0.3);
     let reason = track.source==='local'?'Из твоей локальной музыки':`Новое из ${track.source==='youtube'?'YouTube':'Audius'}`;
     if (contextScore) reason = track.mood||track.genre?`Под настроение · ${track.mood || track.genre}`:'Найдено в направлении подборки';
-    else if (state.likes.includes(track.id)) reason = 'Из твоих любимых';
+    else if (liked.has(track.id)) reason = 'Из твоих любимых';
     else if (profile.positive[`artist:${track.artistId}`]) reason = 'Ты слушаешь этого исполнителя';
     else if (profile.positive[`genre:${track.genre}`]) reason = `В твоём вкусе · ${track.genre}`;
     else if (affinity > 0.1) reason = 'Похоже на музыку в твоей библиотеке';
@@ -146,39 +172,41 @@ export function rankTracks(candidates, state, options = {}) {
     if(predicted.mean>.6&&predicted.evidence>=2)reason='Ты часто дослушиваешь похожую музыку';
     if(preference.reason)reason=preference.reason;
     if(context?.mood)reason=moodEvidence(track,context)>=1?'Под настроение · и в твоём вкусе':'В направлении этой подборки';
-    return {track,score,reason,vector,known,signals:{taste:affinity,session,predictedEnjoyment:predicted.mean,uncertainty:predicted.uncertainty,context:contextScore},lane:known?'familiar':predicted.evidence<2?'exploration':'related'};
+    if(context?.playlistId&&affinity>.1)reason=`По мотивам «${context.playlistName||'плейлиста'}»`;
+    return {track,score,reason,vector,known,genres:genresOf(track).values,signals:{taste:affinity,session,predictedEnjoyment:predicted.mean,uncertainty:predicted.uncertainty,context:contextScore},lane:known?'familiar':predicted.evidence<2?'exploration':'related'};
   });
   // Greedy MMR balances relevance with artist and content diversity.
   const result = [], artistCounts = new Map(),genreCounts=new Map();
   const targets=Object.entries(profile.positive).filter(([k,v])=>k.startsWith('genre:')&&v>0&&!settings.excludedGenres.includes(k.slice(6)));
   const totalGenre=targets.reduce((sum,[,v])=>sum+v,0);
+  let newCount=0;
   while (ranked.length && result.length < limit) {
+    const recentVectors=result.slice(-4).map(r=>r.vector);
+    const previousTrack=result.at(-1)?.track,previousArtist=previousTrack&&(previousTrack.artistId||previousTrack.artist);
+    const discoveryDeficit=discovery*(result.length+1)-newCount;
     let best = -1, bestScore = -Infinity;
     for (let i = 0; i < ranked.length; i++) {
       const item = ranked[i];
       const artistKey = item.track.artistId || item.track.artist;
       const count = artistCounts.get(artistKey) || 0;
-      const similarity = result.length ? Math.max(...result.slice(-4).map(r => cosine(item.vector, r.vector))) : 0;
-      const previousTrack = result.at(-1)?.track;
-      const previousArtist = previousTrack && (previousTrack.artistId || previousTrack.artist);
-      const genres=genresOf(item.track).values;
+      let similarity=0;for(const vector of recentVectors)similarity=Math.max(similarity,cosine(item.vector,vector));
+      const genres=item.genres;
       const calibration=totalGenre&&!context?.mood?Math.max(0,...targets.filter(([k])=>genres.includes(k.slice(6))).map(([k,v])=>(v/totalGenre-(genreCounts.get(k.slice(6))||0)/Math.max(1,result.length))*.3)):0;
-      const newCount=result.filter(r=>!r.known).length;
-      const discoveryDeficit=discovery*(result.length+1)-newCount;
       const balance=result.length?(item.known?-1:1)*clamp(discoveryDeficit,-1,1)*.16:0;
       const adjusted = item.score+calibration+balance - similarity * (0.05 + settings.artistDiversity*0.5 + discovery * 0.25) - count * settings.artistDiversity*1.4 - (previousArtist && previousArtist === artistKey ? settings.artistDiversity*1.6 : 0);
       if (adjusted > bestScore) { bestScore = adjusted; best = i; }
     }
     const [item] = ranked.splice(best, 1);
-    result.push(item);
+    result.push(item);if(!item.known)newCount++;
     const key = item.track.artistId || item.track.artist;
     artistCounts.set(key, (artistCounts.get(key) || 0) + 1);
-    for(const g of genresOf(item.track).values)genreCounts.set(g,(genreCounts.get(g)||0)+1);
+    for(const g of item.genres)genreCounts.set(g,(genreCounts.get(g)||0)+1);
   }
-  return result.map(({ vector, ...item }) => item);
+  return result.map(({ vector, genres, ...item }) => item);
 }
-export function moodRecommendations(candidates,state,{now=Date.now(),limit=24}={}){
-  return MOOD_MIXES.map(mix=>({...mix,items:rankTracks(candidates,state,{now,limit,context:mix.context,allowRecent:true,seed:Math.floor(now/86400000)})}));
+export function moodRecommendations(candidates,state,{now=Date.now(),limit=24,prepared:shared=null}={}){
+  const prepared=shared||prepareRanking(state,now);
+  return MOOD_MIXES.map(mix=>({...mix,items:rankTracks(candidates,state,{now,limit,prepared,context:mix.context,allowRecent:true,seed:Math.floor(now/86400000)})}));
 }
 function stableNoise(id, seed) {
   let hash = seed | 0;

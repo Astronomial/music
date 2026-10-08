@@ -8,7 +8,7 @@ const page=await browser.newPage({viewport:{width:1440,height:1050}});const erro
 await page.addInitScript(()=>{if(!localStorage.getItem('forma-library'))localStorage.setItem('forma-library',JSON.stringify({version:1,tracks:{},likes:[],playlists:[],events:[],hidden:[],settings:{provider:'audius'},onboarded:false}));});
 page.on('pageerror',e=>errors.push(e.message));
 // Fixtures never ship with the application. All API/audio requests are intercepted here.
-const titles=['Soft Focus','Night Current','Between the Lines','Slow Motion','Morning Light','Far From Home','Blue Hour','Sideways','Quiet Room','Warm Static','Lost in the City','New Perspective'];
+const titles=['Soft Focus','Night Current','Between the Lines','Slow Motion','Morning Light','Far From Home','Blue Hour','Sideways','Quiet Room','Warm Static','Lost in the City','New Perspective','Open Roads','Early Echo','Citylights'];
 const tracks=titles.map((title,i)=>({id:'Test'+i,title,user:{id:'Artist'+i,name:['Test Artist One','Test Artist Two','Test Artist Three'][i%3]},genre:['House','Electronic','Ambient'][i%3],mood:i%2?'Peaceful':'Upbeat',duration:120+i*17,tags:'melodic,chill',is_streamable:true,is_downloadable:true,play_count:3000+i*200,favorite_count:500+i*10,artwork:{}}));
 function wav(seconds=90){const rate=8000,b=Buffer.alloc(44+rate*2*seconds);b.write('RIFF',0);b.writeUInt32LE(b.length-8,4);b.write('WAVEfmt ',8);b.writeUInt32LE(16,16);b.writeUInt16LE(1,20);b.writeUInt16LE(1,22);b.writeUInt32LE(rate,24);b.writeUInt32LE(rate*2,28);b.writeUInt16LE(2,32);b.writeUInt16LE(16,34);b.write('data',36);b.writeUInt32LE(b.length-44,40);for(let i=44;i<b.length;i+=2)b.writeInt16LE(Math.round(Math.sin(i/16)*1800),i);return b;}
 const audio=wav();
