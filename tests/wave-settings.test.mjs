@@ -64,7 +64,8 @@ test('YouTube retrieval uses every chosen direction and combines character prefe
   const queries=[];const candidates=await collectYouTubeCandidates(s,async(route,p)=>{assert.equal(route,'/tracks/search');queries.push(p.query);return [track('yt_abcdefghijk','',undefined,{source:'youtube',videoId:'abcdefghijk'})];});
   for(const g of ['House','Jazz','Techno','Pop'])assert.ok(queries.some(q=>q.startsWith(g+' ')));
   assert.equal(queries.some(q=>q.includes('Rock')||q.includes('Blocked')||q.startsWith('Ambient')),false);assert.ok(queries.some(q=>q.startsWith('Björk')));
-  assert.ok(queries.every(q=>q.includes('focus study slow mellow instrumental music')));
+  assert.ok(queries.filter(q=>q.includes('focus study')).every(q=>q.includes('focus study slow mellow instrumental music')));
+  assert.ok(queries.some(q=>q.includes('happy uplifting')));assert.ok(queries.some(q=>q.includes('melancholic sad')));
   assert.deepEqual(new Set(candidates[0].discoveryGenres),new Set(['House','Jazz','Techno','Pop']));assert.equal(candidates[0].genre,'');assert.equal(candidates[0].mood,'');
   const merged=mergeTracks({...s,tracks:{[candidates[0].id]:candidates[0]}},[track(candidates[0].id,'',undefined,{source:'youtube'})]);assert.deepEqual(merged.tracks[candidates[0].id].discoveryGenres,candidates[0].discoveryGenres);
 });

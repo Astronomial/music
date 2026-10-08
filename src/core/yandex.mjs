@@ -7,15 +7,21 @@ export async function requestPublicYandexPlaylist(input,fetcher=fetch,{signal}={
   const abort=()=>controller.abort();signal?.addEventListener('abort',abort,{once:true});
   if(signal?.aborted)controller.abort();
   const timer=setTimeout(abort,60000);
-  async function read(route,options={}) {
-    const response=await fetcher(`https://api.music.yandex.net${route}`,{...options,signal:controller.signal,redirect:'error'});
+  async function read(route,options={},publicWeb=false) {
+    const response=await fetcher(`${publicWeb?'https://music.yandex.ru':'https://api.music.yandex.net'}${route}`,{...options,signal:controller.signal,redirect:'error'});
     if(!response.ok){await response.body?.cancel();throw new Error(response.status===401||response.status===403?'Яндекс не разрешил читать этот плейлист. Проверь публичность; если сервис ограничивает доступ, используй файл экспорта.':response.status===404?'Плейлист не найден. Проверь ссылку.':`Яндекс Музыка временно недоступна (${response.status}). Повтори позже.`);}
     if(Number(response.headers.get('content-length'))>15*1024**2)throw new Error('Слишком большой ответ сервиса.');
     const body=await response.text();if(body.length>15*1024**2)throw new Error('Слишком большой ответ сервиса.');
     try{return JSON.parse(body);}catch{throw new Error('Сервис не вернул состав плейлиста. Используй файл экспорта.');}
   }
   try{
-    const data=await read(link.path);
+    let data;
+    try{data=await read(link.path);}catch(error){
+      const legacy=/^\/users\/([^/]+)\/playlists\/(\d+)$/.exec(link.path);
+      if(!legacy||controller.signal.aborted)throw error;
+      const query=new URLSearchParams({owner:decodeURIComponent(legacy[1]),kinds:legacy[2],light:'false'});
+      try{data=await read('/handlers/playlist.jsx?'+query,{},true);}catch{throw error;}
+    }
     const result=data.result||data,p=result.playlist||result;
     if(!Array.isArray(p.tracks))throw new Error('Плейлист недоступен. Проверь, что он публичный.');
     if(p.tracks.length>IMPORT_LIMIT||Number(p.trackCount)>IMPORT_LIMIT)throw new Error(`Поддерживается до ${IMPORT_LIMIT} треков в одном плейлисте.`);

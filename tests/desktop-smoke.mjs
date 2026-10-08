@@ -68,6 +68,11 @@ try{
   await app.evaluate(({BrowserWindow})=>{const w=BrowserWindow.getAllWindows()[0];w.restore();w.show();w.focus();});
   await page.getByRole('button',{name:'Пауза',exact:true}).click();
   assert.equal(await page.evaluate(()=>window.testYTPlayer.getPlayerState()),2);
+  await expect.poll(async()=>{const s=await page.evaluate(()=>window.forma.load());return s.importRequests?.find(r=>r.id==='astronomial-favorites')?.status;}).toBe('complete');
+  const transferred=await page.evaluate(()=>window.forma.load());
+  const requested=transferred.playlists.find(p=>p.id==='astronomial-favorites');
+  assert.equal(requested.trackIds.length,1);assert.equal(transferred.tracks[requested.trackIds[0]].title,'Soft Focus');
+  assert.equal(transferred.tracks[requested.trackIds[0]].source,'youtube');
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
   await page.getByRole('switch',{name:'Только скачанная музыка'}).click();
   assert.equal(Object.keys(await page.evaluate(()=>window.forma.downloads())).length,2);
@@ -77,7 +82,9 @@ try{
   await exited;app=null;
   const saved=JSON.parse(await fs.readFile(path.join(dataPath,'library.json'),'utf8'));
   assert.ok(saved.likes.includes('DesktopTest'));assert.equal(saved.settings.offlineOnly,true);assert.ok(saved.events.some(e=>e.type==='listen'));
+  assert.equal(saved.playlists.filter(p=>p.id==='astronomial-favorites').length,1);
   launched=await launch();app=launched.instance;page=launched.page;
+  await expect.poll(async()=>{const s=await page.evaluate(()=>window.forma.load());return s.importRequests?.find(r=>r.id==='astronomial-favorites')?.status;}).toBe('complete');
   await page.getByRole('button',{name:'Скачанное',exact:true}).click();
   await page.waitForFunction(()=>document.querySelectorAll('.track-row').length===2);
   await page.locator('.track-name').first().click();
@@ -86,5 +93,5 @@ try{
   await page.locator('.track-row').first().locator('.track-actions button').last().click();
   await page.getByRole('button',{name:'Удалить скачанный файл',exact:true}).click();
   await expect.poll(async()=>Object.keys(await page.evaluate(()=>window.forma.downloads())).length).toBe(1);
-  console.log('PASS: real Electron sandbox/preload, minimized playback (real local audio + mocked YouTube player), explicit pause, catalogue and Yandex IPC (mock transport), file import, IPC download, audio seeking, close-save, restart offline, deletion.');
+  console.log('PASS: real Electron sandbox/preload, minimized playback (real local audio + mocked YouTube player), explicit pause, catalogue and Yandex IPC and automatic requested-playlist import across restart (mock transport), file import, IPC download, audio seeking, close-save, restart offline, deletion.');
 }finally{if(app)await app.close();await fs.rm(dir,{recursive:true,force:true});}

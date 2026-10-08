@@ -15,11 +15,16 @@ await page.addInitScript(()=>{
 });
 try{
  await page.goto(process.env.FORMA_TEST_URL||'http://localhost:5173');await page.locator('.track-row').first().waitFor();
- await page.getByRole('button',{name:'Слушать волну',exact:true}).click();await page.locator('.youtube-frame iframe').waitFor();await page.waitForFunction(()=>window.testYTPlayer?.getCurrentTime()>1);
+ await page.getByRole('button',{name:'Слушать Пульс',exact:true}).click();await page.locator('.youtube-frame iframe').waitFor();await page.waitForFunction(()=>window.testYTPlayer?.getCurrentTime()>1);
  assert.equal(await page.locator('audio').evaluate(a=>a.getAttribute('src')),null);assert.equal(await page.locator('.youtube-panel').isVisible(),true);
+ const initialVideo=await page.evaluate(()=>window.testYTPlayer.id);
+ const volume=page.getByRole('slider',{name:'Громкость',exact:true});
+ await volume.fill('0.337');assert.ok(Math.abs(await page.evaluate(()=>window.testYTPlayer.volume)-33.7)<.01);
+ await volume.press('ArrowRight');await page.waitForTimeout(400);
+ assert.ok(Math.abs(await page.evaluate(()=>JSON.parse(localStorage.getItem('youtube-test-library')).settings.volume)-.338)<.001);
  const backgroundTime=await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));return window.testYTPlayer.getCurrentTime();});
  await page.waitForFunction(t=>window.testYTPlayer.getPlayerState()===1&&window.testYTPlayer.getCurrentTime()>t+.5,backgroundTime);
- await page.getByRole('button',{name:'Следующий трек',exact:true}).click();await page.waitForFunction(()=>window.testYTPlayer.id==='12345678901');
+ await page.getByRole('button',{name:'Следующий трек',exact:true}).click();await page.waitForFunction(id=>window.testYTPlayer.id!==id,initialVideo);
  await page.waitForFunction(()=>window.testYTPlayer.getPlayerState()===1&&window.testYTPlayer.getCurrentTime()>.5);
  await page.evaluate(()=>{delete document.hidden;document.dispatchEvent(new Event('visibilitychange'));});
  await page.getByRole('button',{name:'Пауза',exact:true}).click();assert.equal(await page.evaluate(()=>window.testYTPlayer.getPlayerState()),2);
@@ -33,5 +38,22 @@ try{
  await page.screenshot({path:'artifacts/forma-import.png',fullPage:true});await page.getByRole('button',{name:'Создать плейлист · 1'}).click();await page.getByRole('heading',{name:'Плейлист из Яндекса',exact:true}).waitFor();assert.equal(await page.locator('.track-row').count(),1);
  await page.waitForTimeout(400);await page.reload();await page.locator('.sidebar-playlists').getByRole('button',{name:'Плейлист из Яндекса'}).click();assert.equal(await page.locator('.track-row').count(),1);
  const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('youtube-test-library')));assert.equal(saved.imports[0].entries.length,2);assert.equal(saved.imports[0].entries[1].trackId,null);
- assert.deepEqual(errors,[]);console.log('PASS: visible YouTube player, hidden-document playback and next-track autoplay, queue, explicit pause, seek, stale search, public playlist import and persistence (mocked services/player).');
+ // Resume the requested playlist after restart without dropping unmatched source names.
+ const resumeRequest=await page.evaluate(()=>{
+  const s=JSON.parse(localStorage.getItem('youtube-test-library')),track=Object.values(s.tracks).find(t=>t.title==='Soft Focus');
+  const library={name:'Мне нравится · Яндекс',sourceURL:'https://music.yandex.ru/users/Astronomial/playlists/3',tracks:[{title:'Soft Focus',artists:['Test Artist'],duration:200,key:'test artist soft focus'},{title:'Missing Song',artists:['Other Artist'],duration:180,key:'other artist missing song'}]};
+  return {id:'astronomial-favorites',name:library.name,sourceURL:library.sourceURL,library,status:'review',total:2,items:[{source:library.tracks[0],selectedId:track.id,status:'matched',candidates:[{track,score:1}]},{source:library.tracks[1],selectedId:null,status:'missing',candidates:[]}]};
+ });
+ await page.addInitScript(request=>{const s=JSON.parse(localStorage.getItem('youtube-test-library'));if(!s.importRequests?.length){s.importRequests=[request];window.forma.save(s);}},resumeRequest);
+ await page.reload();await page.getByRole('button',{name:'Проверить версии',exact:true}).click();
+ await page.getByRole('combobox',{name:'Версия для Soft Focus'}).selectOption('');
+ await page.getByRole('button',{name:'Сохранить плейлист · 0'}).click();
+ await page.getByRole('heading',{name:'Мне нравится · Яндекс',exact:true}).waitFor();
+ assert.equal(await page.locator('.track-row').count(),2);
+ assert.equal(await page.locator('.track-row.unavailable').count(),2);
+ await page.waitForTimeout(400);await page.reload();
+ const resumed=await page.evaluate(()=>JSON.parse(localStorage.getItem('youtube-test-library')));
+ assert.equal(resumed.playlists.filter(p=>p.id==='astronomial-favorites').length,1);
+ assert.equal(resumed.importRequests[0].status,'complete');
+ assert.deepEqual(errors,[]);console.log('PASS: visible YouTube player, hidden-document playback and next-track autoplay, queue, explicit pause, continuous volume, seek, stale search, public playlist import and resumed review preserving unmatched titles (mocked services/player).');
 }finally{await browser.close();}

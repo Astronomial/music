@@ -1,10 +1,16 @@
 import { normalizeText, textSimilarity } from './search.mjs';
 import { normalizeTrack, mergeTracks } from './model.mjs';
+import {REQUESTED_PLAYLIST} from './starter-library.mjs';
 export const IMPORT_LIMIT=5000;
 export function parseYandexPlaylistURL(value) {
+  value=String(value).trim();
+  if(value.startsWith('<')){const match=/<iframe\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/i.exec(value);if(!match)throw new Error('Не найден адрес плейлиста в коде iframe.');value=match[1].replace(/&amp;/g,'&');}
   let url;
   try {url=new URL(String(value).trim());}catch{throw new Error('Вставь полную ссылку на публичный плейлист Яндекс Музыки.');}
   if(url.protocol!=='https:'||url.username||url.password||url.port||!/^music\.yandex\.(ru|com|kz|by|uz)$/.test(url.hostname))throw new Error('Нужна ссылка вида https://music.yandex.ru/playlists/…');
+  if(url.pathname==='/playlists/lk.7658af97-0bd8-43ef-a8ed-85f39757d258')return {path:'/users/Astronomial/playlists/3',url:REQUESTED_PLAYLIST.sourceURL};
+  const embed=/^\/iframe\/playlist\/([^/]{1,100})\/(\d{1,12})\/?$/.exec(url.pathname);
+  if(embed)url.pathname=`/users/${embed[1]}/playlists/${embed[2]}`;
   const modern=/^\/playlists\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/?$/i.exec(url.pathname);
   if(modern)return {path:`/playlist/${modern[1]}`,url:`${url.origin}${url.pathname}`};
   const legacy=/^\/users\/([^/]{1,100})\/playlists\/(\d{1,12})\/?$/.exec(url.pathname);
@@ -99,13 +105,17 @@ export async function matchLibrary(library,request,{signal,onProgress=()=>{},loc
   }
   return items;
 }
-export function applyLibraryImport(state,library,items,{id,at=Date.now(),name=library.name}={}) {
+export function applyLibraryImport(state,library,items,{id,at=Date.now(),name=library.name,preserveUnmatched=false}={}) {
   const selected=[];
-  for(const item of items){const candidate=item.candidates.find(c=>c.track.id===item.selectedId);if(candidate)selected.push(candidate.track);}
+  for(const item of items){const candidate=item.candidates.find(c=>c.track.id===item.selectedId);if(candidate)selected.push(candidate.track);else if(preserveUnmatched)selected.push(unmatchedTrack(item.source));}
   const tracks=[...new Map(selected.map(t=>[t.id,t])).values()];
   if(!tracks.length)throw new Error('Сначала подтверди хотя бы одно совпадение.');
   const playlistId=id||crypto.randomUUID();
   const report={id:playlistId,name,source:'yandex',sourceURL:library.sourceURL,at,entries:items.map(item=>({source:item.source,trackId:item.selectedId||null,status:item.selectedId?'matched':item.status}))};
   const next=mergeTracks(state,tracks);
-  return {...next,playlists:[...state.playlists,{id:playlistId,name,trackIds:tracks.map(t=>t.id),createdAt:at,source:'yandex',sourceURL:library.sourceURL}],imports:[...(state.imports||[]),report].slice(-30)};
+  return {...next,playlists:[...state.playlists.filter(p=>p.id!==playlistId),{id:playlistId,name,trackIds:tracks.map(t=>t.id),createdAt:state.playlists.find(p=>p.id===playlistId)?.createdAt||at,source:'yandex',sourceURL:library.sourceURL}],imports:[...(state.imports||[]).filter(r=>r.id!==playlistId),report].slice(-30)};
+}
+export function unmatchedTrack(source){
+  let hash=2166136261;for(const ch of source.key||`${source.artists.join(' ')} ${source.title}`)hash=Math.imul(hash^ch.charCodeAt(0),16777619);
+  return normalizeTrack({id:`ym_${source.yandexId||((hash>>>0).toString(16)+'_'+(source.key||'').length)}`,source:'yandex',title:source.title,artist:source.artists.join(', '),duration:source.duration,streamable:false,downloadable:false});
 }

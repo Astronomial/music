@@ -5,7 +5,7 @@ export function normalizeTrack(t) {
   const artwork = t.artwork || {};
   const download = t.download || {};
   return {
-    source:t.source||'audius',videoId:t.videoId||'',relatedTo:t.relatedTo||[],discoveryGenres:t.discoveryGenres||[],discoveryMoods:t.discoveryMoods||[],discoveryEnergy:t.discoveryEnergy||[],discoveryVocals:t.discoveryVocals||[],album:t.album||'',
+    source:t.source||'audius',videoId:t.videoId||'',relatedTo:t.relatedTo||[],retrievalSources:t.retrievalSources||[],discoveryGenres:t.discoveryGenres||[],discoveryMoods:t.discoveryMoods||[],discoveryEnergy:t.discoveryEnergy||[],discoveryVocals:t.discoveryVocals||[],album:t.album||'',
     id: String(t.id), title: t.title || 'Без названия', artist: t.user?.name || t.artist || 'Неизвестный исполнитель',
     artistId: String(t.user?.id || t.artistId || ''), genre: t.genre || '', mood: t.mood || '',
     tags: (Array.isArray(t.tags) ? t.tags : String(t.tags || '').split(',')).map(x => x.trim().toLowerCase()).filter(Boolean).slice(0, 30),
@@ -22,7 +22,7 @@ export function mergeTracks(state, tracks) {
   const next = { ...state.tracks };
   for (const t of tracks) if (t?.id) {
     const merged={...t};
-    for(const key of ['relatedTo','discoveryGenres','discoveryMoods','discoveryEnergy','discoveryVocals'])merged[key]=[...new Set([...(next[t.id]?.[key]||[]),...(t[key]||[])])].slice(-15);
+    for(const key of ['relatedTo','discoveryGenres','discoveryMoods','discoveryEnergy','discoveryVocals','retrievalSources'])merged[key]=[...new Set([...(next[t.id]?.[key]||[]),...(t[key]||[])])].slice(-15);
     next[t.id]=merged;
   }
   // Preserve library/history metadata while bounding the discovery cache.
