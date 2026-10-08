@@ -284,7 +284,11 @@ final class PlaybackController: ObservableObject {
             Task { @MainActor in
                 guard let self, let type else { return }
                 if type == AVAudioSession.InterruptionType.began.rawValue { self.interrupted = true; self.engine.pause(); self.isPlaying = false; self.updateNowPlaying() }
-                else { self.interrupted = false; if AVAudioSession.InterruptionOptions(rawValue: options).contains(.shouldResume), self.requestedPlayback { self.resume() } }
+                else {
+                    self.interrupted = false
+                    if AVAudioSession.InterruptionOptions(rawValue: options).contains(.shouldResume), self.requestedPlayback { self.resume() }
+                    else { self.requestedPlayback = false; self.updateNowPlaying() }
+                }
             }
         })
         systemObservers.append(NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] notification in

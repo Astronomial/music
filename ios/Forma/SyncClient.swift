@@ -51,6 +51,10 @@ private final class PinnedPCSession: NSObject, URLSessionDelegate, URLSessionTas
         guard let chain = SecTrustCopyCertificateChain(trust) as? [SecCertificate], let certificate = chain.first else { reject("ПК не предоставил сертификат."); return }
         let fingerprint = SHA256.hash(data: SecCertificateCopyData(certificate) as Data).map { String(format: "%02x", $0) }.joined()
         guard fingerprint == connection.pin else { reject("Сертификат ПК изменился. Подключи ПК новым кодом."); return }
+        // This is a paired local identity, not a public web-PKI certificate.
+        // Exact DER pin + challenge host authenticate the peer; BasicX509 checks its
+        // certificate while avoiding public SSL issuance/lifetime rules for our leaf.
+        SecTrustSetPolicies(trust, SecPolicyCreateBasicX509())
         // Only this already-pinned leaf becomes an anchor, in this request's trust object.
         SecTrustSetAnchorCertificates(trust, [certificate] as CFArray)
         SecTrustSetAnchorCertificatesOnly(trust, true)

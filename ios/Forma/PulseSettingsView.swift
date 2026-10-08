@@ -60,7 +60,7 @@ struct PulseSettingsView: View {
                             Text("Без интервала").tag(0.0); Text("30 минут").tag(0.5); Text("2 часа").tag(2.0); Text("6 часов").tag(6.0); Text("Сутки").tag(24.0)
                         }
                         Picker("Настроение Пульса", selection: Binding(get: { model.library.settings.mood }, set: { value in model.configure { $0.mood = value } })) {
-                            Text("Любое").tag("any"); ForEach(MoodMix.all) { mix in Text(mix.title).tag(mix.id) }
+                            Text("Любое").tag("any"); ForEach(MoodMix.all.filter { $0.id != "night" }) { mix in Text(mix.title).tag(mix.id) }
                         }
                         Picker("Энергия", selection: Binding(get: { model.library.settings.energy }, set: { value in model.configure({ $0.energy = value }, refreshCatalog: true) })) {
                             Text("Любая").tag("any"); Text("Мягче").tag("low"); Text("Умеренно").tag("medium"); Text("Бодрее").tag("high")
