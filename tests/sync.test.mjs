@@ -37,13 +37,13 @@ test('JSON dictionary keys cannot mutate object prototypes during merge',()=>{
 });
 test('each installation generates a distinct verifiable P-256 certificate',()=>{const a=createIdentity(),b=createIdentity(),cert=new crypto.X509Certificate(a.cert);assert.notEqual(a.cert,b.cert);assert.equal(cert.verify(crypto.createPublicKey(a.key)),true);});
 function request(server,route,body,{token,origin,chunks=false}={}){
- return new Promise((resolve,reject)=>{const bytes=Buffer.from(JSON.stringify(body));const req=https.request({hostname:'127.0.0.1',port:server.server.address().port,path:route,method:'POST',rejectUnauthorized:false,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{}),...(origin?{Origin:origin}:{})}},res=>{const parts=[];res.on('data',b=>parts.push(b));res.on('end',()=>resolve({status:res.statusCode,body:JSON.parse(Buffer.concat(parts).toString())}));});req.on('error',reject);if(chunks){for(let i=0;i<bytes.length;i++)req.write(bytes.subarray(i,i+1));req.end();}else req.end(bytes);});
+ return new Promise((resolve,reject)=>{const bytes=Buffer.from(JSON.stringify(body));const req=https.request({hostname:'127.0.0.1',port:server.server.address().port,path:route,method:'POST',ca:server.testCertificate,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{}),...(origin?{Origin:origin}:{})}},res=>{const parts=[];res.on('data',b=>parts.push(b));res.on('end',()=>resolve({status:res.statusCode,body:JSON.parse(Buffer.concat(parts).toString())}));});req.on('error',reject);if(chunks){for(let i=0;i<bytes.length;i++)req.write(bytes.subarray(i,i+1));req.end();}else req.end(bytes);});
 }
 test('actual pinned TLS server pairs once, syncs Unicode data, persists credentials and rejects unauthorized/browser requests',async()=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'forma-sync-')),store=new Store(dir);await store.write('library.json',library());let notifications=0;
  const server=new SyncServer({store,coordinator:new LibraryCoordinator(store),host:'127.0.0.1',port:0,onChange:()=>notifications++});
  try{
-  await server.start();const code=new URL(server.status().pairing).searchParams.get('code'),pin=server.pin;
+  await server.start();server.testCertificate=(await store.read('sync-identity.json')).cert;const code=new URL(server.status().pairing).searchParams.get('code'),pin=server.pin;
   assert.equal((await request(server,'/sync',{library:portableLibrary(library())})).status,401);
   const paired=await request(server,'/pair',{code,name:'Мой iPhone'},{chunks:true});assert.equal(paired.status,200);const token=paired.body.token;
   assert.equal((await request(server,'/pair',{code})).status,403);

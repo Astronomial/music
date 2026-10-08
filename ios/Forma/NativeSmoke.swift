@@ -19,7 +19,13 @@ enum NativeSmoke {
         do {
             let args = ProcessInfo.processInfo.arguments
             guard let index = args.firstIndex(of: "--forma-pair-code"), args.count > index + 1 else { throw SyncError.invalidCode }
-            let sync = SyncClient(); try await sync.pair(args[index + 1])
+            let sync = SyncClient()
+            var invalid = URLComponents(string: args[index + 1])!
+            invalid.queryItems = invalid.queryItems?.map { $0.name == "pin" ? URLQueryItem(name: "pin", value: String(repeating: "0", count: 64)) : $0 }
+            var rejectedWrongPin = false
+            do { try await sync.pair(invalid.string!) } catch { rejectedWrongPin = true }
+            guard rejectedWrongPin else { throw SyncError.rejected("Wrong certificate pin was accepted") }
+            try await sync.pair(args[index + 1])
             var library = try await sync.synchronize(library: Library(), base: nil)
             guard library.tracks.count >= 4, library.likedIDs.count == 1 else { throw SyncError.rejected("Initial PC library failed") }
             let base = library
@@ -50,7 +56,7 @@ enum NativeSmoke {
             guard !player.isPlaying else { throw SyncError.rejected("Explicit pause failed") }
             player.resume(); try await Task.sleep(nanoseconds: 500_000_000)
             guard player.isPlaying else { throw SyncError.rejected("Resume failed") }
-            write(["status": "passed", "nativeStarts": starts.count, "automaticTransitions": feedback.count, "background": background, "pinnedTLS": true, "bidirectionalSync": true, "pauseResume": true])
+            write(["status": "passed", "nativeStarts": starts.count, "automaticTransitions": feedback.count, "background": background, "pinnedTLS": true, "wrongPinRejected": rejectedWrongPin, "bidirectionalSync": true, "pauseResume": true])
             player.pause()
         } catch { let failure = error as NSError; write(["status": "failed", "error": error.localizedDescription, "domain": failure.domain, "code": failure.code]) }
     }
