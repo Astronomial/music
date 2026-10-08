@@ -1,8 +1,9 @@
 import {normalizeTrack} from './model.mjs';
 import {selectRetrievalAnchors,playlistSeedState} from './recommender.mjs';
+import {artistIndex} from './diversity.mjs';
 import {MOOD_MIXES} from './mood-mixes.mjs';
-import {waveSettings,waveQuery,retrievalContext,matchesArtist,genresOf} from './wave-settings.mjs';
-export async function collectYouTubeCandidates(state,request,{context=null,onBatch}={}){
+import {waveSettings,waveQuery,retrievalContext,matchesArtist,genresOf,blockedByPreferences} from './wave-settings.mjs';
+export async function collectYouTubeCandidates(state,request,{context=null,onBatch,round=0}={}){
   const source=playlistSeedState(state,context),settings=waveSettings(state.settings),anchors=selectRetrievalAnchors(source,{limit:12});
   const seeds=anchors.filter(t=>t.source==='youtube').slice(0,6);
   const jobs=seeds.map(t=>({route:`/related/${t.videoId}`,params:{},context:{relatedTo:[t.id],retrievalSources:['related']}}));
@@ -19,8 +20,10 @@ export async function collectYouTubeCandidates(state,request,{context=null,onBat
     const moodSettings={...settings,mood:mix.context.mood==='night'?'calm':mix.context.mood,energy:mix.context.energy||'any',vocals:mix.context.vocals||'any'};
     jobs.push({route:'/tracks/search',params:{query:mix.id==='night'?`${genre} late night music`:waveQuery(genre,moodSettings)},context:{...retrievalContext(moodSettings,genre),discoveryMoods:[mix.context.mood],retrievalSources:['mood']}});
   }
+  for(const genre of permitted.slice(0,2))jobs.push({route:'/tracks/search',params:{query:waveQuery(genre,settings),offset:40*(1+(Math.max(0,round)%3))},context:{...retrievalContext(settings,genre),retrievalSources:['discovery-page']}});
   if(!jobs.length)jobs.push({route:'/tracks/search',params:{query:waveQuery('',settings)},context:retrievalContext(settings)});
   const found=new Map();let successes=0;
+  let expanded=false;
   for(let i=0;i<jobs.length;i+=2){
     const batch=await Promise.allSettled(jobs.slice(i,i+2).map(({route,params})=>request(route,params)));
     const batchTracks=[];
@@ -34,6 +37,19 @@ export async function collectYouTubeCandidates(state,request,{context=null,onBat
       }
     }
     if(batchTracks.length)onBatch?.(batchTracks);
+    if(!expanded&&i+2>=seeds.length){
+      expanded=true;
+      const keys=artistIndex([...Object.values(source.tracks),...found.values()]);
+      const seedArtists=new Set(anchors.flatMap(keys)),seenArtists=new Set(),requested=new Set(seeds.map(t=>t.videoId));
+      const bridges=[...found.values()].filter(t=>t.source==='youtube'&&t.relatedTo?.some(id=>seeds.some(s=>s.id===id))&&!source.hidden.includes(t.id)&&!blockedByPreferences(t,settings));
+      for(const bridge of bridges){
+        const artists=keys(bridge);
+        if(requested.has(bridge.videoId)||artists.some(k=>seedArtists.has(k)||seenArtists.has(k)))continue;
+        for(const key of artists)seenArtists.add(key);requested.add(bridge.videoId);
+        jobs.push({route:`/related/${bridge.videoId}`,params:{},context:{relatedTo:[bridge.id,...bridge.relatedTo],discoveryGenres:genresOf(bridge).values,retrievalSources:['discovery-related']}});
+        if(requested.size-seeds.length>=3)break;
+      }
+    }
   }
   if(!successes)throw new Error('YouTube не отвечает. Можно слушать локальные файлы или повторить загрузку каталога.');
   return [...found.values()];
