@@ -32,7 +32,7 @@ export function sanitizePortable(doc){
 }
 export function portableLibrary(state){
   const tracks=Object.create(null),id=x=>String(x).replace(/^yt_/,'');
-  for(const t of Object.values(state.tracks||{}))if(t?.source==='youtube'&&validID(t.videoId))set(tracks,t.videoId,{videoID:t.videoId,title:t.title,artist:t.artist,duration:t.duration||0,...(t.artwork?{artworkURL:t.artwork}:{}),genres:t.discoveryGenres?.length?t.discoveryGenres:t.genre?[t.genre]:[],moodHints:t.discoveryMoods||[],relatedTo:(t.relatedTo||[]).map(id)});
+  for(const t of Object.values(state.tracks||{}))if(t?.source==='youtube'&&validID(t.videoId))set(tracks,t.videoId,{videoID:t.videoId,title:t.title,artist:t.artist,duration:t.duration||0,...(t.artwork?{artworkURL:t.artwork}:{}),genres:t.discoveryGenres?.length?t.discoveryGenres:t.genre?[t.genre]:[],moodHints:[...(t.discoveryMoods||[]),...(t.discoveryEnergy||[]).map(x=>'energy:'+x),...(t.discoveryVocals||[]).map(x=>'vocals:'+x)],relatedTo:(t.relatedTo||[]).map(id)});
   const s=state.settings||{};
   return sanitizePortable({version:1,tracks,likedIDs:(state.likes||[]).map(id),hiddenIDs:(state.hidden||[]).map(id),playlists:(state.playlists||[]).map(p=>({id:p.id,name:p.name,trackIDs:p.trackIds.map(id)})),events:(state.events||[]).filter(e=>['play','listen','skip','error'].includes(e.type)).map(e=>({trackID:id(e.trackId),kind:e.type,at:e.at,seconds:e.seconds||0,ratio:e.ratio||0,...(typeof e.newArtist==='boolean'?{newArtist:e.newArtist}:{}),...(e.mood?{mood:e.mood}:{})})),settings:{...Object.fromEntries(extraSettings.map(k=>[k,s[k]])),seedPlaylistIDs:s.seedPlaylistIds||[],genres:s.genres||[],excludedArtists:s.blockedArtists||[],discovery:s.discovery??.35,repeatHours:s.repeatCooldown??2,mood:s.mood||'any'}});
 }
@@ -42,7 +42,7 @@ export function mergePortable(current,base,incoming){
 }
 export function applyPortable(state,doc){
   const next=structuredClone(state),id=x=>'yt_'+x,isYouTube=x=>next.tracks[x]?.source==='youtube'||String(x).startsWith('yt_')&&validID(String(x).slice(3));
-  for(const t of Object.values(doc.tracks))set(next.tracks,id(t.videoID),{...next.tracks[id(t.videoID)],id:id(t.videoID),source:'youtube',videoId:t.videoID,title:t.title,artist:t.artist,duration:t.duration,artwork:t.artworkURL||'',discoveryGenres:t.genres,discoveryMoods:t.moodHints,relatedTo:t.relatedTo.map(id)});
+  for(const t of Object.values(doc.tracks))set(next.tracks,id(t.videoID),{...next.tracks[id(t.videoID)],id:id(t.videoID),source:'youtube',videoId:t.videoID,title:t.title,artist:t.artist,duration:t.duration,artwork:t.artworkURL||'',discoveryGenres:t.genres,discoveryMoods:t.moodHints.filter(x=>!x.startsWith('energy:')&&!x.startsWith('vocals:')),discoveryEnergy:t.moodHints.filter(x=>x.startsWith('energy:')).map(x=>x.slice(7)),discoveryVocals:t.moodHints.filter(x=>x.startsWith('vocals:')).map(x=>x.slice(7)),relatedTo:t.relatedTo.map(id)});
   next.likes=[...(next.likes||[]).filter(x=>!isYouTube(x)),...doc.likedIDs.map(id)];
   next.hidden=[...(next.hidden||[]).filter(x=>!isYouTube(x)),...doc.hiddenIDs.map(id)];
   const playlists=new Map(doc.playlists.map(p=>[p.id,p]));

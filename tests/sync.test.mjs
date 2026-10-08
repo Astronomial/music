@@ -12,9 +12,11 @@ const require=createRequire(import.meta.url),{Store}=require('../electron/storag
 function library(){const s=initialState();for(let i=0;i<3;i++){const videoId=String(i).padStart(11,'0'),t=normalizeTrack({id:'yt_'+videoId,videoId,source:'youtube',title:'Песня '+i,artist:'Артист '+i,genre:'House',duration:200});s.tracks[t.id]=t;}s.likes=['yt_00000000000'];s.playlists=[{id:'pc',name:'На ПК',trackIds:[s.likes[0]]}];s.events=[{trackId:s.likes[0],type:'play',at:1800000000000,newArtist:true,surface:'pulse'}];s.settings.apiKey='never-export-me';s.tracks.local_file={id:'local_file',source:'local',title:'Local',path:'C:/private/music.mp3'};return s;}
 test('portable library excludes secrets/files and preserves exposure, exclusions and diversity preferences',()=>{
  const s=library();s.hidden=['yt_00000000002','local_file'];s.settings.excludedGenres=['Rock'];s.settings.artistDiversity=1;
+ s.tracks[s.likes[0]].discoveryMoods=['night'];s.tracks[s.likes[0]].discoveryEnergy=['low'];s.tracks[s.likes[0]].discoveryVocals=['instrumental'];
  const p=portableLibrary(s),bytes=JSON.stringify(p);assert.ok(!bytes.includes('never-export-me'));assert.ok(!bytes.includes('C:/'));assert.ok(!bytes.includes('local_file'));
  assert.equal(p.events[0].kind,'play');assert.equal(p.events[0].newArtist,true);assert.equal(p.settings.artistDiversity,1);assert.deepEqual(p.settings.excludedGenres,['Rock']);assert.deepEqual(p.hiddenIDs,['00000000002']);
  const result=applyPortable(s,p);assert.equal(result.events[0].newArtist,true);assert.equal(result.events[0].surface,'pulse');assert.equal(result.settings.apiKey,'never-export-me');assert.equal(result.tracks.local_file.path,'C:/private/music.mp3');
+ assert.deepEqual(result.tracks[s.likes[0]].discoveryMoods,['night']);assert.deepEqual(result.tracks[s.likes[0]].discoveryEnergy,['low']);assert.deepEqual(result.tracks[s.likes[0]].discoveryVocals,['instrumental']);
 });
 test('three-way sync propagates unlikes, playlist removal and simultaneous PC/phone additions',()=>{
  const base=portableLibrary(library()),pc=structuredClone(base),phone=structuredClone(base);pc.likedIDs.push('00000000001');phone.likedIDs=[];phone.playlists=[];phone.playlists.push({id:'phone',name:'Телефон',trackIDs:['00000000002']});
