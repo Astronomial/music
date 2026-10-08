@@ -37,7 +37,7 @@ python3 ios/Scripts/generate_project.py --check
 xcodebuild -project ios/Forma.xcodeproj -scheme Forma \
   -configuration Debug -sdk iphonesimulator \
   -destination 'generic/platform=iOS Simulator' \
-  -derivedDataPath ios/.derived-data CODE_SIGNING_ALLOWED=NO build
+  -derivedDataPath ios/.derived-data CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- build
 python3 ios/Scripts/simulator_smoke.py
 xcodebuild -project ios/Forma.xcodeproj -scheme Forma \
   -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \

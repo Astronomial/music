@@ -33,7 +33,7 @@ jobs:
           xcodebuild -project ios/Forma.xcodeproj -scheme Forma
           -configuration Debug -sdk iphonesimulator
           -destination 'generic/platform=iOS Simulator'
-          -derivedDataPath ios/.derived-data CODE_SIGNING_ALLOWED=NO build
+          -derivedDataPath ios/.derived-data CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- build
       - name: Check native background queue and encrypted PC sync
         timeout-minutes: 7
         run: python3 ios/Scripts/simulator_smoke.py
