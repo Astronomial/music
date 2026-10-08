@@ -17,3 +17,5 @@ ios/package/
 ios/*.ipa
 ios/native-smoke-result.json
 ios/Forma-iOS-SHA256SUMS.txt
+
+/ios/Scripts/__pycache__/
