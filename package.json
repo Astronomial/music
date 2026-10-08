@@ -1,0 +1,31 @@
+{
+  "name": "forma-music",
+  "productName": "Forma",
+  "version": "1.0.0",
+  "description": "Personal music discovery and offline player powered by Audius",
+  "author": "Forma",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "desktop": "npm run build && electron .",
+    "build": "vite build",
+    "test": "node --test --test-isolation=none tests/*.test.mjs",
+    "test:ui": "node tests/ui-smoke.mjs",
+    "test:desktop": "npm run build && node tests/desktop-smoke.mjs",
+    "dist:win": "npm run build && electron-builder --win portable --x64",
+    "dist:installer": "npm run build && electron-builder --win nsis --x64"
+  },
+  "dependencies": {"react": "^19.1.0", "react-dom": "^19.1.0", "lucide-react": "^0.468.0"},
+  "devDependencies": {"vite": "^7.1.0", "electron": "^39.0.0", "electron-builder": "^26.0.12", "@playwright/test": "^1.55.0"},
+  "build": {
+    "appId": "music.forma.desktop",
+    "productName": "Forma",
+    "directories": {"output": "release"},
+    "files": ["dist/**/*", "electron/**/*", "src/core/**/*", "build/icon.png", "package.json"],
+    "win": {"target": ["portable", "nsis"], "signExecutable": false, "icon": "build/icon.ico"},
+    "portable": {"artifactName": "Forma-${version}-Windows-x64.exe"},
+    "nsis": {"oneClick": false, "allowToChangeInstallationDirectory": true, "artifactName": "Forma-${version}-Setup.exe"}
+  }
+}

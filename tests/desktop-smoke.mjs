@@ -1,0 +1,58 @@
+import { _electron } from '@playwright/test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+const project=path.resolve('.');
+const dir=await fs.mkdtemp(path.join(os.tmpdir(),'forma-desktop-'));
+const executable=process.env.FORMA_ELECTRON_PATH||path.join(project,'node_modules/electron/dist/electron');
+const desktopEnv={...process.env,XDG_CONFIG_HOME:dir,XDG_CACHE_HOME:path.join(dir,'cache')};
+const track={id:'DesktopTest',title:'Offline integration test',user:{id:'ArtistOne',name:'Test artist'},genre:'House',duration:20,is_downloadable:true,is_streamable:true};
+function wav(){const b=Buffer.alloc(320044);b.write('RIFF',0);b.writeUInt32LE(b.length-8,4);b.write('WAVEfmt ',8);b.writeUInt32LE(16,16);b.writeUInt16LE(1,20);b.writeUInt16LE(1,22);b.writeUInt32LE(8000,24);b.writeUInt32LE(16000,28);b.writeUInt16LE(2,32);b.writeUInt16LE(16,34);b.write('data',36);b.writeUInt32LE(b.length-44,40);return b;}
+let app;
+async function launch(){
+  const instance=await _electron.launch({executablePath:executable,args:['--no-sandbox','--disable-gpu',project,`--forma-test-data=${dir}`],env:desktopEnv});
+  const page=await instance.firstWindow();await page.waitForLoadState();return{instance,page};
+}
+try{
+  let launched=await launch();app=launched.instance;let page=launched.page;
+  await app.evaluate(({net},{track,audio})=>{
+    // Replace the main-process transport only in this test; production has no fixtures.
+    net.fetch=async url=>{
+      const path=new URL(url).pathname;
+      if(path.endsWith('/download'))return new Response(Buffer.from(audio,'base64'),{headers:{'content-length':String(Buffer.from(audio,'base64').length)}});
+      return Response.json({data:/\/tracks\/DesktopTest$/.test(path)?track:[track]});
+    };
+  },{track,audio:wav().toString('base64')});
+  assert.equal(await page.evaluate(()=>window.forma.desktop),true);
+  assert.equal(await page.evaluate(()=>typeof window.require),'undefined');
+  await page.getByRole('button',{name:'Выберу позже'}).click();
+  await page.locator('.track-row').first().waitFor();
+  await page.getByRole('button',{name:'Скачать Offline integration test',exact:true}).click();
+  await page.waitForFunction(async()=>Object.keys(await window.forma.downloads()).length===1);
+  await page.getByRole('button',{name:'Скачанное',exact:true}).click();
+  await page.locator('.track-name').click();
+  await page.waitForFunction(()=>document.querySelector('audio').currentTime>1.6);
+  assert.match(await page.locator('audio').evaluate(a=>a.src),/^forma-audio:/);
+  await page.locator('audio').evaluate(a=>a.currentTime=12);
+  await page.waitForFunction(()=>document.querySelector('audio').currentTime>12);
+  await page.getByRole('button',{name:'Нравится текущий трек',exact:true}).click();
+  await page.getByRole('button',{name:'Настройки',exact:true}).click();
+  await page.getByRole('switch',{name:'Только скачанная музыка'}).click();
+  const dataPath=await app.evaluate(({app})=>app.getPath('userData'));
+  const exited=new Promise(resolve=>app.process().once('exit',resolve));
+  await page.evaluate(()=>window.forma.windowControl('close'));
+  await exited;app=null;
+  const saved=JSON.parse(await fs.readFile(path.join(dataPath,'library.json'),'utf8'));
+  assert.ok(saved.likes.includes('DesktopTest'));assert.equal(saved.settings.offlineOnly,true);assert.ok(saved.events.some(e=>e.type==='listen'));
+  launched=await launch();app=launched.instance;page=launched.page;
+  await page.getByRole('button',{name:'Скачанное',exact:true}).click();
+  assert.equal(await page.locator('.track-row').count(),1);
+  await page.locator('.track-name').click();
+  await page.waitForFunction(()=>document.querySelector('audio').currentTime>0.5);
+  await page.getByRole('button',{name:'Пауза',exact:true}).click();
+  await page.locator('.track-actions button').last().click();
+  await page.getByRole('button',{name:'Удалить скачанный файл',exact:true}).click();
+  await page.waitForFunction(async()=>Object.keys(await window.forma.downloads()).length===0);
+  console.log('PASS: real Electron sandbox/preload, IPC download, audio protocol playback and seeking, close-save handshake, restart offline playback, download deletion.');
+}finally{if(app)await app.close();await fs.rm(dir,{recursive:true,force:true});}
