@@ -5,3 +5,11 @@ test-results/
 playwright-report/
 .DS_Store
 Forma-Windows.zip
+
+# Native iOS build products and per-user Xcode settings
+ios/**/.build/
+ios/**/.swiftpm/
+ios/.derived-data/
+ios/**/*.xcuserstate
+ios/**/xcuserdata/
+*.xcarchive

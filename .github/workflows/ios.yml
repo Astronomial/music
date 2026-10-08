@@ -1,0 +1,33 @@
+name: Check Forma iOS scaffold
+on:
+  push:
+    branches: [main]
+    paths: ['ios/**', '.github/workflows/ios.yml']
+  pull_request:
+    paths: ['ios/**', '.github/workflows/ios.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check generated project
+        run: python3 ios/Scripts/generate_project.py --check
+      - name: Validate Xcode property lists
+        run: plutil -lint ios/Forma/Info.plist ios/Forma.xcodeproj/project.pbxproj
+      - name: Test portable Pulse, catalogue and storage
+        run: swift test --package-path ios/Packages/FormaCore
+      - name: Build native iOS Simulator application
+        run: >-
+          xcodebuild -project ios/Forma.xcodeproj -scheme Forma
+          -configuration Debug -sdk iphonesimulator
+          -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath ios/.derived-data
+          CODE_SIGNING_ALLOWED=NO build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Forma-iOS-Simulator
+          path: ios/.derived-data/Build/Products/Debug-iphonesimulator/Forma.app
+          if-no-files-found: error

@@ -1,0 +1,7 @@
+{
+  "repository": "https://github.com/alexeichhorn/YouTubeKit",
+  "revision": "e5b7d0396ce12bf3444f0d209e8436c83373b7af",
+  "license": "MIT",
+  "author": "Alexander Eichhorn",
+  "changes": "Swift and JavaScript sources are unmodified. Package.swift declares iOS 17/macOS 14 for this app. Added bundled dependency licenses and provenance."
+}
