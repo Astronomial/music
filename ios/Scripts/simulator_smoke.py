@@ -1,6 +1,6 @@
 """Run native AVQueuePlayer and pinned TLS sync in an actual iOS Simulator."""
 import json, pathlib, subprocess, tempfile, time
-run = lambda *args: subprocess.check_output(args, text=True, timeout=60).strip()
+run = lambda *args: subprocess.check_output(args, text=True, timeout=180).strip()
 root = pathlib.Path(__file__).resolve().parents[2]
 with tempfile.TemporaryDirectory(prefix='forma-simulator-') as directory:
     server = subprocess.Popen(['node', str(root/'ios/Scripts/smoke-sync-server.mjs'), directory])

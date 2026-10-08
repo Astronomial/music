@@ -49,7 +49,9 @@ final class AppModel: ObservableObject {
         }
         player.onFeedback = { [weak self] event in
             guard let self else { return }
-            self.library.record(event); self.persist(); self.updateRecommendations()
+            let exposure = self.library.events.last { $0.trackID == event.trackID && $0.kind == .play }
+            self.library.record(ListeningEvent(trackID: event.trackID, kind: event.kind, at: event.at, seconds: event.seconds, ratio: event.ratio, mood: event.mood, newArtist: exposure?.newArtist))
+            self.persist(); self.updateRecommendations()
             if self.library.events.count % 4 == 0 { Task { await self.refresh() } }
         }
         player.pulseNext = { [weak self] excluded, mood in
@@ -58,7 +60,7 @@ final class AppModel: ObservableObject {
             return PulseDiversity.next(source, library: self.library, exclude: excluded, currentID: self.player.current?.id)
         }
         Task {
-            pcHost = await sync.connection?.host
+            let connection = await sync.restore(); pcHost = connection?.host
             syncBase = await storage?.syncBase()
             if pcHost != nil { syncStatus = "ПК подключён. Синхронизируем в общей Wi-Fi сети" }
         }

@@ -9,7 +9,7 @@ struct FormaApp: App {
             ContentView(model: model)
                 .preferredColorScheme(.dark)
 #if DEBUG && targetEnvironment(simulator)
-                .task { if ProcessInfo.processInfo.arguments.contains("--forma-smoke") { await NativeSmoke.run() } }
+                .onAppear { if ProcessInfo.processInfo.arguments.contains("--forma-smoke") { NativeSmoke.startOnce() } }
 #endif
         }
     }

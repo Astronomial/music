@@ -64,10 +64,22 @@ actor SyncClient {
     private struct Failure: Decodable { let error: String }
     private(set) var connection: PCConnection?
     private let account = "music.forma.pc-connection"
+    private let restoration: Task<PCConnection?, Never>
+    private var restored = false
     init() {
-        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrAccount as String: "music.forma.pc-connection", kSecReturnData as String: true]
-        var result: CFTypeRef?
-        if SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess, let data = result as? Data { connection = try? JSONDecoder().decode(PCConnection.self, from: data) }
+        // Security services can take time to start; never block the first UI frame.
+        restoration = Task.detached(priority: .utility) {
+            let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrAccount as String: "music.forma.pc-connection", kSecReturnData as String: true]
+            var result: CFTypeRef?
+            if SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess, let data = result as? Data { return try? JSONDecoder().decode(PCConnection.self, from: data) }
+            return nil
+        }
+    }
+    func restore() async -> PCConnection? {
+        if restored { return connection }
+        let saved = await restoration.value
+        if !restored { connection = saved; restored = true }
+        return connection
     }
     func pair(_ code: String) async throws {
         var (next, secret) = try PCConnection.parse(code)
@@ -81,9 +93,9 @@ actor SyncClient {
         var attributes = query; attributes[kSecValueData as String] = data
         attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         guard SecItemAdd(attributes as CFDictionary, nil) == errSecSuccess else { throw SyncError.rejected("Не удалось сохранить подключение в защищённом хранилище.") }
-        connection = next
+        restored = true; connection = next
     }
-    func disconnect() { SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrAccount as String: account] as CFDictionary); connection = nil }
+    func disconnect() { restored = true; SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrAccount as String: account] as CFDictionary); connection = nil }
     func synchronize(library: Library, base: Library?) async throws -> Library {
         guard let connection else { throw SyncError.rejected("Сначала подключи ПК.") }
         struct Request: Encodable { let library: Library; let base: Library? }

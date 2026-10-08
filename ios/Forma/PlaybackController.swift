@@ -184,6 +184,7 @@ final class PlaybackController: ObservableObject {
         clock.reset()
     }
     private func tick() {
+        adoptPreparedItem()
         clock.tick(at: ProcessInfo.processInfo.systemUptime, playing: engine.timeControlStatus == .playing, seeking: seeking)
         let time = engine.currentTime().seconds
         if time.isFinite { position = max(0, time) }

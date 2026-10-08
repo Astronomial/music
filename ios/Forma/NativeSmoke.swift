@@ -11,6 +11,8 @@ private struct FixtureResolver: StreamResolving {
 }
 @MainActor
 enum NativeSmoke {
+    private static var started = false
+    static func startOnce() { guard !started else { return }; started = true; Task { await run() } }
     static func run() async {
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let report = dir.appendingPathComponent("smoke-result.json")
@@ -62,7 +64,7 @@ enum NativeSmoke {
             guard player.isPlaying else { throw SyncError.rejected("Resume failed") }
             write(["status": "passed", "nativeStarts": starts.count, "automaticTransitions": feedback.count, "background": background, "pinnedTLS": true, "wrongPinRejected": rejectedWrongPin, "bidirectionalSync": true, "pauseResume": true])
             player.pause()
-        } catch { let failure = error as NSError; write(["status": "failed", "stage": stage, "error": error.localizedDescription, "domain": failure.domain, "code": failure.code]) }
+        } catch { let failure = error as NSError; write(["status": "failed", "stage": stage, "error": error.localizedDescription, "domain": failure.domain, "code": failure.code, "taskCancelled": Task.isCancelled]) }
     }
 }
 #endif
