@@ -1,33 +1,68 @@
-name: Check Forma iOS scaffold
+name: Build and verify Forma iOS
 on:
   push:
-    branches: [main]
-    paths: ['ios/**', '.github/workflows/ios.yml']
+    branches: [main, ios-ready]
+    paths: ['ios/**', 'electron/sync*.cjs', 'src/core/sync.mjs', '.github/workflows/ios.yml']
   pull_request:
-    paths: ['ios/**', '.github/workflows/ios.yml']
+    paths: ['ios/**', 'electron/sync*.cjs', 'src/core/sync.mjs', '.github/workflows/ios.yml']
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   ios:
     runs-on: macos-15
+    timeout-minutes: 25
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Check generated project
-        run: python3 ios/Scripts/generate_project.py --check
-      - name: Validate Xcode property lists
-        run: plutil -lint ios/Forma/Info.plist ios/Forma.xcodeproj/project.pbxproj
-      - name: Test portable Pulse, catalogue and storage
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Check generated project and property lists
+        run: |
+          python3 ios/Scripts/generate_project.py --check
+          plutil -lint ios/Forma/Info.plist ios/Forma.xcodeproj/project.pbxproj
+      - name: Test portable Pulse, sync and storage
         run: swift test --package-path ios/Packages/FormaCore
-      - name: Build native iOS Simulator application
+      - name: Build iOS Simulator app
         run: >-
           xcodebuild -project ios/Forma.xcodeproj -scheme Forma
           -configuration Debug -sdk iphonesimulator
           -destination 'generic/platform=iOS Simulator'
-          -derivedDataPath ios/.derived-data
-          CODE_SIGNING_ALLOWED=NO build
+          -derivedDataPath ios/.derived-data CODE_SIGNING_ALLOWED=NO build
+      - name: Check native background queue and encrypted PC sync
+        run: python3 ios/Scripts/simulator_smoke.py
+      - name: Build iPhone Release app
+        run: >-
+          xcodebuild -project ios/Forma.xcodeproj -scheme Forma
+          -configuration Release -sdk iphoneos
+          -destination 'generic/platform=iOS'
+          -derivedDataPath ios/.derived-data CODE_SIGNING_ALLOWED=NO build
+      - name: Package installable IPA for local signing
+        run: |
+          mkdir -p ios/package/Payload
+          cp -R ios/.derived-data/Build/Products/Release-iphoneos/Forma.app ios/package/Payload/
+          cd ios/package
+          zip -qry ../Forma-iOS-1.0.0-unsigned.ipa Payload
+          cd ..
+          shasum -a 256 Forma-iOS-1.0.0-unsigned.ipa > Forma-iOS-SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: Forma-iOS-Simulator
-          path: ios/.derived-data/Build/Products/Debug-iphonesimulator/Forma.app
+          name: Forma-iOS-1.0.0
+          path: |
+            ios/Forma-iOS-1.0.0-unsigned.ipa
+            ios/Forma-iOS-SHA256SUMS.txt
+            ios/native-smoke-result.json
           if-no-files-found: error
+      - name: Publish iOS download
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=ios-v1.0.0
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" ios/Forma-iOS-1.0.0-unsigned.ipa ios/Forma-iOS-SHA256SUMS.txt --clobber
+          else
+            gh release create "$tag" ios/Forma-iOS-1.0.0-unsigned.ipa ios/Forma-iOS-SHA256SUMS.txt --target "$GITHUB_SHA" --title 'Forma iOS 1.0.0' --notes-file ios/RELEASE_NOTES.md
+          fi

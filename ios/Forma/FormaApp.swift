@@ -8,6 +8,9 @@ struct FormaApp: App {
         WindowGroup {
             ContentView(model: model)
                 .preferredColorScheme(.dark)
+#if DEBUG && targetEnvironment(simulator)
+                .task { if ProcessInfo.processInfo.arguments.contains("--forma-smoke") { await NativeSmoke.run() } }
+#endif
         }
     }
 }

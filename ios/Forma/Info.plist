@@ -10,6 +10,8 @@
  <key>CFBundlePackageType</key><string>APPL</string>
  <key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>
  <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
+ <key>NSLocalNetworkUsageDescription</key><string>Forma синхронизирует избранное, плейлисты и музыкальный вкус с твоим ПК в общей Wi-Fi сети.</string>
+ <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
  <key>LSRequiresIPhoneOS</key><true/>
  <key>UIBackgroundModes</key><array><string>audio</string></array>
  <key>UIApplicationSceneManifest</key><dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>

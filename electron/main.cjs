@@ -5,7 +5,7 @@ const { Store } = require('./storage.cjs');
 const { folderFiles, importLocalFile } = require('./local.cjs');
 const { OfflineLibrary, validId } = require('./offline.cjs');
 protocol.registerSchemesAsPrivileged([{scheme:'forma-audio', privileges:{standard:true,secure:true,stream:true,supportFetchAPI:true}}]);
-let window, store, offline, api, uiServer, apiKey = '', closing = false, closeTimer;
+let window, store, offline, api, uiServer, syncServer, coordinator, desktopBaseline, apiKey = '', closing = false, closeTimer;
 // Dev smoke tests use an explicit temporary profile on all operating systems.
 const testDataArg = process.argv.find(arg=>arg.startsWith('--forma-test-data='));
 if(!app.isPackaged&&testDataArg) app.setPath('userData',path.resolve(testDataArg.slice('--forma-test-data='.length)));
@@ -23,15 +23,27 @@ app.whenReady().then(async () => {
     if (event.sender !== window?.webContents || event.senderFrame !== window?.webContents.mainFrame) throw new Error('Недопустимый источник запроса');
     return fn(...args);
   });
-  handle('state:load',()=>store.read('library.json',null));
+  const {SyncServer,LibraryCoordinator}=require('./sync.cjs');
+  const {mergeDesktop}=await import('../src/core/sync.mjs');
+  coordinator=new LibraryCoordinator(store);
+  syncServer=new SyncServer({store,coordinator,onChange:state=>window?.webContents.send('sync:changed',{state,base:desktopBaseline})});
+  handle('state:load',async()=>{desktopBaseline=await store.read('library.json',null);return desktopBaseline;});
+  if((await store.read('sync-settings.json',{})).enabled)await syncServer.start().catch(()=>{});
+  handle('sync:status',()=>syncServer.status());
+  handle('sync:start',()=>syncServer.start());
+  handle('sync:stop',()=>syncServer.stop());
+  handle('sync:pair',()=>syncServer.newPairing());
+  handle('sync:forget',()=>syncServer.forget());
   const saveState = async state => {
     if (!state || state.version!==1 || !state.tracks || !Array.isArray(state.likes) || !Array.isArray(state.events) || !Array.isArray(state.playlists) || JSON.stringify(state).length>25*1024**2) throw new Error('Некорректная библиотека');
     apiKey = String(state.settings?.apiKey || '').slice(0,250);
-    await store.write('library.json',state);
+    const next=await coordinator.mutate(current=>mergeDesktop(current||state,desktopBaseline||state,state));
+    desktopBaseline=structuredClone(state);
+    if(JSON.stringify(next)!==JSON.stringify(state))window?.webContents.send('sync:changed',{state:next,base:state});
   };
   handle('state:save',saveState);
   handle('state:close',async state=> {
-    await saveState(state);await store.queue;clearTimeout(closeTimer);closing=true;window.close();
+    await saveState(state);await coordinator.queue;await store.queue;clearTimeout(closeTimer);closing=true;window.close();
   });
   handle('audius:request',(route,params)=>api.requestAudius(route,params,net.fetch,apiKey));
   const { YouTubeCatalog } = await import('../src/core/youtube.mjs');
@@ -114,4 +126,4 @@ app.whenReady().then(async () => {
   await window.loadURL(entry);
 });
 app.on('window-all-closed',()=>app.quit());
-app.on('before-quit',()=>{uiServer?.close();for(const id of offline?.active.keys() || []) offline.cancel(id);});
+app.on('before-quit',()=>{syncServer?.stop({persist:false});uiServer?.close();for(const id of offline?.active.keys() || []) offline.cancel(id);});

@@ -3,7 +3,10 @@ import FormaCore
 
 enum FormaTheme {
     static let background = Color(red: 0.025, green: 0.03, blue: 0.05)
-    static let accent = Color(red: 0.73, green: 0.65, blue: 1)
+    static var accent: Color { color(UserDefaults.standard.string(forKey: "forma.palette") ?? "iris") }
+    static func color(_ palette: String) -> Color {
+        switch palette { case "mint": return Color(red: 0.4, green: 0.92, blue: 0.7); case "sunset": return Color(red: 1, green: 0.65, blue: 0.5); case "ice": return Color(red: 0.5, green: 0.8, blue: 1); default: return Color(red: 0.73, green: 0.65, blue: 1) }
+    }
     static let colors: [Color] = [.mint, .orange, .purple, .blue, .teal, .indigo]
 }
 @MainActor

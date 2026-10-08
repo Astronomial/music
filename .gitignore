@@ -13,3 +13,7 @@ ios/.derived-data/
 ios/**/*.xcuserstate
 ios/**/xcuserdata/
 *.xcarchive
+ios/package/
+ios/*.ipa
+ios/native-smoke-result.json
+ios/Forma-iOS-SHA256SUMS.txt

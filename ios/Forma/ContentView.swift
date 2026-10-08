@@ -4,22 +4,36 @@ import FormaCore
 @MainActor
 struct ContentView: View {
     @ObservedObject var model: AppModel
+    @AppStorage("forma.palette") private var palette = "iris"
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showPlayer = false
     @State private var showSettings = false
     var body: some View {
         TabView {
             NavigationStack { HomeView(model: model, showSettings: $showSettings) }.tabItem { Label("Главная", systemImage: "house") }
             NavigationStack { SearchView(model: model) }.tabItem { Label("Поиск", systemImage: "magnifyingglass") }
-            NavigationStack { LibraryView(model: model) }.tabItem { Label("Любимое", systemImage: "heart") }
+            NavigationStack { PlaylistsView(model: model) }.tabItem { Label("Библиотека", systemImage: "square.stack") }
+            NavigationStack { SettingsView(model: model) }.tabItem { Label("Настройки", systemImage: "gearshape") }
         }
-        .tint(FormaTheme.accent)
+        .tint(FormaTheme.color(palette))
         .safeAreaInset(edge: .bottom, spacing: 0) { MiniPlayer(model: model, expand: { showPlayer = true }).padding(.horizontal, 12).padding(.bottom, 8) }
         .sheet(isPresented: $showPlayer) { NowPlayingView(model: model).presentationDetents([.large]).presentationDragIndicator(.visible) }
         .sheet(isPresented: $showSettings) { NavigationStack { PulseSettingsView(model: model) }.presentationDetents([.large]).presentationDragIndicator(.visible) }
         .alert("Forma", isPresented: Binding(get: { model.message != nil }, set: { if !$0 { model.message = nil } })) {
             Button("Понятно", role: .cancel) { model.message = nil }
         } message: { Text(model.message ?? "") }
-        .task { if model.library.tracks.isEmpty { await model.refresh() } }
+        .task {
+            guard !ProcessInfo.processInfo.arguments.contains("--forma-smoke") else { return }
+            if model.library.tracks.isEmpty { await model.refresh() }
+            while !Task.isCancelled {
+                if scenePhase == .active { await model.synchronize() }
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await model.synchronize() } }
+            else { model.persist(immediately: true) }
+        }
     }
 }
 @MainActor
@@ -85,6 +99,10 @@ struct TrackRow: View {
             }.buttonStyle(.plain).accessibilityLabel("Слушать \(track.artist) — \(track.title)")
             Button { model.toggleLike(track) } label: { Image(systemName: model.isLiked(track) ? "heart.fill" : "heart").foregroundStyle(model.isLiked(track) ? FormaTheme.accent : .secondary) }
                 .buttonStyle(.plain).accessibilityLabel(model.isLiked(track) ? "Убрать из любимого" : "Добавить в любимое")
+            Menu {
+                if model.library.playlists.isEmpty { Text("Создай плейлист в библиотеке") }
+                ForEach(model.library.playlists) { playlist in Button(playlist.name) { model.add(track, to: playlist.id) } }
+            } label: { Image(systemName: "ellipsis").frame(width: 30, height: 40) }.accessibilityLabel("Добавить в плейлист")
         }.padding(.vertical, 6)
     }
 }

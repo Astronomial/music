@@ -1,6 +1,12 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('forma',{
   desktop:true,
+  syncStatus:()=>ipcRenderer.invoke('sync:status'),
+  syncStart:()=>ipcRenderer.invoke('sync:start'),
+  syncStop:()=>ipcRenderer.invoke('sync:stop'),
+  syncPair:()=>ipcRenderer.invoke('sync:pair'),
+  syncForget:()=>ipcRenderer.invoke('sync:forget'),
+  onSync:callback=>{const fn=(_event,value)=>callback(value);ipcRenderer.on('sync:changed',fn);return()=>ipcRenderer.removeListener('sync:changed',fn);},
   load:()=>ipcRenderer.invoke('state:load'),
   save:state=>ipcRenderer.invoke('state:save',state),
   request:(path,params)=>ipcRenderer.invoke('audius:request',path,params),

@@ -17,7 +17,15 @@ public struct ResolvedAudio: Sendable {
         let upstream = raw.flatMap(Double.init).map(Date.init(timeIntervalSince1970:)) ?? resolvedAt.addingTimeInterval(300)
         expiresAt = min(upstream, resolvedAt.addingTimeInterval(300))
     }
-    public func isFresh(at now: Date = Date()) -> Bool { expiresAt.timeIntervalSince(now) > 60 }
+#if DEBUG
+    /// On-disk audio fixture used only by the simulator integration check.
+    public init(debugFixture url: URL) {
+        precondition(url.isFileURL)
+        self.url = url; resolvedAt = Date(); expiresAt = Date().addingTimeInterval(300)
+        title = nil; artworkURL = nil
+    }
+#endif
+    public func isFresh(at now: Date = Date(), margin: Double = 60) -> Bool { expiresAt.timeIntervalSince(now) > margin }
     public enum StreamError: Error { case invalidHost }
 }
 public protocol StreamResolving: Sendable {

@@ -15,14 +15,23 @@ final class PlaybackController: ObservableObject {
     @Published private(set) var duration: Double = 0
     @Published private(set) var error: String?
     @Published var volume: Float = 0.7 { didSet { engine.volume = volume } }
+    var onStarted: ((Track) -> Void)?
+    private var startedID: String?
+    private var interrupted = false
+    private var preparationToken = UUID()
+    private var lastNowPlayingUpdate: TimeInterval = 0
     var onFeedback: ((ListeningEvent) -> Void)?
     var pulseNext: ((Set<String>, String?) -> Track?)?
-    private let engine = AVPlayer()
+    private let engine = AVQueuePlayer()
     private let resolver: any StreamResolving
     private let network = NWPathMonitor()
     private var task: Task<Void, Never>?
     private var prefetch: Task<Void, Never>?
     private var prefetchedCurrent: String?
+    private var prepared: (track: Track, item: AVPlayerItem, audio: ResolvedAudio)?
+    private var currentObservation: NSKeyValueObservation?
+    private var preparing = false
+    private var failedCandidates: Set<String> = []
     private var periodic: Any?
     private var statusObservation: NSKeyValueObservation?
     private var itemObservation: NSKeyValueObservation?
@@ -52,8 +61,13 @@ final class PlaybackController: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 self.isPlaying = self.engine.timeControlStatus == .playing
+                if self.isPlaying { self.isLoading = false; self.markStarted() }
                 self.updateNowPlaying()
             }
+        }
+        engine.actionAtItemEnd = .advance
+        currentObservation = engine.observe(\.currentItem, options: [.new]) { [weak self] _, _ in
+            Task { @MainActor in self?.adoptPreparedItem() }
         }
         installRemoteCommands()
         installAudioEvents()
@@ -80,11 +94,11 @@ final class PlaybackController: ObservableObject {
     }
     private func start(_ track: Track, at seconds: Double = 0, refreshing: Bool = false) {
         task?.cancel(); prefetch?.cancel(); artworkTask?.cancel()
-        prefetchedCurrent = nil
+        prefetchedCurrent = nil; failedCandidates = []
         let token = UUID(); generation = token
-        engine.pause(); engine.replaceCurrentItem(with: nil)
-        current = track; position = seconds; duration = track.duration
-        clock.reset(); seeking = false; error = nil; isLoading = true; isPlaying = false; requestedPlayback = true
+        engine.pause(); engine.removeAllItems(); prepared = nil; preparing = false
+        current = track; if !refreshing { startedID = nil }; position = seconds; duration = track.duration
+        if !refreshing { clock.reset() }; seeking = false; error = nil; isLoading = true; isPlaying = false; requestedPlayback = true
         if !refreshing { retryCount = 0; artwork = nil; loadArtwork(for: track) }
         updateNowPlaying()
         task = Task { [weak self] in
@@ -95,12 +109,13 @@ final class PlaybackController: ObservableObject {
                 guard generation == token else { return }
                 let item = AVPlayerItem(url: resolved.url)
                 observe(item, token: token)
-                engine.replaceCurrentItem(with: item)
+                engine.insert(item, after: nil)
                 if seconds > 0 { await engine.seek(to: CMTime(seconds: seconds, preferredTimescale: 600)) }
                 guard generation == token, !Task.isCancelled else { return }
                 isLoading = false
-                if requestedPlayback { try activateAudio(); engine.play() }
+                if requestedPlayback, !interrupted { try activateAudio(); engine.play() }
                 updateNowPlaying()
+                if duration > 0, duration < 180 { prepareNext() }
             } catch is CancellationError { }
             catch {
                 guard generation == token, !Task.isCancelled else { return }
@@ -119,11 +134,28 @@ final class PlaybackController: ObservableObject {
     func next(ended: Bool = false) {
         finish(ended ? .listen : .skip)
         if let current { playedInRun.insert(current.id) }
-        let next: Track?
-        if pulseMode { next = pulseNext?(playedInRun, mood) }
-        else { next = queue.isEmpty ? nil : queue.removeFirst() }
-        if let next { start(next) }
+        if let ready = prepared, ready.audio.isFresh(margin: 15), ready.item.status != .failed, engine.items().contains(ready.item) {
+            requestedPlayback = true; engine.advanceToNextItem(); adoptPreparedItem(); if !interrupted { engine.play() }; return
+        }
+        let next = candidate()
+        if let next { if !pulseMode, queue.first?.id == next.id { queue.removeFirst() }; start(next) }
         else { pause(); error = "Очередь закончилась. Обнови каталог или выбери трек." }
+    }
+    private func candidate() -> Track? {
+        let excluded = playedInRun.union(failedCandidates).union(current.map { [$0.id] } ?? [])
+        return pulseMode ? pulseNext?(excluded, mood) : queue.first(where: { !failedCandidates.contains($0.id) })
+    }
+    private func adoptPreparedItem() {
+        guard let ready = prepared, engine.currentItem === ready.item else { return }
+        finish(.listen)
+        if let current { playedInRun.insert(current.id) }
+        if !pulseMode { queue.removeAll { $0.id == ready.track.id } }
+        current = ready.track; startedID = nil; prepared = nil; position = 0; duration = ready.track.duration
+        clock.reset(); retryCount = 0; artwork = nil; error = nil; isLoading = false
+        generation = UUID(); prefetchedCurrent = nil; failedCandidates = []
+        observe(ready.item, token: generation); loadArtwork(for: ready.track)
+        isPlaying = engine.timeControlStatus == .playing; if isPlaying { markStarted() }; updateNowPlaying()
+        if duration > 0, duration < 180 { prepareNext() }
     }
     func previous() { seek(to: 0) }
     func seek(to value: Double) {
@@ -141,6 +173,10 @@ final class PlaybackController: ObservableObject {
         position = target
         updateNowPlaying()
     }
+    private func markStarted() {
+        guard let current, startedID != current.id else { return }
+        startedID = current.id; onStarted?(current)
+    }
     private func finish(_ kind: FeedbackKind) {
         guard let current, clock.seconds >= 3 else { clock.reset(); return }
         let ratio = duration > 0 ? min(1, clock.seconds / duration) : 0
@@ -152,16 +188,20 @@ final class PlaybackController: ObservableObject {
         let time = engine.currentTime().seconds
         if time.isFinite { position = max(0, time) }
         if let total = engine.currentItem?.duration.seconds, total.isFinite, total > 0 { duration = total }
-        if duration > 0, duration - position < 45, requestedPlayback,
-           let current, prefetchedCurrent != current.id {
-            prefetchedCurrent = current.id; prepareNext()
+        if let ready = prepared, !ready.audio.isFresh(margin: 45), engine.currentItem !== ready.item {
+            engine.remove(ready.item); prepared = nil; prefetchedCurrent = nil
         }
-        updateNowPlaying()
+        if duration > 0, duration - position < 90, requestedPlayback, prepared == nil, !preparing { prepareNext() }
+        if ProcessInfo.processInfo.systemUptime - lastNowPlayingUpdate >= 5 { updateNowPlaying() }
     }
     private func observe(_ item: AVPlayerItem, token: UUID) {
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { [weak self] _ in
-            Task { @MainActor in guard let self, self.generation == token else { return }; self.next(ended: true) }
+            Task { @MainActor in
+                guard let self, self.generation == token else { return }
+                if self.prepared != nil { self.adoptPreparedItem() }
+                else { self.next(ended: true) }
+            }
         }
         itemObservation = item.observe(\.status, options: [.initial, .new]) { [weak self, weak item] _, _ in
             Task { @MainActor in
@@ -174,10 +214,32 @@ final class PlaybackController: ObservableObject {
         }
     }
     private func prepareNext() {
-        let candidate = pulseMode ? pulseNext?(playedInRun.union(current.map { [$0.id] } ?? []), mood) : queue.first
-        guard let candidate else { return }
-        // Warm the next short-lived URL during active audio; selection is refreshed after feedback.
-        prefetch = Task { [resolver] in _ = try? await resolver.resolve(videoID: candidate.id, forceRefresh: false) }
+        guard !preparing, prepared == nil, let next = candidate(), let active = engine.currentItem else { return }
+        preparing = true
+        let token = generation, requestToken = UUID(); preparationToken = requestToken
+        prefetch = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let audio = try await resolver.resolve(videoID: next.id, forceRefresh: false)
+                try Task.checkCancellation()
+                guard generation == token, preparationToken == requestToken, engine.currentItem === active else { return }
+                let item = AVPlayerItem(url: audio.url); item.preferredForwardBufferDuration = 12
+                guard engine.canInsert(item, after: active) else { preparing = false; return }
+                prepared = (next, item, audio); engine.insert(item, after: active); preparing = false
+            } catch {
+                guard generation == token, preparationToken == requestToken else { return }
+                preparing = false
+                if !Task.isCancelled { failedCandidates.insert(next.id); if failedCandidates.count < 3 { prepareNext() } }
+            }
+        }
+    }
+    func refreshPreparedSelection() {
+        guard let next = candidate() else { return }
+        if let ready = prepared, engine.currentItem !== ready.item, ready.track.id != next.id {
+            engine.remove(ready.item); prepared = nil
+        } else if prepared != nil { return }
+        preparationToken = UUID(); prefetch?.cancel(); preparing = false
+        if duration > 0, duration - position < 90 { prepareNext() }
     }
     private func activateAudio() throws {
         let session = AVAudioSession.sharedInstance()
@@ -216,8 +278,8 @@ final class PlaybackController: ObservableObject {
             let options = (notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? NSNumber)?.uintValue ?? 0
             Task { @MainActor in
                 guard let self, let type else { return }
-                if type == AVAudioSession.InterruptionType.began.rawValue { self.engine.pause(); self.isPlaying = false; self.updateNowPlaying() }
-                else if AVAudioSession.InterruptionOptions(rawValue: options).contains(.shouldResume), self.requestedPlayback { self.resume() }
+                if type == AVAudioSession.InterruptionType.began.rawValue { self.interrupted = true; self.engine.pause(); self.isPlaying = false; self.updateNowPlaying() }
+                else { self.interrupted = false; if AVAudioSession.InterruptionOptions(rawValue: options).contains(.shouldResume), self.requestedPlayback { self.resume() } }
             }
         })
         systemObservers.append(NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] notification in
@@ -238,6 +300,7 @@ final class PlaybackController: ObservableObject {
         }
     }
     private func updateNowPlaying() {
+        lastNowPlayingUpdate = ProcessInfo.processInfo.systemUptime
         guard let current else { return }
         var info: [String: Any] = [MPMediaItemPropertyTitle: current.title, MPMediaItemPropertyArtist: current.artist,
                                   MPNowPlayingInfoPropertyElapsedPlaybackTime: position,
