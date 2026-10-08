@@ -52,7 +52,7 @@ enum NativeSmoke {
             guard player.isPlaying else { throw SyncError.rejected("Resume failed") }
             write(["status": "passed", "nativeStarts": starts.count, "automaticTransitions": feedback.count, "background": background, "pinnedTLS": true, "bidirectionalSync": true, "pauseResume": true])
             player.pause()
-        } catch { write(["status": "failed", "error": error.localizedDescription]) }
+        } catch { let failure = error as NSError; write(["status": "failed", "error": error.localizedDescription, "domain": failure.domain, "code": failure.code]) }
     }
 }
 #endif

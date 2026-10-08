@@ -40,10 +40,16 @@ private final class PinnedPCSession: NSObject, URLSessionDelegate, URLSessionTas
     init(_ connection: PCConnection) { self.connection = connection }
     func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
         guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-              challenge.protectionSpace.host == connection.host, let trust = challenge.protectionSpace.serverTrust,
-              let chain = SecTrustCopyCertificateChain(trust) as? [SecCertificate], let certificate = chain.first else { completionHandler(.cancelAuthenticationChallenge, nil); return }
+              challenge.protectionSpace.host == connection.host, let trust = challenge.protectionSpace.serverTrust else { completionHandler(.cancelAuthenticationChallenge, nil); return }
+        // Populate the chain even when the OS initially distrusts our self-signed leaf.
+        _ = SecTrustEvaluateWithError(trust, nil)
+        guard let chain = SecTrustCopyCertificateChain(trust) as? [SecCertificate], let certificate = chain.first else { completionHandler(.cancelAuthenticationChallenge, nil); return }
         let fingerprint = SHA256.hash(data: SecCertificateCopyData(certificate) as Data).map { String(format: "%02x", $0) }.joined()
         guard fingerprint == connection.pin else { completionHandler(.cancelAuthenticationChallenge, nil); return }
+        // Only this already-pinned leaf becomes an anchor, in this request's trust object.
+        SecTrustSetAnchorCertificates(trust, [certificate] as CFArray)
+        SecTrustSetAnchorCertificatesOnly(trust, true)
+        guard SecTrustEvaluateWithError(trust, nil) else { completionHandler(.cancelAuthenticationChallenge, nil); return }
         completionHandler(.useCredential, URLCredential(trust: trust))
     }
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }

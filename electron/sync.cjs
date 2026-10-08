@@ -11,7 +11,7 @@ class SyncServer {
     if(this.server)return this.status();
     const addresses=Object.values(os.networkInterfaces()).flat().filter(x=>x&&x.family==='IPv4'&&!x.internal&&privateIP(x.address));
     this.address=this.host||addresses[0]?.address;if(!this.address)throw new Error('Подключи ПК к домашней Wi-Fi сети.');
-    let identity=await this.store.read('sync-identity.json',null);if(!identity){identity=createIdentity();await this.store.write('sync-identity.json',identity);await fs.chmod(path.join(this.store.dir,'sync-identity.json'),0o600).catch(()=>{});}
+    let identity=await this.store.read('sync-identity.json',null);if(!identity||identity.address!==this.address){identity=createIdentity(new Date(),this.address);await this.store.write('sync-identity.json',identity);await fs.chmod(path.join(this.store.dir,'sync-identity.json'),0o600).catch(()=>{});}
     this.pin=new crypto.X509Certificate(identity.cert).fingerprint256.replace(/:/g,'').toLowerCase();
     this.devices=await this.store.read('sync-devices.json',[]);
     const server=https.createServer({key:identity.key,cert:identity.cert,minVersion:'TLSv1.2'},(req,res)=>this.handle(req,res).catch(()=>{if(!res.headersSent)res.writeHead(400);res.end(JSON.stringify({error:'Некорректный запрос синхронизации'}));}));
