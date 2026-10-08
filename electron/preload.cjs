@@ -9,7 +9,6 @@ contextBridge.exposeInMainWorld('forma',{
   catalogRequest:(route,params,provider)=>provider==='youtube'?ipcRenderer.invoke('youtube:request',route,params).then(r=>Object.assign(r.items,{hasMore:r.hasMore})):ipcRenderer.invoke('audius:request',route,params),
   openYouTube:id=>ipcRenderer.invoke('youtube:open',id),
   importLocal:kind=>ipcRenderer.invoke('local:import',kind),
-  onPauseYouTube:callback=>{const fn=()=>callback();ipcRenderer.on('player:pause-youtube',fn);return()=>ipcRenderer.removeListener('player:pause-youtube',fn);},
   sources:id=>ipcRenderer.invoke('audio:sources',id),
   downloads:()=>ipcRenderer.invoke('offline:list'),
   download:id=>ipcRenderer.invoke('offline:download',id),

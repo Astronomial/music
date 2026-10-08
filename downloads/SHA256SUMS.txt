@@ -1,1 +1,1 @@
-2390d2d8674f9d0e407e77c19a2dcddf99deb1c0dfd4d6f37fa457733bb75fab  Forma-1.1.0-Windows-x64.exe
+70b5d55dfc1b7494fbac7fe1a60e15bac4f90628b779620dfe7a00e9853b77bf  Forma-1.2.0-Windows-x64.exe

@@ -62,6 +62,32 @@ try{
   const old=await page.locator('.now-playing strong').innerText();
   await page.getByRole('button',{name:'Следующий трек',exact:true}).click();
   await page.waitForFunction(old=>document.querySelector('.now-playing strong').textContent!==old,old);
+  await page.getByRole('button',{name:'Настройка волны',exact:true}).click();
+  await page.getByRole('heading',{name:'Твоя волна. Твой выбор.'}).waitFor();
+  await page.getByRole('button',{name:'Предпочитать Ambient',exact:true}).click();
+  await page.getByRole('switch',{name:'Только выбранные жанры',exact:true}).click();
+  await page.getByRole('textbox',{name:'Исключённые артисты',exact:true}).fill('Test Artist One');
+  await page.getByRole('button',{name:'Исключить артиста из волны',exact:true}).click();
+  await page.getByRole('heading',{name:'Пока нет подходящих треков',exact:true}).waitFor();
+  const playingTime=await page.locator('audio').evaluate(a=>a.currentTime);
+  await page.waitForFunction(t=>!document.querySelector('audio').paused&&document.querySelector('audio').currentTime>t+.6,playingTime);
+  await page.getByRole('button',{name:'Убрать Test Artist One из списка «Исключённые артисты»',exact:true}).click();
+  await page.locator('.wave-preview .track-row').first().waitFor();
+  const previewTitles=await page.locator('.wave-preview .track-name strong').allTextContents();
+  assert.ok(previewTitles.length>0);for(const title of previewTitles)assert.equal(tracks.find(t=>t.title===title).genre,'House');
+  await page.getByRole('button',{name:'Для фокуса',exact:true}).click();
+  await page.getByRole('slider',{name:'Разнообразие артистов',exact:true}).fill('1');
+  await page.getByRole('button',{name:'Только отмеченные',exact:true}).click();
+  await page.getByRole('checkbox',{name:'Вечерний маршрут',exact:false}).check();
+  await page.getByRole('textbox',{name:'Артисты-ориентиры',exact:true}).fill('Test Artist One');
+  await page.getByRole('button',{name:'Добавить артиста-ориентир',exact:true}).click();
+  await page.locator('.wave-exclusions summary').click();
+  await page.getByRole('button',{name:'Исключить Rock',exact:true}).click();
+  await page.setViewportSize({width:1440,height:1500});
+  await page.locator('.content').evaluate(el=>el.scrollTo(0,0));
+  await page.screenshot({path:'artifacts/forma-wave-settings.png',fullPage:true});
+  for(const width of [1024,600]){await page.setViewportSize({width,height:800});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);}
+  await page.setViewportSize({width:1440,height:1050});
   await page.getByRole('button',{name:'Пауза',exact:true}).click();
   assert.equal(await page.locator('audio').evaluate(a=>a.paused),true);
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
@@ -73,6 +99,15 @@ try{
   await page.getByText('Слушаем без интернета.',{exact:false}).waitFor();
   await page.reload();
   assert.equal(await page.locator('.app-shell').getAttribute('data-palette'),'ocean');
+  await page.getByRole('button',{name:'Настройка волны',exact:true}).click();
+  assert.equal(await page.getByRole('button',{name:'Для концентрации',exact:true}).getAttribute('aria-pressed'),'true');
+  assert.equal(await page.getByRole('button',{name:'Без вокала',exact:true}).getAttribute('aria-pressed'),'true');
+  assert.equal(await page.getByRole('slider',{name:'Разнообразие артистов',exact:true}).inputValue(),'1');
+  assert.equal(await page.getByRole('combobox',{name:'Не повторять недавно включённые треки',exact:true}).inputValue(),'6');
+  assert.equal(await page.getByRole('switch',{name:'Только выбранные жанры',exact:true}).getAttribute('aria-checked'),'true');
+  assert.equal(await page.getByRole('checkbox',{name:'Вечерний маршрут',exact:false}).isChecked(),true);
+  const persisted=await page.evaluate(()=>JSON.parse(localStorage.getItem('forma-library')));
+  assert.deepEqual(persisted.settings.excludedGenres,['Rock']);assert.deepEqual(persisted.settings.preferredArtists,['Test Artist One']);
   await page.getByRole('button',{name:'Любимые треки',exact:false}).first().click();
   assert.equal(await page.locator('.track-name strong').innerText(),firstTitle);
   await page.locator('.sidebar-playlists').getByRole('button',{name:'Вечерний маршрут'}).click();
@@ -82,5 +117,5 @@ try{
   await page.setViewportSize({width:600,height:800});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   assert.deepEqual(errors,[]);
-  console.log('PASS: onboarding, catalogue, likes, playlists, search, wave, skip, pause, offline mode, restart persistence and responsive layout.');
+  console.log('PASS: onboarding, catalogue, likes, playlists, search, wave controls affect preview without stopping playback, presets, preferences survive restart, pause, offline and responsive layout.');
 }finally{await browser.close();}

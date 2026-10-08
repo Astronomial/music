@@ -11,7 +11,6 @@ export const bridge = window.forma || {
   catalogRequest:(path,params,provider)=>{if(provider==='youtube')throw new Error('Поиск YouTube доступен в Windows-приложении.');return bridge.request(path,params);},
   openYouTube:id=>{if(/^[\w-]{11}$/.test(id))window.open('https://www.youtube.com/watch?v='+id,'_blank','noopener');},
   importLocal:async()=>{throw new Error('Локальные файлы доступны в Windows-приложении.');},
-  onPauseYouTube:()=>()=>{},
   sources: async id => API_HOSTS.map(host=>apiURL(host,`/tracks/${id}/stream`)),
   downloads: async () => ({}),
   download: async () => { throw new Error('Скачивание на диск доступно в Windows-приложении Forma.'); },

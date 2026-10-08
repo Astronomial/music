@@ -24,7 +24,7 @@ async function importLocalFile(file,offline){
   const common=metadata.common,basename=path.basename(file,path.extname(file)),parts=/^(.+?)\s+[—–-]\s+(.+)$/.exec(basename);
   const artist=common.artist||common.artists?.join(', ')||parts?.[1]||'Неизвестный исполнитель';
   const picture=common.picture?.find(p=>['image/jpeg','image/png'].includes(p.format)&&p.data.length<=2*1024**2);
-  const track=normalizeTrack({id,source:'local',title:common.title||parts?.[2]||basename,artist,artistId:`local_${artist.toLowerCase().trim()}`,genre:common.genre?.[0]||'',album:common.album||'',duration:metadata.format.duration||0,bpm:common.bpm||0,artwork:picture?`forma-audio://art/${id}`:'',downloadable:true});
+  const track=normalizeTrack({id,source:'local',title:common.title||parts?.[2]||basename,artist,artistId:`local_${artist.toLowerCase().trim()}`,genre:common.genre?.join(' / ')||'',mood:common.mood||'',album:common.album||'',duration:metadata.format.duration||0,bpm:common.bpm||0,artwork:picture?`forma-audio://art/${id}`:'',downloadable:true});
   const stored=await offline.download(track,async()=>new Response(Readable.toWeb(createReadStream(file)),{headers:{'content-length':String(stat.size)}}));
   if(picture){try{await fs.writeFile(offline.file(id)+'.cover',picture.data);stored.coverMime=picture.format;await offline.persist();}catch{stored.track.artwork='';await offline.persist();}}
   return stored;

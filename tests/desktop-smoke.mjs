@@ -1,4 +1,4 @@
-import { _electron } from '@playwright/test';
+import { _electron,expect } from '@playwright/test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -35,20 +35,42 @@ try{
 
   await page.locator('.track-row').first().waitFor();
   await page.getByRole('button',{name:'Скачать Offline integration test',exact:true}).click();
-  await page.waitForFunction(async()=>Object.keys(await window.forma.downloads()).length===1);
+  await expect.poll(async()=>Object.keys(await page.evaluate(()=>window.forma.downloads())).length).toBe(1);
   await page.getByRole('button',{name:'Скачанное',exact:true}).click();
   await page.locator('.track-name').first().click();
   await page.waitForFunction(()=>document.querySelector('audio').currentTime>1.6);
   assert.match(await page.locator('audio').evaluate(a=>a.src),/^forma-audio:/);
+  assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].webContents.getBackgroundThrottling()),false);
+  const localTime=await page.locator('audio').evaluate(a=>a.currentTime);
+  await page.getByRole('button',{name:'Свернуть',exact:true}).click();
+  await page.waitForFunction(t=>!document.querySelector('audio').paused&&document.querySelector('audio').currentTime>t+.8,localTime);
+  await app.evaluate(({BrowserWindow})=>{const w=BrowserWindow.getAllWindows()[0];w.restore();w.show();w.focus();});
   await page.locator('audio').evaluate(a=>a.currentTime=12);
   await page.waitForFunction(()=>document.querySelector('audio').currentTime>12);
   await page.getByRole('button',{name:'Нравится текущий трек',exact:true}).click();
   const localPath=path.join(dir,'Local Artist — Local Song.wav');await fs.writeFile(localPath,wav());
   await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},localPath);
   await page.getByRole('button',{name:'Добавить файлы',exact:true}).click();
-  await page.waitForFunction(async()=>Object.values(await window.forma.downloads()).some(f=>f.track.source==='local'));await fs.rm(localPath);
+  await expect.poll(async()=>Object.values(await page.evaluate(()=>window.forma.downloads())).some(f=>f.track.source==='local')).toBe(true);await fs.rm(localPath);
+  // The official player API is replaced here to isolate Forma's native window handling.
+  await page.evaluate(()=>{window.YT={Player:class{
+    constructor(node,options){this.options=options;this.id=options.videoId;this.state=2;this.time=0;const frame=document.createElement('iframe');frame.src='about:blank';node.replaceWith(frame);this.frame=frame;this.timer=setInterval(()=>{if(this.state===1)this.time+=.25;},250);setTimeout(()=>options.events.onReady({target:this}),20);window.testYTPlayer=this;}
+    playVideo(){this.state=1;this.options.events.onStateChange({data:1});}pauseVideo(){this.state=2;this.options.events.onStateChange({data:2});}getPlayerState(){return this.state;}getCurrentTime(){return this.time;}getDuration(){return 200;}getVideoData(){return{video_id:this.id};}seekTo(t){this.time=t;}setVolume(){}destroy(){clearInterval(this.timer);this.frame.remove();}
+  }};});
+  await page.getByRole('button',{name:'Настройки',exact:true}).click();
+  await page.getByRole('button',{name:'YouTube',exact:true}).click();
+  await page.getByRole('textbox',{name:'Поиск треков и исполнителей',exact:true}).fill('Soft Focus');
+  await page.locator('.track-name').filter({hasText:'Soft Focus'}).first().click();
+  await page.waitForFunction(()=>window.testYTPlayer?.getCurrentTime()>.5);
+  const youtubeTime=await page.evaluate(()=>window.testYTPlayer.getCurrentTime());
+  await page.getByRole('button',{name:'Свернуть',exact:true}).click();
+  await page.waitForFunction(t=>window.testYTPlayer.getPlayerState()===1&&window.testYTPlayer.getCurrentTime()>t+.8,youtubeTime);
+  await app.evaluate(({BrowserWindow})=>{const w=BrowserWindow.getAllWindows()[0];w.restore();w.show();w.focus();});
+  await page.getByRole('button',{name:'Пауза',exact:true}).click();
+  assert.equal(await page.evaluate(()=>window.testYTPlayer.getPlayerState()),2);
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
   await page.getByRole('switch',{name:'Только скачанная музыка'}).click();
+  assert.equal(Object.keys(await page.evaluate(()=>window.forma.downloads())).length,2);
   const dataPath=await app.evaluate(({app})=>app.getPath('userData'));
   const exited=new Promise(resolve=>app.process().once('exit',resolve));
   await page.evaluate(()=>window.forma.windowControl('close'));
@@ -57,12 +79,12 @@ try{
   assert.ok(saved.likes.includes('DesktopTest'));assert.equal(saved.settings.offlineOnly,true);assert.ok(saved.events.some(e=>e.type==='listen'));
   launched=await launch();app=launched.instance;page=launched.page;
   await page.getByRole('button',{name:'Скачанное',exact:true}).click();
-  assert.equal(await page.locator('.track-row').count(),2);
+  await page.waitForFunction(()=>document.querySelectorAll('.track-row').length===2);
   await page.locator('.track-name').first().click();
   await page.waitForFunction(()=>document.querySelector('audio').currentTime>0.5);
   await page.getByRole('button',{name:'Пауза',exact:true}).click();
   await page.locator('.track-row').first().locator('.track-actions button').last().click();
   await page.getByRole('button',{name:'Удалить скачанный файл',exact:true}).click();
-  await page.waitForFunction(async()=>Object.keys(await window.forma.downloads()).length===1);
-  console.log('PASS: real Electron sandbox/preload, YouTube catalogue and public Yandex IPC (mock transport), native file-dialog import, IPC download, audio protocol playback and seeking, close-save handshake, restart offline playback, download deletion.');
+  await expect.poll(async()=>Object.keys(await page.evaluate(()=>window.forma.downloads())).length).toBe(1);
+  console.log('PASS: real Electron sandbox/preload, minimized playback (real local audio + mocked YouTube player), explicit pause, catalogue and Yandex IPC (mock transport), file import, IPC download, audio seeking, close-save, restart offline, deletion.');
 }finally{if(app)await app.close();await fs.rm(dir,{recursive:true,force:true});}

@@ -95,7 +95,7 @@ app.whenReady().then(async () => {
   });
   handle('youtube:open',id=>{if(!/^[\w-]{11}$/.test(id))throw new Error('Некорректная ссылка.');return shell.openExternal('https://www.youtube.com/watch?v='+id);});
   handle('window:control',action=> { if(action==='minimize') window.minimize(); if(action==='maximize') window.isMaximized()?window.unmaximize():window.maximize(); if(action==='close') window.close(); });
-  window = new BrowserWindow({width:1440,height:940,minWidth:1000,minHeight:680,frame:false,backgroundColor:'#06070b',title:'Forma',icon:path.join(__dirname,'../build/icon.png'),webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,webSecurity:true}});
+  window = new BrowserWindow({width:1440,height:940,minWidth:1000,minHeight:680,frame:false,backgroundColor:'#06070b',title:'Forma',icon:path.join(__dirname,'../build/icon.png'),webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,webSecurity:true,backgroundThrottling:false}});
   window.on('close',event=> {
     if(closing)return;
     event.preventDefault();window.webContents.send('app:closing');
@@ -111,7 +111,6 @@ app.whenReady().then(async () => {
   });
   app.setAppUserModelId('music.forma.desktop');
   window.webContents.session.webRequest.onBeforeSendHeaders({urls:['https://www.youtube.com/*','https://www.youtube-nocookie.com/*']},(details,callback)=>callback({requestHeaders:{...details.requestHeaders,Referer:'https://music.forma.desktop/'}}));
-  window.on('minimize',()=>window.webContents.send('player:pause-youtube'));
   await window.loadURL(entry);
 });
 app.on('window-all-closed',()=>app.quit());

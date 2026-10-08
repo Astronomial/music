@@ -20,15 +20,14 @@ export default function YouTubePlayer({track,onReady,onPlaying,onPaused,onBuffer
     loadAPI().then(YT=>{
       if(!alive)return;
       instance=new YT.Player(node,{width:'100%',height:'220',videoId:track.videoId,playerVars:{autoplay:1,playsinline:1,enablejsapi:1,origin:location.origin,widget_referrer:'https://music.forma.desktop/',rel:0},events:{
-        onReady:event=>{if(!alive)return;player.current=event.target;event.target.setVolume(volume*100);setLoaded(true);callbacks.current.onReady(event.target);if(!document.hidden)event.target.playVideo();},
+        onReady:event=>{if(!alive)return;player.current=event.target;event.target.setVolume(volume*100);setLoaded(true);callbacks.current.onReady(event.target);event.target.playVideo();},
         onStateChange:event=>{if(!alive)return;if(event.data===1)callbacks.current.onPlaying();else if(event.data===2)callbacks.current.onPaused();else if(event.data===3)callbacks.current.onBuffering();else if(event.data===0)callbacks.current.onEnded();},
         onError:event=>{if(!alive)return;const message=[101,150].includes(event.data)?'Автор запретил встроенное воспроизведение. Можно открыть трек на YouTube.':event.data===153?'YouTube не разрешил воспроизведение в приложении. Открой трек на YouTube.':'Трек недоступен в YouTube или в твоём регионе.';setError(message);callbacks.current.onError(message);}
       }});
     }).catch(e=>{if(alive){setError(e.message);callbacks.current.onError(e.message);}});
     const timer=setInterval(()=>{const p=player.current;if(alive&&p?.getCurrentTime)callbacks.current.onTime(p.getCurrentTime(),p.getDuration());},500);
-    const visibility=()=>{if(document.hidden)player.current?.pauseVideo?.();};document.addEventListener('visibilitychange',visibility);
-    return()=>{alive=false;clearInterval(timer);document.removeEventListener('visibilitychange',visibility);player.current=null;callbacks.current.onReady(null);instance?.destroy();};
+    return()=>{alive=false;clearInterval(timer);player.current=null;callbacks.current.onReady(null);instance?.destroy();};
   },[track.videoId]);
   useEffect(()=>{player.current?.setVolume?.(volume*100);},[volume]);
-  return <aside className="youtube-panel"><span className="eyebrow">СЕЙЧАС ИГРАЕТ · YOUTUBE</span><div className="youtube-frame" ref={container}/>{!loaded&&!error&&<p className="search-loading"><LoaderCircle size={17} className="spin"/>Подключаем плеер…</p>}{error&&<p className="player-error" role="alert">{error}</p>}<div className="youtube-details"><h2>{track.title}</h2><p>{track.artist}</p><button className="text-link" onClick={()=>onOpen(track.videoId)}>Открыть на YouTube <ExternalLink size={15}/></button></div><p className="settings-note">Видео остаётся видимым во время прослушивания. Для музыки без интернета добавь свои файлы.</p></aside>;
+  return <aside className="youtube-panel"><span className="eyebrow">СЕЙЧАС ИГРАЕТ · YOUTUBE</span><div className="youtube-frame" ref={container}/>{!loaded&&!error&&<p className="search-loading"><LoaderCircle size={17} className="spin"/>Подключаем плеер…</p>}{error&&<p className="player-error" role="alert">{error}</p>}<div className="youtube-details"><h2>{track.title}</h2><p>{track.artist}</p><button className="text-link" onClick={()=>onOpen(track.videoId)}>Открыть на YouTube <ExternalLink size={15}/></button></div><p className="settings-note">Можно свернуть Forma — музыка продолжит играть. Для прослушивания без интернета добавь свои файлы.</p></aside>;
 }

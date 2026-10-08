@@ -1,5 +1,6 @@
 import { normalizeTrack } from './model.mjs';
 import { retrievalSeeds } from './recommender.mjs';
+import {waveSettings,waveQuery,retrievalContext} from './wave-settings.mjs';
 export const API_HOSTS = ['https://api.audius.co', 'https://discoveryprovider.audius.co', 'https://audius-discovery-1.cultur3stake.com'];
 const allowedPath = /^\/(tracks\/(trending(?:\/underground)?|search|[a-zA-Z0-9]+(?:\/(?:stream|download))?)|users\/(search|[a-zA-Z0-9]+\/tracks)|playlists\/(trending|[a-zA-Z0-9]+\/tracks))$/;
 export function apiURL(host, path, params = {}) {
@@ -24,19 +25,30 @@ export async function requestAudius(path, params = {}, fetcher = fetch, apiKey =
 }
 export async function collectCandidates(state, request) {
   const seeds = retrievalSeeds(state);
+  const settings=waveSettings(state.settings);
   const jobs = [
     ['/tracks/trending', { time: 'week', limit: 100 }],
     ['/tracks/trending/underground', { limit: 100 }],
     ...seeds.genres.map(genre => ['/tracks/search', { genre, sort_method: 'popular', limit: 70 }]),
     ...seeds.genres.slice(0,2).map(genre => ['/tracks/search', { genre, sort_method: 'recent', limit: 40 }]),
-    ...seeds.artists.slice(0,3).map(id => [`/users/${id}/tracks`, { limit: 40 }]),
+    ...seeds.artists.filter(id=>/^[a-zA-Z0-9]+$/.test(id)).slice(0,3).map(id => [`/users/${id}/tracks`, { limit: 40 }]),
+    ...settings.preferredArtists.slice(0,4).map(query=>['/tracks/search',{query,limit:40}]),
+    ...(settings.mood!=='any'||settings.energy!=='any'||settings.vocals!=='any'?[['/tracks/search',{query:waveQuery('',settings),limit:50}]]:[]),
     ...seeds.tags.slice(0,2).map(query => ['/tracks/search', { query, limit: 35 }])
   ];
   const tracks = new Map(); let successes = 0;
   // Small batches keep discovery from overwhelming public nodes.
   for (let i = 0; i < jobs.length; i += 3) {
     const batch = await Promise.allSettled(jobs.slice(i,i+3).map(([path, params]) => request(path,params)));
-    for (const r of batch) if (r.status === 'fulfilled') { successes++; for (const t of r.value) { const n = normalizeTrack(t); if (n.streamable) tracks.set(n.id,n); } }
+    for (let j=0;j<batch.length;j++) {
+      const r=batch[j];if(r.status!=='fulfilled')continue;successes++;
+      for(const t of r.value){
+        const n=normalizeTrack(t);if(!n.streamable)continue;
+        if(jobs[i+j][1].query===waveQuery('',settings))Object.assign(n,retrievalContext(settings));
+        for(const key of ['discoveryGenres','discoveryMoods','discoveryEnergy','discoveryVocals'])n[key]=[...new Set([...(tracks.get(n.id)?.[key]||[]),...(n[key]||[])])];
+        tracks.set(n.id,n);
+      }
+    }
   }
   if (!successes) throw new Error('Audius недоступен. Сохранённая библиотека остаётся доступной.');
   return [...tracks.values()];
