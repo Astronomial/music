@@ -7,7 +7,8 @@ function createIdentity(now=new Date()) {
   const name=seq(der(0x31,seq(oid('550403'),text('Forma local sync'))));
   const stamp=d=>der(0x17,Buffer.from(d.toISOString().replace(/[-:]/g,'').slice(2,14)+'Z'));
   const until=new Date(now);until.setFullYear(until.getFullYear()+5);
-  const serial=crypto.randomBytes(16);serial[0]&=0x7f;
+  // A positive DER INTEGER cannot start with redundant zero padding.
+  const serial=crypto.randomBytes(16);serial[0]=(serial[0]&0x7f)||1;
   const tbs=seq(der(0xa0,int([2])),int(serial),algorithm,name,seq(stamp(new Date(now.getTime()-86400000)),stamp(until)),name,keys.publicKey.export({type:'spki',format:'der'}));
   const certificate=seq(tbs,algorithm,der(3,Buffer.from([0]),crypto.sign('sha256',tbs,keys.privateKey)));
   return {key:keys.privateKey.export({type:'pkcs8',format:'pem'}),cert:'-----BEGIN CERTIFICATE-----\n'+certificate.toString('base64').match(/.{1,64}/g).join('\n')+'\n-----END CERTIFICATE-----\n'};

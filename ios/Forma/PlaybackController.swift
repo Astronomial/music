@@ -234,7 +234,11 @@ final class PlaybackController: ObservableObject {
         }
     }
     func refreshPreparedSelection() {
-        guard let next = candidate() else { return }
+        guard let next = candidate() else {
+            preparationToken = UUID(); prefetch?.cancel(); preparing = false
+            if let ready = prepared, engine.currentItem !== ready.item { engine.remove(ready.item); prepared = nil }
+            return
+        }
         if let ready = prepared, engine.currentItem !== ready.item, ready.track.id != next.id {
             engine.remove(ready.item); prepared = nil
         } else if prepared != nil { return }

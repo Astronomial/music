@@ -134,11 +134,13 @@ final class AppModel: ObservableObject {
     func refresh() async {
         guard !isRefreshing else { return }
         isRefreshing = true; defer { isRefreshing = false }
-        let genres = library.settings.genres.isEmpty ? ["Pop"] : library.settings.genres
-        let anchors = PulseEngine.anchors(in: contextualLibrary(), limit: 4)
+        let settings = library.settings
+        let genres = (settings.genres.isEmpty ? ["Pop"] : settings.genres).filter { !settings.excludedGenres.contains($0) }
+        let suffix = PulseDirections.suffix(settings), hints = PulseDirections.hints(settings)
+        let anchors = PulseEngine.anchors(in: contextualLibrary(), limit: 6)
         let catalog = self.catalog
-        enum Request: Sendable { case genre(String), mood(MoodMix, String), related(Track) }
-        let requests: [Request] = genres.prefix(3).map { .genre($0) } + MoodMix.all.map { .mood($0, genres.first ?? "") } + anchors.map { .related($0) }
+        enum Request: Sendable { case genre(String), mood(MoodMix, String), related(Track), artist(String) }
+        let requests: [Request] = genres.prefix(12).map { .genre($0) } + MoodMix.all.enumerated().map { .mood($0.element, genres.isEmpty ? "" : genres[$0.offset % genres.count]) } + anchors.map { .related($0) } + settings.preferredArtists.prefix(3).map { .artist($0) }
         var index = 0, successes = 0, failure: String?
         // Bound parallelism to three network requests; show completed batches immediately.
         await withTaskGroup(of: ([Track], String?).self) { group in
@@ -147,9 +149,10 @@ final class AppModel: ObservableObject {
                     do {
                         let tracks: [Track]
                         switch request {
-                        case .genre(let genre): tracks = try await catalog.search("\(genre) music", genre: genre)
-                        case .mood(let mix, let genre): tracks = try await catalog.search("\(genre) \(mix.query)", genre: genre, mood: mix.id)
+                        case .genre(let genre): tracks = try await catalog.search("\(genre) music \(suffix)", genre: genre, hints: hints)
+                        case .mood(let mix, let genre): tracks = try await catalog.search("\(genre) \(mix.query) \(suffix)", genre: genre, mood: mix.id, hints: hints)
                         case .related(let track): tracks = try await catalog.related(to: track)
+                        case .artist(let name): tracks = try await catalog.search("\(name) music \(suffix)", hints: hints)
                         }
                         return (tracks, nil)
                     } catch { return ([], error.localizedDescription) }

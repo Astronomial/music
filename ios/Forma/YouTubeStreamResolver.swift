@@ -5,13 +5,14 @@ import YouTubeKit
 /// Uses the vendored MIT YouTubeKit snapshot. All extraction runs on-device.
 /// Never opts in to the upstream public remote fallback or stores account cookies.
 actor YouTubeStreamResolver: StreamResolving {
-    private var inflight: [String: Task<ResolvedAudio, Error>] = [:]
+    private var inflight: [String: (id: UUID, task: Task<ResolvedAudio, Error>)] = [:]
     private var cache: [String: ResolvedAudio] = [:]
     func resolve(videoID: String, forceRefresh: Bool = false) async throws -> ResolvedAudio {
         guard VideoID.isValid(videoID) else { throw ResolverError.invalidID }
         if !forceRefresh, let hit = cache[videoID], hit.isFresh() { return hit }
-        if !forceRefresh, let pending = inflight[videoID] { return try await pending.value }
-        if forceRefresh { inflight[videoID]?.cancel() }
+        if !forceRefresh, let pending = inflight[videoID] { return try await pending.task.value }
+        if forceRefresh { inflight[videoID]?.task.cancel() }
+        let requestID = UUID()
         let job = Task<ResolvedAudio, Error> {
             let video = YouTube(videoID: videoID, useOAuth: false, allowOAuthCache: false, methods: [.local])
             let streams = try await video.streams
@@ -21,9 +22,10 @@ actor YouTubeStreamResolver: StreamResolving {
             guard result.isFresh() else { throw ResolverError.expired }
             return result
         }
-        inflight[videoID] = job
-        defer { inflight[videoID] = nil }
+        inflight[videoID] = (requestID, job)
+        defer { if inflight[videoID]?.id == requestID { inflight[videoID] = nil } }
         let result = try await job.value
+        guard inflight[videoID]?.id == requestID else { throw CancellationError() }
         if cache.count >= 30 { cache = cache.filter { $0.value.isFresh() } }
         if cache.count >= 30 { cache.removeValue(forKey: cache.keys.sorted().first!) }
         cache[videoID] = result
@@ -34,7 +36,7 @@ actor YouTubeStreamResolver: StreamResolving {
         guard let metadata = try? await video.metadata else { return nil }
         return Track(videoID: videoID, title: metadata.title, artist: "Исполнитель не указан", artworkURL: metadata.thumbnail?.url)
     }
-    func invalidate() { cache.removeAll(); inflight.values.forEach { $0.cancel() }; inflight.removeAll() }
+    func invalidate() { cache.removeAll(); inflight.values.forEach { $0.task.cancel() }; inflight.removeAll() }
     enum ResolverError: LocalizedError {
         case invalidID, noAudio, expired
         var errorDescription: String? {

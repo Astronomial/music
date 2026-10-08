@@ -116,7 +116,7 @@ public enum PulseEngine {
             let affinity = 0.65 * similarity(vector, positive) + 0.35 * (seedTracks.map { similarity(vector, vectors[$0.id] ?? [:]) }.max() ?? 0)
             let known = (trackWeights[track.id] ?? 0) > 0
             let preferred = library.settings.preferredArtists.contains { fold(track.artist).contains(fold($0)) } ? 1.3 : 0
-            let score = preferred + affinity * 2.2 - similarity(vector, negative) * 0.8 + similarity(vector, session) * 0.7
+            let score = preferred + PulseDirections.score(track, settings: library.settings) + affinity * 2.2 - similarity(vector, negative) * 0.8 + similarity(vector, session) * 0.7
                 + (known ? (1 - discovery) * 0.12 : discovery * (0.2 + affinity * 0.4))
                 - max(0, -(trackWeights[track.id] ?? 0)) * 0.15
             let reason = known ? "Из твоей библиотеки" : track.relatedTo.contains(where: { (trackWeights[$0] ?? 0) > 0 }) ? "Рядом с твоими любимыми" : affinity > 0.1 ? "В твоём вкусе" : "Новое из YouTube"

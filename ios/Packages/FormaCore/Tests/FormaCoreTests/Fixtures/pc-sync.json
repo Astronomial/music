@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "tracks": {
+    "abcdefghijk": {
+      "videoID": "abcdefghijk",
+      "title": "Свет — live",
+      "artist": "Парадайз",
+      "duration": 212,
+      "genres": [
+        "House"
+      ],
+      "moodHints": [
+        "night"
+      ],
+      "relatedTo": [
+        "12345678901"
+      ]
+    }
+  },
+  "likedIDs": [
+    "abcdefghijk"
+  ],
+  "hiddenIDs": [
+    "12345678901"
+  ],
+  "playlists": [
+    {
+      "id": "pc-list",
+      "name": "Вечер 🎵",
+      "trackIDs": [
+        "abcdefghijk"
+      ]
+    }
+  ],
+  "events": [
+    {
+      "trackID": "abcdefghijk",
+      "kind": "play",
+      "at": 1800000000123,
+      "seconds": 0,
+      "ratio": 0,
+      "newArtist": true,
+      "mood": "night"
+    },
+    {
+      "trackID": "abcdefghijk",
+      "kind": "listen",
+      "at": 1800000200123,
+      "seconds": 201,
+      "ratio": 0.95,
+      "newArtist": true,
+      "mood": "night"
+    }
+  ],
+  "settings": {
+    "genres": [],
+    "excludedArtists": [
+      "Скрытый"
+    ],
+    "excludedGenres": [
+      "Rock"
+    ],
+    "preferredArtists": [
+      "Парадайз"
+    ],
+    "seedPlaylistIDs": [
+      "pc-list"
+    ],
+    "discovery": 0.3,
+    "repeatHours": 2,
+    "artistDiversity": 1,
+    "mood": "any",
+    "genreMode": "prefer",
+    "energy": "low",
+    "vocals": "instrumental",
+    "includeLibrary": true,
+    "playlistSource": "selected"
+  }
+}

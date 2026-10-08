@@ -14,17 +14,17 @@ actor YouTubeCatalog {
         configuration.httpCookieStorage = nil
         session = URLSession(configuration: configuration)
     }
-    func search(_ query: String, genre: String? = nil, mood: String? = nil) async throws -> [Track] {
+    func search(_ query: String, genre: String? = nil, mood: String? = nil, hints: [String] = []) async throws -> [Track] {
         let query = String(query.trimmingCharacters(in: .whitespacesAndNewlines).prefix(200))
         guard !query.isEmpty else { return [] }
-        let key = "\(query)|\(genre ?? "")|\(mood ?? "")"
+        let key = "\(query)|\(genre ?? "")|\(mood ?? "")|\(hints.joined(separator: ","))"
         if let hit = cache[key], Date().timeIntervalSince(hit.0) < 300 { return hit.1 }
         let data = try await request("search", body: ["query": query, "params": "EgWKAQIIAQ%3D%3D"])
         var tracks = try CatalogParser.tracks(from: data)
         for index in tracks.indices {
             // Search context is weak evidence, not an analysed genre or emotion.
             tracks[index].genres = genre.map { [$0] } ?? []
-            tracks[index].moodHints = mood.map { [$0] } ?? []
+            tracks[index].moodHints = (mood.map { [$0] } ?? []) + hints
         }
         if cache.count >= 40 { cache.removeAll() }
         cache[key] = (Date(), tracks)
