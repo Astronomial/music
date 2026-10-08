@@ -5,7 +5,7 @@ const seq=(...x)=>der(0x30,...x),oid=h=>der(6,Buffer.from(h,'hex')),int=b=>der(2
 function createIdentity(now=new Date(),address='127.0.0.1') {
   const keys=crypto.generateKeyPairSync('ec',{namedCurve:'prime256v1'}), algorithm=seq(oid('2a8648ce3d040302'));
   const name=seq(der(0x31,seq(oid('550403'),text('Forma local sync'))));
-  const stamp=d=>der(0x17,Buffer.from(d.toISOString().replace(/[-:]/g,'').slice(2,14)+'Z'));
+  const stamp=d=>der(0x17,Buffer.from(d.toISOString().replace(/[-:T]/g,'').slice(2,14)+'Z'));
   const until=new Date(now);until.setFullYear(until.getFullYear()+5);
   // A positive DER INTEGER cannot start with redundant zero padding.
   const serial=crypto.randomBytes(16);serial[0]=(serial[0]&0x7f)||1;
