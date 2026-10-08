@@ -16,6 +16,7 @@ enum NativeSmoke {
         let report = dir.appendingPathComponent("smoke-result.json")
         func write(_ value: [String: Any]) { if let bytes = try? JSONSerialization.data(withJSONObject: value, options: .prettyPrinted) { try? bytes.write(to: report, options: .atomic) } }
         write(["status": "running"])
+        var stage = "pairing"
         do {
             let args = ProcessInfo.processInfo.arguments
             guard let index = args.firstIndex(of: "--forma-pair-code"), args.count > index + 1 else { throw SyncError.invalidCode }
@@ -26,14 +27,17 @@ enum NativeSmoke {
             do { try await sync.pair(invalid.string!) } catch { rejectedWrongPin = true }
             guard rejectedWrongPin else { throw SyncError.rejected("Wrong certificate pin was accepted") }
             try await sync.pair(args[index + 1])
+            stage = "first-sync"
             var library = try await sync.synchronize(library: Library(), base: nil)
             guard library.tracks.count >= 4, library.likedIDs.count == 1 else { throw SyncError.rejected("Initial PC library failed") }
             let base = library
+            stage = "second-sync"
             library.likedIDs = []; library.playlists.append(Playlist(id: "phone-playlist", name: "На iPhone", trackIDs: Array(library.tracks.keys.sorted().prefix(2))))
             library.settings.artistDiversity = 1
             let merged = try await sync.synchronize(library: library, base: base)
             guard merged.likedIDs.isEmpty, merged.playlists.contains(where: { $0.id == "phone-playlist" }), merged.settings.artistDiversity == 1 else { throw SyncError.rejected("Bidirectional PC sync failed") }
             let url = dir.appendingPathComponent("fixture.wav")
+            stage = "native-playback"
             let format = AVAudioFormat(standardFormatWithSampleRate: 22050, channels: 1)!
             let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 110250)!
             buffer.frameLength = buffer.frameCapacity
@@ -58,7 +62,7 @@ enum NativeSmoke {
             guard player.isPlaying else { throw SyncError.rejected("Resume failed") }
             write(["status": "passed", "nativeStarts": starts.count, "automaticTransitions": feedback.count, "background": background, "pinnedTLS": true, "wrongPinRejected": rejectedWrongPin, "bidirectionalSync": true, "pauseResume": true])
             player.pause()
-        } catch { let failure = error as NSError; write(["status": "failed", "error": error.localizedDescription, "domain": failure.domain, "code": failure.code]) }
+        } catch { let failure = error as NSError; write(["status": "failed", "stage": stage, "error": error.localizedDescription, "domain": failure.domain, "code": failure.code]) }
     }
 }
 #endif

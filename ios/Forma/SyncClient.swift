@@ -37,19 +37,24 @@ enum SyncError: LocalizedError {
 }
 private final class PinnedPCSession: NSObject, URLSessionDelegate, URLSessionTaskDelegate, @unchecked Sendable {
     let connection: PCConnection
+    private let lock = NSLock()
+    private var issue: String?
+    var validationIssue: String? { lock.lock(); defer { lock.unlock() }; return issue }
     init(_ connection: PCConnection) { self.connection = connection }
     func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        func reject(_ message: String) { lock.lock(); issue = message; lock.unlock(); completionHandler(.cancelAuthenticationChallenge, nil) }
         guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-              challenge.protectionSpace.host == connection.host, let trust = challenge.protectionSpace.serverTrust else { completionHandler(.cancelAuthenticationChallenge, nil); return }
+              challenge.protectionSpace.host == connection.host, let trust = challenge.protectionSpace.serverTrust else { reject("Не удалось проверить адрес ПК."); return }
         // Populate the chain even when the OS initially distrusts our self-signed leaf.
         _ = SecTrustEvaluateWithError(trust, nil)
-        guard let chain = SecTrustCopyCertificateChain(trust) as? [SecCertificate], let certificate = chain.first else { completionHandler(.cancelAuthenticationChallenge, nil); return }
+        guard let chain = SecTrustCopyCertificateChain(trust) as? [SecCertificate], let certificate = chain.first else { reject("ПК не предоставил сертификат."); return }
         let fingerprint = SHA256.hash(data: SecCertificateCopyData(certificate) as Data).map { String(format: "%02x", $0) }.joined()
-        guard fingerprint == connection.pin else { completionHandler(.cancelAuthenticationChallenge, nil); return }
+        guard fingerprint == connection.pin else { reject("Сертификат ПК изменился. Подключи ПК новым кодом."); return }
         // Only this already-pinned leaf becomes an anchor, in this request's trust object.
         SecTrustSetAnchorCertificates(trust, [certificate] as CFArray)
         SecTrustSetAnchorCertificatesOnly(trust, true)
-        guard SecTrustEvaluateWithError(trust, nil) else { completionHandler(.cancelAuthenticationChallenge, nil); return }
+        var trustError: CFError?
+        guard SecTrustEvaluateWithError(trust, &trustError) else { reject("Не удалось проверить сертификат ПК: \(trustError.map { CFErrorCopyDescription($0) as String } ?? "ошибка доверия")."); return }
         completionHandler(.useCredential, URLCredential(trust: trust))
     }
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }
@@ -95,7 +100,9 @@ actor SyncClient {
         defer { session.invalidateAndCancel() }
         var req = URLRequest(url: connection.url(path)); req.httpMethod = "POST"; req.httpBody = data
         req.setValue("application/json", forHTTPHeaderField: "Content-Type"); req.setValue("Bearer \(connection.token)", forHTTPHeaderField: "Authorization")
-        let (bytes, response) = try await session.data(for: req)
+        let bytes: Data, response: URLResponse
+        do { (bytes, response) = try await session.data(for: req) }
+        catch { if let issue = delegate.validationIssue { throw SyncError.rejected(issue) }; throw error }
         guard bytes.count <= 8 * 1024 * 1024 else { throw SyncError.tooLarge }
         guard (response as? HTTPURLResponse)?.statusCode == 200 else {
             throw SyncError.rejected((try? JSONDecoder().decode(Failure.self, from: bytes).error) ?? "ПК недоступен. Проверь сеть и разрешение брандмауэра.")
