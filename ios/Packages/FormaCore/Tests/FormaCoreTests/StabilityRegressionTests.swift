@@ -85,6 +85,21 @@ final class StabilityRegressionTests: XCTestCase {
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         XCTAssertEqual(CatalogParser.thumb(object)?.lastPathComponent, "large.jpg")
     }
+    func testMissingPrimaryDoesNotDiscardUnreadableOrCorruptBackup() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = LibraryDiskStore(url: dir.appendingPathComponent("library.json"))
+        let backup = store.url.appendingPathExtension("bak")
+        try FileManager.default.createDirectory(at: backup, withIntermediateDirectories: true)
+        XCTAssertThrowsError(try store.load())
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.url.path))
+        try FileManager.default.removeItem(at: backup)
+        let corrupt = Data("incomplete library".utf8); try corrupt.write(to: backup)
+        let loaded = try store.load(); XCTAssertNotNil(loaded.notice)
+        try store.save(loaded.library); try store.save(loaded.library)
+        let archived = try XCTUnwrap(FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil).first { $0.lastPathComponent.hasPrefix("library.json.bak.unreadable-") })
+        XCTAssertEqual(try Data(contentsOf: archived), corrupt)
+    }
     func testLearningIgnoresInvalidDatesAndMeasurementHandlesNonfiniteNumbers() {
         var library = Library(); library.events = [.init(trackID: a, kind: .like, at: Date(timeIntervalSince1970: -1e300), seconds: 0, ratio: 0, recommendation: .init(features: [1] + Array(repeating: 0.5, count: 9), lane: "nearby"))]
         XCTAssertTrue(LibraryValidation.normalized(library).events.isEmpty)

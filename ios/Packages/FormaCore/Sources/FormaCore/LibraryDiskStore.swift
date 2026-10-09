@@ -5,8 +5,14 @@ public struct LibraryDiskStore {
     public init(url: URL) { self.url = url }
     public func load() throws -> (library: Library, notice: String?) {
         guard FileManager.default.fileExists(atPath: url.path) else {
-            if let bytes = try? Data(contentsOf: url.appendingPathExtension("bak")), let library = decode(bytes) {
-                return (library, "Библиотека восстановлена из резервной копии.")
+            let backup = url.appendingPathExtension("bak")
+            if FileManager.default.fileExists(atPath: backup.path) {
+                // Access failure is not an empty library. Preserve undecodable
+                // backup bytes before a later save replaces the backup file.
+                let bytes = try Data(contentsOf: backup)
+                if let library = decode(bytes) { return (library, "Библиотека восстановлена из резервной копии.") }
+                try bytes.write(to: backup.appendingPathExtension("unreadable-\(UUID().uuidString)"), options: writeOptions)
+                return (Library(), "Резервная копия повреждена и сохранена отдельно, создан новый профиль.")
             }
             return (Library(), nil)
         }

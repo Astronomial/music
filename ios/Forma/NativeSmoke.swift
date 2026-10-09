@@ -58,9 +58,11 @@ private struct ConstantFixtureResolver: StreamResolving {
 private actor FixtureCatalog: MusicCatalogProviding {
     let tracks = (0..<4).map { Track(videoID: String(format: "%011d", $0), title: "Проверка \($0)", artist: "Artist \($0)", duration: 5, genres: ["House"]) }
     private(set) var slowSearchStarted = false
+    private(set) var uncancellableSearchStarted = false
     private(set) var descriptionStarted = false
     func search(_ query: String, genre: String?, mood: String?, hints: [String]) async throws -> [Track] {
         if query == "slow" { slowSearchStarted = true; try await Task.sleep(nanoseconds: 300_000_000); return [tracks[0]] }
+        if query == "cancel" { uncancellableSearchStarted = true; try? await Task.sleep(nanoseconds: 300_000_000); return [tracks[0]] }
         if query == "fast" { return [tracks[1]] }
         return tracks.map { old in var track = old; track.moodHints = mood.map { [$0] } ?? []; return track }
     }
@@ -356,6 +358,10 @@ enum NativeSmoke {
         try await until("slow-search-started") { await fixtureCatalog.slowSearchStarted }
         await model.search("fast"); await slowSearch.value
         guard model.searchResults.map(\.id) == [tracks[1].id], !model.isSearching else { throw SyncError.rejected("Stale search result replaced the latest query") }
+        let cancelledSearch = Task { await model.search("cancel") }
+        try await until("cancelled-search-started") { await fixtureCatalog.uncancellableSearchStarted }
+        cancelledSearch.cancel(); await cancelledSearch.value
+        guard !model.isSearching, model.searchResults.map(\.id) == [tracks[1].id] else { throw SyncError.rejected("Cancelled search left a spinner or replaced existing results") }
         let link = Task { await model.openYouTube("abcdefghijk") }
         try await until("link-description-started") { await fixtureCatalog.descriptionStarted }
         model.play(tracks[3], list: [tracks[3]]); await link.value
@@ -390,7 +396,7 @@ enum NativeSmoke {
                 "interruptionRespectsPause": true, "mediaServicesResetRecovered": true, "mediaServicesLossRecovered": true, "recoveryNoDuplicateFeedback": true,
                 "rapidSelectionCancelsOldLoad": true, "staleSearchIgnored": true, "staleLinkIgnored": true, "stalePulseIgnored": true,
                 "oldSaveCannotOverwriteNewerLibrary": true, "syncBaselineBoundToPairedPC": true, "legacyBaselineMigratedSafely": true,
-                "advancedQueueMatchesNewList": true, "keychainRestoreRetriesTransientFailure": true]
+                "advancedQueueMatchesNewList": true, "keychainRestoreRetriesTransientFailure": true, "cancelledSearchClearsSpinner": true]
     }
 }
 #endif

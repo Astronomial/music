@@ -328,6 +328,7 @@ final class AppModel: ObservableObject {
     }
     func search(_ query: String) async {
         let token = UUID(); searchGeneration = token
+        defer { if searchGeneration == token { isSearching = false } }
         if query.trimmingCharacters(in: .whitespacesAndNewlines).count < 2 { searchResults = []; isSearching = false; return }
         isSearching = true
         do {
@@ -337,7 +338,6 @@ final class AppModel: ObservableObject {
             if player.networkPolicy.canPrewarmExtraTracks { await audioResolver.prewarm(videoIDs: Array(tracks.prefix(3).map(\.id))) }
         } catch is CancellationError { }
         catch { if searchGeneration == token, !Task.isCancelled { message = error.localizedDescription; searchResults = [] } }
-        if searchGeneration == token { isSearching = false }
     }
     func openYouTube(_ value: String) async {
         let token = UUID(); pulseGeneration = token; pulseWork?.cancel(); linkTask?.cancel()
