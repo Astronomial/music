@@ -114,7 +114,7 @@ actor SyncClient {
         let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .millisecondsSince1970
         let data = try encoder.encode(body); guard data.count <= 8 * 1024 * 1024 else { throw SyncError.tooLarge }
         let delegate = PinnedPCSession(connection), config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 3; config.timeoutIntervalForResource = 8; config.allowsCellularAccess = false; config.waitsForConnectivity = false; config.networkServiceType = .background; config.httpShouldSetCookies = false
+        config.timeoutIntervalForRequest = 12; config.timeoutIntervalForResource = 20; config.allowsCellularAccess = false; config.waitsForConnectivity = false; config.networkServiceType = .background; config.httpShouldSetCookies = false
         let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
         let requestID = UUID(); pendingSessions[requestID] = session
         defer { session.invalidateAndCancel(); pendingSessions[requestID] = nil }
