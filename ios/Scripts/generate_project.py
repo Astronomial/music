@@ -48,7 +48,7 @@ for scope in ['project', 'target']:
     for mode in ['Debug', 'Release']:
         settings = {'CLANG_ENABLE_MODULES': 'YES', 'SDKROOT': 'iphoneos', 'IPHONEOS_DEPLOYMENT_TARGET': '17.0', 'SWIFT_VERSION': '5.0'}
         if scope == 'target':
-            settings.update({'PRODUCT_NAME': 'Forma', 'PRODUCT_BUNDLE_IDENTIFIER': 'music.forma.ios', 'INFOPLIST_FILE': 'Forma/Info.plist', 'GENERATE_INFOPLIST_FILE': 'NO', 'MARKETING_VERSION': '1.0.1', 'CURRENT_PROJECT_VERSION': '2', 'TARGETED_DEVICE_FAMILY': '1,2', 'SUPPORTED_PLATFORMS': 'iphoneos iphonesimulator', 'CODE_SIGN_STYLE': 'Automatic', 'ASSETCATALOG_COMPILER_APPICON_NAME': 'AppIcon', 'LD_RUNPATH_SEARCH_PATHS': '$(inherited) @executable_path/Frameworks', 'SWIFT_STRICT_CONCURRENCY': 'targeted'})
+            settings.update({'PRODUCT_NAME': 'Forma', 'PRODUCT_BUNDLE_IDENTIFIER': 'music.forma.ios', 'INFOPLIST_FILE': 'Forma/Info.plist', 'GENERATE_INFOPLIST_FILE': 'NO', 'MARKETING_VERSION': '1.0.2', 'CURRENT_PROJECT_VERSION': '3', 'TARGETED_DEVICE_FAMILY': '1,2', 'SUPPORTED_PLATFORMS': 'iphoneos iphonesimulator', 'CODE_SIGN_STYLE': 'Automatic', 'ASSETCATALOG_COMPILER_APPICON_NAME': 'AppIcon', 'LD_RUNPATH_SEARCH_PATHS': '$(inherited) @executable_path/Frameworks', 'SWIFT_STRICT_CONCURRENCY': 'targeted'})
         settings.update({'SWIFT_OPTIMIZATION_LEVEL': '-Onone' if mode == 'Debug' else '-O', 'DEBUG_INFORMATION_FORMAT': 'dwarf' if mode == 'Debug' else 'dwarf-with-dsym'})
         if mode == 'Debug': settings['SWIFT_ACTIVE_COMPILATION_CONDITIONS'] = 'DEBUG'
         body = ' '.join(f'{key} = {quote(value)};' for key, value in sorted(settings.items()))

@@ -25,8 +25,8 @@ class InnerTube {
         var osName: String? = nil
         var osVersion: String? = nil
         
-        var context: Context {
-            let client = Context.ContextClient(clientName: name, clientVersion: version, clientScreen: screen, androidSdkVersion: androidSdkVersion, deviceMake: deviceMake, deviceModel: deviceModel, osName: osName, osVersion: osVersion)
+        func context(configuration: Extraction.YtCfg) -> Context {
+            let client = Context.ContextClient(clientName: name, clientVersion: version, clientScreen: screen, androidSdkVersion: androidSdkVersion, deviceMake: deviceMake, deviceModel: deviceModel, osName: osName, osVersion: osVersion, userAgent: userAgent ?? configuration.userAgent, visitorData: configuration.visitorData)
             let thirdParty = screen == "EMBED" ? Context.ThirdParty(embedUrl: "https://www.reddit.com/") : nil
             return Context(client: client, thirdParty: thirdParty)
         }
@@ -56,6 +56,8 @@ class InnerTube {
             let deviceModel: String?
             let osName: String?
             let osVersion: String?
+            let userAgent: String?
+            let visitorData: String?
         }
 
         struct ThirdParty: Encodable {
@@ -108,7 +110,7 @@ class InnerTube {
     
     init(client: ClientType = .ios, signatureTimestamp: Int?, ytcfg: Extraction.YtCfg, useOAuth: Bool = false, allowCache: Bool = true, session: URLSession = YouTubeNetwork.session) {
         self.session = session
-        self.context = defaultClients[client]!.context
+        self.context = defaultClients[client]!.context(configuration: ytcfg)
         self.apiKey = defaultClients[client]!.apiKey
         self.headers = defaultClients[client]!.headers
         self.playerParams = defaultClients[client]!.playerParams

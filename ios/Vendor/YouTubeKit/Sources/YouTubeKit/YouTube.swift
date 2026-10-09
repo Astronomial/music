@@ -102,7 +102,9 @@ public class YouTube {
             request.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
             request.setValue("en-US,en", forHTTPHeaderField: "accept-language")
             request.httpShouldHandleCookies = false
-            let (data, _) = try await session.data(for: request)
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse else { throw AudioStreamFailure.invalidResponse }
+            guard (200..<300).contains(http.statusCode) else { throw AudioStreamFailure.http(http.statusCode) }
             _watchHTML = String(data: data, encoding: .utf8) ?? ""
             return _watchHTML!
         }

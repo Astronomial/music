@@ -40,8 +40,11 @@ final class AudioLoadingTests: XCTestCase {
             if path == "/watch" { return (Data(html.utf8), watchDelay, 200) }
             if path.hasSuffix("base.js") { return (Data((native == "cipher" ? Self.playerFixture : "signatureTimestamp:12345").utf8), scriptDelay, 200) }
             let isNative = request.value(forHTTPHeaderField: "X-Youtube-Client-Name") == "101"
+            let body = request.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            let client = (body?["context"] as? [String: Any])?["client"] as? [String: Any]
+            let hasVisitor = request.value(forHTTPHeaderField: "X-Goog-Visitor-Id") == "fixture-visitor" && client?["visitorData"] as? String == "fixture-visitor"
             if isNative, native == "error" { return (Data(), nativeDelay, 500) }
-            if native == "blocked" || (isNative && native == "visitor" && request.value(forHTTPHeaderField: "X-Goog-Visitor-Id") != "fixture-visitor") {
+            if native == "blocked" || (isNative && native == "visitor" && !hasVisitor) {
                 return (Data(#"{"playabilityStatus":{"status":"LOGIN_REQUIRED","reason":"Sign in to confirm"}}"#.utf8), nativeDelay, 200)
             }
             if native == "malformed" { return (Data("not JSON".utf8), 0.01, 200) }
