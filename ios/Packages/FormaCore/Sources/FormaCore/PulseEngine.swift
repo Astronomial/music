@@ -103,13 +103,20 @@ public enum PulseEngine {
     }
     public static func rank(_ candidates: [Track], library: Library, limit: Int = 30,
                             mood: String? = nil, exclude: Set<String> = [], allowRecent: Bool = false,
-                            now: Date = Date(), currentID: String? = nil, index: RankingIndex? = nil) -> [Recommendation] {
+                            now: Date = Date(), currentID: String? = nil, index: RankingIndex? = nil, playlistID: String? = nil) -> [Recommendation] {
+        if let playlistID, !library.playlists.contains(where: { $0.id == playlistID && !$0.trackIDs.isEmpty }) { return [] }
+        var profileSource = library
+        if let playlistID, let playlist = library.playlists.first(where: { $0.id == playlistID }) {
+            let seeds = Set(playlist.trackIDs)
+            profileSource.likedIDs = []; profileSource.playlists = [playlist]; profileSource.settings.genres = []; profileSource.settings.playlistSource = "all"
+            profileSource.events = library.events.filter { seeds.contains($0.trackID) || !(Set(library.tracks[$0.trackID]?.relatedTo ?? [])).isDisjoint(with: seeds) }
+        }
         let prepared = index ?? makeIndex(candidates, library: library)
         let vectors = prepared.vectors, orderedVectors = prepared.orderedVectors, artistNames = prepared.artists, artistKeys = prepared.artistKeys
         let familiarIDs = Set(library.likedIDs + library.playlists.flatMap(\.trackIDs) + library.events.filter { [FeedbackKind.play, .listen, .skip].contains($0.kind) && $0.at <= now && now.timeIntervalSince($0.at) < 30 * 86400 }.map(\.trackID))
         let familiarArtists = Set(familiarIDs.flatMap { artistNames[$0] ?? [] })
         let hidden = Set(library.hiddenIDs), saved = Set(library.likedIDs + library.playlists.flatMap(\.trackIDs))
-        let trackWeights = weights(library, now: now)
+        let trackWeights = weights(profileSource, now: now)
         var positive: Vector = [:], negative: Vector = [:], positiveSession: Vector = [:], negativeSession: Vector = [:]
         var totals: [String: Double] = [:], saveCounts: [String: Int] = [:], positiveCount = 0.0, negativeCount = 0.0, negativeEvidence = 0.0
         for (id, weight) in trackWeights where weight > 0 {
@@ -122,7 +129,7 @@ public enum PulseEngine {
                 add(features(track), weight: weight * scale, to: &positive)
             } else { add(features(track), weight: -weight, to: &negative); negativeEvidence += min(2.5, abs(weight)) }
         }
-        for genre in library.settings.genres { positive["genre:\(fold(genre))", default: 0] += 3 }
+        for genre in profileSource.settings.genres { positive["genre:\(fold(genre))", default: 0] += 3 }
         for event in library.events.suffix(80) {
             guard event.at <= now, now.timeIntervalSince(event.at) <= 5400, let reward = event.reward, let track = library.tracks[event.trackID] else { continue }
             let strength = pow(0.5, now.timeIntervalSince(event.at) / 1800) * (event.kind == .skip && library.settings.skipSensitivity == "soft" ? 0.5 : 1)
@@ -136,8 +143,8 @@ public enum PulseEngine {
         let excludedArtists = Set(library.settings.excludedArtists.map(fold))
         let context = mood ?? (library.settings.mood == "any" ? nil : library.settings.mood)
         var seen = Set<String>(), ranked: [Recommendation] = []
-        let discovery = min(1, max(0, library.settings.discovery))
-        let seedTracks = anchors(in: library, limit: 45, now: now)
+        let discovery = playlistID == nil ? min(1, max(0, library.settings.discovery)) : 0.75
+        let seedTracks = anchors(in: profileSource, limit: 45, now: now)
         for track in candidates {
             if Task.isCancelled { return [] }
             guard VideoID.isValid(track.id), seen.insert(track.id).inserted, !exclude.contains(track.id),
@@ -193,7 +200,8 @@ public enum PulseEngine {
             for name in names { counts[name, default: 0] += 1 }; return true
         }
         if library.settings.artistDiversity > 0, pool.count >= min(limit, ranked.count) { ranked = pool }
-        return select(ranked, library: library, limit: limit, now: now, currentID: currentID, index: prepared)
+        var selectionLibrary = library; selectionLibrary.settings.discovery = discovery
+        return select(ranked, library: selectionLibrary, limit: limit, now: now, currentID: currentID, index: prepared)
     }
     /// Bounded live selection over cached scores, used while AVQueuePlayer preloads audio.
     /// Models/full-catalogue ranking run in AppModel's detached task, never in this callback.

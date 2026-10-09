@@ -75,7 +75,7 @@ final class ContextualLearningTests: XCTestCase {
         var weak = track(3, genre: "", language: ""); weak.title = "Latin"; weak.discoveryLanguages = ["ru"]; weak.genres = ["Pop"]
         library.merge([seed, foreign, weak]); library.likedIDs = [seed.id]
         XCTAssertEqual(PulseEngine.rank([weak, foreign], library: library, limit: 1, now: now).first?.id, foreign.id)
-        library.events = (0..<3).map { .init(trackID: seed.id, kind: .skip, at: now, seconds: 8, ratio: 0.04, surface: "pulse") }
+        library.events = (0..<3).map { _ in .init(trackID: seed.id, kind: .skip, at: now, seconds: 8, ratio: 0.04, surface: "pulse") }
         XCTAssertEqual(DiscoveryPolicy.history(library, now: now).surpriseRate, 0.03, accuracy: 1e-10)
         weak.language = "en"; weak.title = "Русское название"; XCTAssertEqual(DiscoveryPolicy.languageFit(weak, preference: "ru"), 0)
         weak.language = ""; weak.title = "Latin"; weak.discoveryLanguages = []; XCTAssertEqual(DiscoveryPolicy.languageFit(weak, preference: "en"), 0)

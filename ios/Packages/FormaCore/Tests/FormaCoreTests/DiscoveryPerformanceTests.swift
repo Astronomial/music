@@ -22,7 +22,7 @@ final class DiscoveryPerformanceTests: XCTestCase {
         XCTAssertEqual(result.prefix(12).filter { BilingualDiscovery.regional($0.track) }.count, 4)
     }
     func testRegionalDiscoverySurvivesAStrongEnglishLibraryAndHonorsHiddenTracks() {
-        let tracks = (0..<90).map { i in Track(videoID: String(format: "%011d", i), title: i >= 70 ? "Песня \(i)" : "Song \(i)", artist: "Artist \(i)", genres: [i >= 70 ? "Rock" : "Pop"], moodHints: ["calm"]) }
+        let tracks = (0..<90).map { i in Track(videoID: String(format: "%011d", i), title: i >= 70 ? "Песня \(i)" : "Song \(i)", artist: "Artist \(i)", genres: ["Pop"], moodHints: ["calm"], genre: "Pop") }
         var library = Library(); library.merge(tracks); library.likedIDs = Array(tracks.prefix(70).map(\.id)); library.settings.artistDiversity = 0
         library.hiddenIDs = [tracks[70].id]
         let result = BilingualDiscovery.rankHome(tracks, library: library, limit: 30, mood: "calm")

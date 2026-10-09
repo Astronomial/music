@@ -23,7 +23,7 @@ struct ContentView: View {
         } message: { Text(model.message ?? "") }
         .task {
             guard !ProcessInfo.processInfo.arguments.contains("--forma-smoke") else { return }
-            if model.library.tracks.isEmpty || UserDefaults.standard.integer(forKey: "forma.discoveryRevision") < 3 { await model.refresh() }
+            if model.library.tracks.isEmpty || UserDefaults.standard.integer(forKey: "forma.discoveryRevision") < 4 { await model.refresh() }
             while !Task.isCancelled {
                 if scenePhase == .active { await model.synchronize() }
                 try? await Task.sleep(nanoseconds: 30_000_000_000)
