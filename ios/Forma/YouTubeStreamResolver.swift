@@ -6,6 +6,9 @@ import YouTubeKit
 /// Never opts in to the upstream public remote fallback or stores account cookies.
 actor YouTubeStreamResolver: StreamResolving {
     private var inflight: [String: (id: UUID, task: Task<ResolvedAudio, Error>)] = [:]
+    private var warming: Task<Void, Never>?
+    private var warmingIDs: [String] = []
+    private var warmingGeneration = UUID()
     private var cache: [String: ResolvedAudio] = [:]
     func resolve(videoID: String, forceRefresh: Bool = false) async throws -> ResolvedAudio {
         guard VideoID.isValid(videoID) else { throw ResolverError.invalidID }
@@ -39,7 +42,21 @@ actor YouTubeStreamResolver: StreamResolving {
         guard let metadata = try? await video.metadata else { return nil }
         return Track(videoID: videoID, title: metadata.title, artist: "Исполнитель не указан", artworkURL: metadata.thumbnail?.url)
     }
-    func invalidate() { cache.removeAll(); inflight.values.forEach { $0.task.cancel() }; inflight.removeAll() }
+    func prewarm(videoIDs: [String]) {
+        let ids = Array(videoIDs.filter { VideoID.isValid($0) && cache[$0]?.isFresh() != true }.prefix(3))
+        guard ids != warmingIDs else { return }
+        warming?.cancel(); warmingIDs = ids
+        let token = UUID(); warmingGeneration = token
+        warming = Task(priority: .utility) { [weak self] in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            for id in ids {
+                guard !Task.isCancelled, let self else { return }
+                _ = try? await self.resolve(videoID: id, forceRefresh: false)
+            }
+            if let self, self.warmingGeneration == token { self.warmingIDs = [] }
+        }
+    }
+    func invalidate() { warming?.cancel(); warmingIDs = []; cache.removeAll(); inflight.values.forEach { $0.task.cancel() }; inflight.removeAll() }
     enum ResolverError: LocalizedError {
         case invalidID, noAudio, expired
         case extraction(String)

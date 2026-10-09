@@ -13,15 +13,19 @@ public enum ArtworkPolicy {
                 if let range = value.range(of: #"=(?:w\d+|s\d+)[^?]*$"#, options: .regularExpression),
                    let larger = URL(string: String(value[..<range.lowerBound]) + "=w\(pixels)-h\(pixels)-l90-rj") { result.append(larger) }
                 if !result.contains(original) { result.append(original) }
-                return result
             }
-            if !(host == "i.ytimg.com" || host == "img.youtube.com") { return [original] }
+            else if !(host == "i.ytimg.com" || host == "img.youtube.com") { return [original] }
         }
         if VideoID.isValid(track.id) {
-            let names = pixels > 480 ? ["maxresdefault", "sddefault", "hqdefault"] : ["hqdefault"]
+            let names = pixels > 480 ? ["maxresdefault", "hq720", "sddefault", "hqdefault"] : ["hqdefault"]
             result += names.compactMap { URL(string: "https://i.ytimg.com/vi/\(track.id)/\($0).jpg") }
         }
         if let original = track.artworkURL, original.scheme == "https", !result.contains(original) { result.append(original) }
         return result
+    }
+    /// Don't stretch low-resolution covers into the large player.
+    public static func accepts(width: Int, height: Int, requestedPixels: Int) -> Bool {
+        let minimum = requestedPixels > 480 ? 480 : 160
+        return min(width, height) >= minimum
     }
 }

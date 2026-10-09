@@ -14,6 +14,8 @@ final class PlaybackController: ObservableObject {
     @Published private(set) var position: Double = 0
     @Published private(set) var duration: Double = 0
     @Published private(set) var error: String?
+    @Published private(set) var measurements: [PlaybackMeasurement] = []
+    private var startTiming: (at: TimeInterval, wall: Date, resolved: TimeInterval?, source: String)?
     @Published var volume: Float = 0.7 { didSet { engine.volume = volume } }
     var onStarted: ((Track) -> Void)?
     private var startedID: String?
@@ -103,6 +105,7 @@ final class PlaybackController: ObservableObject {
         }
         if alreadyAdvanced { resume(); return }
         if let ready = prepared, ready.track.id == track.id, ready.audio.isFresh(margin: 15), ready.item.status != .failed, engine.items().contains(ready.item) {
+            beginTiming(source: "prepared")
             requestedPlayback = true; engine.advanceToNextItem(); adoptPreparedItem()
             if !interrupted { engine.play() }; return
         }
@@ -112,6 +115,7 @@ final class PlaybackController: ObservableObject {
         play(track, list: [track], asPulse: true, context: mood)
     }
     private func start(_ track: Track, at seconds: Double = 0, refreshing: Bool = false) {
+        if !refreshing || startTiming == nil { beginTiming(source: "network") }
         task?.cancel(); prefetch?.cancel(); artworkTask?.cancel()
         prefetchedCurrent = nil; failedCandidates = []
         let token = UUID(); generation = token
@@ -126,6 +130,11 @@ final class PlaybackController: ObservableObject {
                 let resolved = try await resolver.resolve(videoID: track.id, forceRefresh: refreshing)
                 try Task.checkCancellation()
                 guard generation == token else { return }
+                if var timing = startTiming {
+                    timing.resolved = ProcessInfo.processInfo.systemUptime
+                    if resolved.resolvedAt < timing.wall { timing.source = "cached" }
+                    startTiming = timing
+                }
                 let item = AVPlayerItem(url: resolved.url)
                 item.preferredForwardBufferDuration = 3
                 observe(item, token: token)
@@ -153,15 +162,16 @@ final class PlaybackController: ObservableObject {
         finish(ended ? .listen : .skip)
         if let current { playedInRun.insert(current.id) }
         if let ready = prepared, ready.audio.isFresh(margin: 15), ready.item.status != .failed, engine.items().contains(ready.item) {
+            beginTiming(source: "prepared")
             requestedPlayback = true; engine.advanceToNextItem(); adoptPreparedItem(); if !interrupted { engine.play() }; return
         }
         let next = candidate()
         if let next { if !pulseMode, queue.first?.id == next.id { queue.removeFirst() }; start(next) }
         else { pause(); error = "Очередь закончилась. Обнови каталог или выбери трек." }
     }
-    private func candidate() -> Track? {
-        let excluded = playedInRun.union(failedCandidates).union(current.map { [$0.id] } ?? [])
-        return pulseMode ? pulseNext?(excluded, mood) : queue.first(where: { !failedCandidates.contains($0.id) })
+    private func candidate(excluding additional: Set<String> = []) -> Track? {
+        let excluded = additional.union(playedInRun).union(failedCandidates).union(current.map { [$0.id] } ?? [])
+        return pulseMode ? pulseNext?(excluded, mood) : queue.first(where: { !failedCandidates.contains($0.id) && !additional.contains($0.id) })
     }
     private func adoptPreparedItem() {
         guard let ready = prepared, engine.currentItem === ready.item else { return }
@@ -194,9 +204,25 @@ final class PlaybackController: ObservableObject {
         position = target
         updateNowPlaying()
     }
+    private func beginTiming(source: String) {
+        let now = ProcessInfo.processInfo.systemUptime
+        startTiming = (now, Date(), source == "prepared" ? now : nil, source)
+    }
+    var performanceReport: String {
+        let header = "Forma · iOS · замер от выбора трека до AVPlayer playing\n"
+        return header + measurements.map { "\($0.title) | \($0.source) | всего \(Int($0.totalMilliseconds)) мс | поток \(Int($0.resolutionMilliseconds)) мс | буфер \(Int($0.bufferMilliseconds)) мс" }.joined(separator: "\n")
+    }
     private func markStarted() {
         guard let current, startedID != current.id else { return }
-        startedID = current.id; onStarted?(current)
+        startedID = current.id
+        if let timing = startTiming {
+            let now = ProcessInfo.processInfo.systemUptime
+            let sample = PlaybackMeasurement(title: "\(current.artist) — \(current.title)", source: timing.source,
+                totalMilliseconds: (now - timing.at) * 1000,
+                resolutionMilliseconds: timing.resolved.map { ($0 - timing.at) * 1000 } ?? 0)
+            measurements = Array((measurements + [sample]).suffix(30)); startTiming = nil
+        }
+        onStarted?(current)
         // Begin next-track extraction as soon as the current track is audible.
         prepareNext()
     }
@@ -254,6 +280,7 @@ final class PlaybackController: ObservableObject {
                 let item = AVPlayerItem(url: audio.url); item.preferredForwardBufferDuration = 8
                 guard engine.canInsert(item, after: active) else { preparing = false; return }
                 prepared = (next, item, audio); engine.insert(item, after: active); preparing = false
+                if let later = candidate(excluding: [next.id]) { await resolver.prewarm(videoIDs: [later.id]) }
             } catch {
                 guard generation == token, preparationToken == requestToken else { return }
                 preparing = false

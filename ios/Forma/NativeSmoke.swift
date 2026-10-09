@@ -74,12 +74,16 @@ enum NativeSmoke {
                 try await Task.sleep(nanoseconds: 30_000_000)
             }
             guard player.debugPreparedTrackID == tracks[1].id else { throw SyncError.rejected("Next track was not prepared immediately") }
+            guard let cold = player.measurements.first, cold.totalMilliseconds < 2500 else { throw SyncError.rejected("Controlled cold playback exceeded 2.5 seconds") }
+            let coldStartMilliseconds = cold.totalMilliseconds
             let callsBefore = await fixtureResolver.calls[tracks[1].id]
             let switchedAt = ProcessInfo.processInfo.systemUptime
             player.play(tracks[1], list: tracks)
             let switchDelay = ProcessInfo.processInfo.systemUptime - switchedAt
             guard player.current?.id == tracks[1].id, switchDelay < 0.2 else { throw SyncError.rejected("Manual next-track reuse failed") }
             try await Task.sleep(nanoseconds: 100_000_000)
+            guard let warmed = player.measurements.last, warmed.source == "prepared", warmed.totalMilliseconds < 250 else { throw SyncError.rejected("Prepared playback did not reach playing within 250ms") }
+            let preparedPlayingMilliseconds = warmed.totalMilliseconds
             let callsAfter = await fixtureResolver.calls[tracks[1].id]
             guard callsAfter == callsBefore else { throw SyncError.rejected("Prepared track was extracted twice: \(callsBefore ?? 0) -> \(callsAfter ?? 0); \(player.error ?? "no error"), playing \(player.isPlaying)") }
             try await Task.sleep(nanoseconds: 200_000_000)
@@ -125,7 +129,7 @@ enum NativeSmoke {
             guard !player.isPlaying else { throw SyncError.rejected("Explicit pause failed") }
             player.resume(); try await Task.sleep(nanoseconds: 500_000_000)
             guard player.isPlaying else { throw SyncError.rejected("Resume failed") }
-            write(["status": "passed", "nativeStarts": starts.count, "automaticTransitions": feedback.count, "background": background, "pinnedTLS": true, "wrongPinRejected": rejectedWrongPin, "bidirectionalSync": true, "pauseResume": true, "miniPlayerAboveTabs": true, "miniPlayerBottom": miniFrame.maxY, "tabBarTop": barFrame.minY, "preparedManualSwitchMilliseconds": switchDelay * 1000, "preparedStreamReused": true])
+            write(["status": "passed", "nativeStarts": starts.count, "automaticTransitions": feedback.count, "background": background, "pinnedTLS": true, "wrongPinRejected": rejectedWrongPin, "bidirectionalSync": true, "pauseResume": true, "miniPlayerAboveTabs": true, "miniPlayerBottom": miniFrame.maxY, "tabBarTop": barFrame.minY, "preparedManualSwitchMilliseconds": switchDelay * 1000, "preparedStreamReused": true, "controlledColdStartMilliseconds": coldStartMilliseconds, "preparedPlayingMilliseconds": preparedPlayingMilliseconds])
             player.pause()
         } catch { let failure = error as NSError; write(["status": "failed", "stage": stage, "error": error.localizedDescription, "domain": failure.domain, "code": failure.code, "taskCancelled": Task.isCancelled]) }
     }

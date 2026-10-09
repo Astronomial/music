@@ -53,6 +53,7 @@ struct PlaylistView: View {
                 if tracks.isEmpty { EmptyState(title: "Добавь музыку", text: "Найди трек и открой его меню, чтобы добавить в этот плейлист.") }
             }.padding(20)
         }.background(FormaTheme.background).navigationBarTitleDisplayMode(.inline)
+            .task { await model.prepareTracks(tracks) }
             .toolbar { Button("Изменить") { name = title; rename = true } }
             .alert("Название плейлиста", isPresented: $rename) {
                 TextField("Название", text: $name)

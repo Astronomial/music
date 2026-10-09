@@ -31,4 +31,8 @@ public struct ResolvedAudio: Sendable {
 public protocol StreamResolving: Sendable {
     func resolve(videoID: String, forceRefresh: Bool) async throws -> ResolvedAudio
     func invalidate() async
+    func prewarm(videoIDs: [String]) async
+}
+public extension StreamResolving {
+    func prewarm(videoIDs: [String]) async {}
 }

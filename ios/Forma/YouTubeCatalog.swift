@@ -6,11 +6,13 @@ import FormaCore
 actor YouTubeCatalog {
     private let session: URLSession
     private var version: (String, Date)?
+    private var versionTask: Task<String, Error>?
     private var cache: [String: (Date, [Track])] = [:]
     init() {
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 20
-        configuration.timeoutIntervalForResource = 30
+        configuration.timeoutIntervalForRequest = 12
+        configuration.timeoutIntervalForResource = 20
+        configuration.httpMaximumConnectionsPerHost = 3
         configuration.httpCookieStorage = nil
         session = URLSession(configuration: configuration)
     }
@@ -20,7 +22,7 @@ actor YouTubeCatalog {
         let key = "\(query)|\(genre ?? "")|\(mood ?? "")|\(hints.joined(separator: ","))"
         if let hit = cache[key], Date().timeIntervalSince(hit.0) < 300 { return hit.1 }
         let data = try await request("search", body: ["query": query, "params": "EgWKAQIIAQ%3D%3D"])
-        var tracks = try CatalogParser.tracks(from: data)
+        var tracks = try await Task.detached(priority: .userInitiated) { try CatalogParser.tracks(from: data) }.value
         for index in tracks.indices {
             // Search context is weak evidence, not an analysed genre or emotion.
             tracks[index].genres = genre.map { [$0] } ?? []
@@ -39,15 +41,21 @@ actor YouTubeCatalog {
     }
     private func clientVersion() async throws -> String {
         if let cached = version, Date().timeIntervalSince(cached.1) < 1800 { return cached.0 }
+        if let versionTask { return try await versionTask.value }
+        let task = Task { try await self.loadVersion() }; versionTask = task
+        defer { versionTask = nil }
+        let value = try await task.value; version = (value, Date()); return value
+    }
+    private func loadVersion() async throws -> String {
         let data = try await get(URL(string: "https://music.youtube.com/")!)
         let html = String(decoding: data, as: UTF8.self)
         let regex = try NSRegularExpression(pattern: #""INNERTUBE_CLIENT_VERSION"\s*:\s*"([^"]+)""#)
         guard let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)), let range = Range(match.range(at: 1), in: html) else { throw CatalogError.configuration }
-        let value = String(html[range]); version = (value, Date()); return value
+        return String(html[range])
     }
     private func request(_ route: String, body: [String: Any]) async throws -> Data {
         var payload = body
-        payload["context"] = ["client": ["clientName": "WEB_REMIX", "clientVersion": try await clientVersion(), "hl": "en", "gl": "US"]]
+        payload["context"] = ["client": ["clientName": "WEB_REMIX", "clientVersion": try await clientVersion(), "hl": "ru", "gl": "RU"]]
         var request = URLRequest(url: URL(string: "https://music.youtube.com/youtubei/v1/\(route)?prettyPrint=false")!)
         request.httpMethod = "POST"; request.httpBody = try JSONSerialization.data(withJSONObject: payload)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

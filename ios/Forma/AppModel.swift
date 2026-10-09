@@ -65,6 +65,7 @@ final class AppModel: ObservableObject {
             if pcHost != nil { syncStatus = "ПК подключён. Синхронизируем в общей Wi-Fi сети" }
         }
     }
+    func prepareTracks(_ tracks: [Track]) async { await streams.prewarm(videoIDs: Array(tracks.prefix(3).map(\.id))) }
     var liked: [Track] { library.likedIDs.compactMap { library.tracks[$0] } }
     func isLiked(_ track: Track) -> Bool { library.likedIDs.contains(track.id) }
     func toggleLike(_ track: Track) {
@@ -117,6 +118,10 @@ final class AppModel: ObservableObject {
         pulsePlaylistID = playlistID
         let snapshot = contextualLibrary(), excluded = player.current.map { Set([$0.id]) } ?? []
         let token = UUID(); pulseGeneration = token
+        let cached = mood.flatMap { moodCache[$0] } ?? pulseCache
+        if playlistID == nil, let first = PulseDiversity.next(cached, library: snapshot, exclude: excluded, currentID: player.current?.id) {
+            player.startPulse(first, mood: mood); return
+        }
         Task {
             let result = await Task.detached(priority: .userInitiated) { PulseEngine.rank(Array(snapshot.tracks.values), library: snapshot, limit: 60, mood: mood, exclude: excluded) }.value
             guard pulseGeneration == token else { return }
@@ -141,8 +146,9 @@ final class AppModel: ObservableObject {
         let suffix = PulseDirections.suffix(settings), hints = PulseDirections.hints(settings)
         let anchors = PulseEngine.anchors(in: contextualLibrary(), limit: 6)
         let catalog = self.catalog
-        enum Request: Sendable { case genre(String), mood(MoodMix, String), related(Track), artist(String) }
-        let requests: [Request] = genres.prefix(12).map { .genre($0) } + MoodMix.all.enumerated().map { .mood($0.element, genres.isEmpty ? "" : genres[$0.offset % genres.count]) } + anchors.map { .related($0) } + settings.preferredArtists.prefix(3).map { .artist($0) }
+        enum Request: Sendable { case search(BilingualDiscovery.Search), related(Track), artist(String) }
+        let requests: [Request] = BilingualDiscovery.searches(genres: genres, suffix: suffix, hints: hints).map { .search($0) } + anchors.map { .related($0) } + settings.preferredArtists.prefix(3).map { .artist($0) }
+        let parallelism = player.current == nil ? 3 : 2
         var index = 0, successes = 0, failure: String?
         // Bound parallelism to three network requests; show completed batches immediately.
         await withTaskGroup(of: ([Track], String?).self) { group in
@@ -151,8 +157,7 @@ final class AppModel: ObservableObject {
                     do {
                         let tracks: [Track]
                         switch request {
-                        case .genre(let genre): tracks = try await catalog.search("\(genre) music \(suffix)", genre: genre, hints: hints)
-                        case .mood(let mix, let genre): tracks = try await catalog.search("\(genre) \(mix.query) \(suffix)", genre: genre, mood: mix.id, hints: hints)
+                        case .search(let intent): tracks = try await catalog.search(intent.query, genre: intent.genre, mood: intent.mood, hints: intent.hints)
                         case .related(let track): tracks = try await catalog.related(to: track)
                         case .artist(let name): tracks = try await catalog.search("\(name) music \(suffix)", hints: hints)
                         }
@@ -160,7 +165,7 @@ final class AppModel: ObservableObject {
                     } catch { return ([], error.localizedDescription) }
                 }
             }
-            while index < min(3, requests.count) { submit(requests[index]); index += 1 }
+            while index < min(parallelism, requests.count) { submit(requests[index]); index += 1 }
             for await (tracks, notice) in group {
                 if Task.isCancelled { group.cancelAll(); break }
                 if notice == nil { merge(tracks); successes += 1 } else { failure = notice }
@@ -177,6 +182,7 @@ final class AppModel: ObservableObject {
             let tracks = try await catalog.search(query)
             guard searchGeneration == token, !Task.isCancelled else { return }
             searchResults = tracks; merge(tracks)
+            await streams.prewarm(videoIDs: Array(tracks.prefix(3).map(\.id)))
         } catch is CancellationError { }
         catch { if searchGeneration == token, !Task.isCancelled { message = error.localizedDescription; searchResults = [] } }
         if searchGeneration == token { isSearching = false }
@@ -206,9 +212,10 @@ final class AppModel: ObservableObject {
             guard !Task.isCancelled else { return }
             let work = Task.detached(priority: .utility) {
                 let candidates = Array(snapshot.tracks.values)
-                let home = PulseEngine.rank(candidates, library: snapshot, limit: 40)
-                let next = PulseEngine.rank(candidates, library: pulse, limit: 60).map(\.track)
-                let moods = Dictionary(uniqueKeysWithValues: MoodMix.all.map { ($0.id, PulseEngine.rank(candidates, library: snapshot, limit: 30, mood: $0.id, allowRecent: true).map(\.track)) })
+                let index = PulseEngine.makeIndex(candidates, library: snapshot)
+                let home = BilingualDiscovery.balanced(PulseEngine.rank(candidates, library: snapshot, limit: 40, index: index))
+                let next = PulseEngine.rank(candidates, library: pulse, limit: 60, index: index).map(\.track)
+                let moods = Dictionary(uniqueKeysWithValues: MoodMix.all.map { ($0.id, BilingualDiscovery.balanced(PulseEngine.rank(candidates, library: snapshot, limit: 30, mood: $0.id, allowRecent: true, index: index)).map(\.track)) })
                 return (home, next, moods)
             }
             rankingWork = work
@@ -216,6 +223,7 @@ final class AppModel: ObservableObject {
             guard recommendationGeneration == token, !Task.isCancelled else { return }
             recommendations = result.0; pulseCache = result.1; moodCache = result.2
             player.refreshPreparedSelection()
+            if player.current == nil { await streams.prewarm(videoIDs: Array(pulseCache.prefix(3).map(\.id))) }
         }
     }
     func persist(immediately: Bool = false) {

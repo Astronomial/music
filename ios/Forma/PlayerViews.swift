@@ -15,14 +15,14 @@ struct MiniPlayer: View {
                         Artwork(track: track, size: 42)
                         VStack(alignment: .leading, spacing: 3) { Text(track.title).font(.subheadline.bold()).lineLimit(1); Text(track.artist).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
                     }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-                }.buttonStyle(.plain).accessibilityLabel("Открыть плеер")
+                }.buttonStyle(ResponsiveButtonStyle()).accessibilityLabel("Открыть плеер")
                 Button { model.toggleLike(track) } label: {
-                    Image(systemName: model.isLiked(track) ? "heart.fill" : "heart").foregroundStyle(model.isLiked(track) ? FormaTheme.accent : .secondary).frame(width: 44, height: 44)
-                }.buttonStyle(.plain).accessibilityLabel(model.isLiked(track) ? "Убрать из любимого" : "Добавить в любимое").accessibilityIdentifier("mini-player-like")
+                    Image(systemName: model.isLiked(track) ? "heart.fill" : "heart").contentTransition(.symbolEffect(.replace)).foregroundStyle(model.isLiked(track) ? FormaTheme.accent : .secondary).frame(width: 44, height: 44)
+                }.buttonStyle(ResponsiveButtonStyle()).accessibilityLabel(model.isLiked(track) ? "Убрать из любимого" : "Добавить в любимое").accessibilityIdentifier("mini-player-like")
                 Button { player.toggle() } label: {
                     Group { if player.isLoading { ProgressView() } else { Image(systemName: player.isPlaying ? "pause.fill" : "play.fill").font(.title3) } }.frame(width: 44, height: 44)
-                }.buttonStyle(.plain).accessibilityLabel(player.isPlaying ? "Пауза" : "Воспроизвести")
-                Button { player.next() } label: { Image(systemName: "forward.end.fill").frame(width: 44, height: 44) }.buttonStyle(.plain).accessibilityLabel("Следующий трек")
+                }.buttonStyle(ResponsiveButtonStyle()).accessibilityLabel(player.isPlaying ? "Пауза" : "Воспроизвести")
+                Button { player.next() } label: { Image(systemName: "forward.end.fill").frame(width: 44, height: 44) }.buttonStyle(ResponsiveButtonStyle()).accessibilityLabel("Следующий трек")
             }.padding(10).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
                 .accessibilityIdentifier("mini-player")
 #if DEBUG && targetEnvironment(simulator)

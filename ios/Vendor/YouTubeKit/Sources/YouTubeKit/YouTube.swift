@@ -15,6 +15,7 @@ public class YouTube {
     private var _jsURL: URL?
     
     private static let playerScripts = PlayerScriptCache()
+    private static let audioContexts = AudioContextCache()
     private let session: URLSession
     
     private var _videoInfos: [InnerTube.VideoInfo]?
@@ -296,10 +297,15 @@ public class YouTube {
     public var audioStreams: [Stream] {
         get async throws {
 #if canImport(JavaScriptCore)
+            let cachedContext = await Self.audioContexts.cached(session: session)
             return try await withThrowingTaskGroup(of: AudioAttempt.self) { group in
-                for configured in [false, true] {
+                func submit(configured: Bool) {
                     group.addTask { [videoID, useOAuth, allowOAuthCache, session] in
                         let worker = YouTube(videoID: videoID, useOAuth: useOAuth, allowOAuthCache: allowOAuthCache, methods: [.local], session: session)
+                        if !configured, let cachedContext {
+                            worker._ytcfg = cachedContext.configuration
+                            worker._jsURL = cachedContext.playerURL
+                        }
                         var failures: [String] = []
                         let clients: [InnerTube.ClientType] = configured ? [.visionOS, .web] : [.visionOS]
                         for client in clients {
@@ -307,7 +313,13 @@ public class YouTube {
                             let label = "\(client.rawValue)/\(configured ? "configured" : "fast")"
                             do {
                                 try Task.checkCancellation()
-                                let configuration = configured ? try await worker.ytcfg : try JSONDecoder().decode(Extraction.YtCfg.self, from: Data("{}".utf8))
+                                let configuration: Extraction.YtCfg
+                                if configured {
+                                    configuration = try await worker.ytcfg
+                                    let playerURL = (try? Extraction.jsURL(html: await worker.watchHTML)).flatMap { URL(string: $0) }
+                                    await Self.audioContexts.store(configuration: configuration, playerURL: playerURL, session: session)
+                                } else if let cachedContext { configuration = cachedContext.configuration }
+                                else { configuration = try JSONDecoder().decode(Extraction.YtCfg.self, from: Data("{}".utf8)) }
                                 // Native clients do not require player JS; WEB requires a matching STS.
                                 let timestamp = client == .web ? try await worker.signatureTimestamp : nil
                                 stage = "PLAYER"
@@ -356,11 +368,19 @@ public class YouTube {
                         return AudioAttempt(streams: [], failures: failures)
                     }
                 }
+                submit(configured: false)
+                var fallbackSubmitted = cachedContext == nil
+                if fallbackSubmitted { submit(configured: true) }
                 var failures: [String] = []
                 while let attempt = try await group.next() {
                     try Task.checkCancellation()
                     if !attempt.streams.isEmpty { group.cancelAll(); return attempt.streams }
                     failures += attempt.failures
+                    if !fallbackSubmitted {
+                        fallbackSubmitted = true
+                        await Self.audioContexts.invalidate(session: session)
+                        submit(configured: true)
+                    }
                 }
                 throw AudioStreamExtractionError(attempts: failures.sorted())
             }

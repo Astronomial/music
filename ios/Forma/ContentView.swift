@@ -81,7 +81,7 @@ struct HomeView: View {
                                 Text("\(model.moodTracks(mix).count) треков").font(.caption).foregroundStyle(.secondary)
                             }.frame(maxWidth: .infinity, minHeight: 122, alignment: .leading).padding(16)
                                 .background(LinearGradient(colors: [FormaTheme.colors[index].opacity(0.2), .white.opacity(0.03)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 20))
-                        }.buttonStyle(.plain)
+                        }.buttonStyle(ResponsiveButtonStyle())
                     }
                 }
                 Text("Следующее любимое").font(.title2.bold())
@@ -110,9 +110,9 @@ struct TrackRow: View {
                         if let reason { Text(reason).font(.caption).foregroundStyle(FormaTheme.accent).lineLimit(1) }
                     }.frame(maxWidth: .infinity, alignment: .leading)
                 }.contentShape(Rectangle())
-            }.buttonStyle(.plain).accessibilityLabel("Слушать \(track.artist) — \(track.title)")
+            }.buttonStyle(ResponsiveButtonStyle()).accessibilityLabel("Слушать \(track.artist) — \(track.title)")
             Button { model.toggleLike(track) } label: { Image(systemName: model.isLiked(track) ? "heart.fill" : "heart").foregroundStyle(model.isLiked(track) ? FormaTheme.accent : .secondary) }
-                .buttonStyle(.plain).accessibilityLabel(model.isLiked(track) ? "Убрать из любимого" : "Добавить в любимое")
+                .buttonStyle(ResponsiveButtonStyle()).accessibilityLabel(model.isLiked(track) ? "Убрать из любимого" : "Добавить в любимое")
             Menu {
                 if model.library.playlists.isEmpty { Text("Создай плейлист в библиотеке") }
                 ForEach(model.library.playlists) { playlist in Button(playlist.name) { model.add(track, to: playlist.id) } }
@@ -135,6 +135,7 @@ struct MoodView: View {
                 ForEach(tracks) { track in TrackRow(model: model, track: track) { model.player.play(track, list: tracks, context: mix.id) } }
             }.padding(20)
         }.background(FormaTheme.background).navigationBarTitleDisplayMode(.inline)
+            .task { await model.prepareTracks(tracks) }
     }
 }
 @MainActor

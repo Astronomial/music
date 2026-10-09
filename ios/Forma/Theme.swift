@@ -23,20 +23,33 @@ struct Artwork: View {
     let track: Track?
     var size: CGFloat = 48
     @State private var image: UIImage?
+    @AppStorage("forma.showArtwork") private var showArtwork = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         ZStack {
             LinearGradient(colors: [FormaTheme.accent.opacity(0.3), .indigo.opacity(0.2)], startPoint: .topLeading, endPoint: .bottomTrailing)
             Image(systemName: "music.note").foregroundStyle(FormaTheme.accent)
-            if let image { Image(uiImage: image).resizable().scaledToFill() }
+            if showArtwork, let image { Image(uiImage: image).resizable().scaledToFill().transition(.opacity) }
         }.frame(width: size, height: size).clipShape(RoundedRectangle(cornerRadius: size * 0.18))
-            .task(id: "\(track?.id ?? "")|\(track?.artworkURL?.absoluteString ?? "")|\(size > 100)") {
+            .task(id: "\(track?.id ?? "")|\(track?.artworkURL?.absoluteString ?? "")|\(size > 100)|\(showArtwork)") {
                 image = nil
-                guard let track else { return }
+                guard showArtwork, let track else { return }
                 let loaded = await ArtworkStore.shared.image(for: track, pixels: size > 100 ? 1024 : 320)
-                guard !Task.isCancelled else { return }; image = loaded
+                guard !Task.isCancelled else { return }
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { image = loaded }
             }
     }
 }
 func formatTime(_ value: Double) -> String {
     let time = max(0, Int(value.isFinite ? value : 0)); return "\(time / 60):\(String(format: "%02d", time % 60))"
+}
+
+/// Short touch feedback without animating lists on every progress tick.
+struct ResponsiveButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1)
+            .opacity(configuration.isPressed ? 0.8 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
+    }
 }

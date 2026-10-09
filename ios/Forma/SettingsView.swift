@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var model: AppModel
     @AppStorage("forma.palette") private var palette = "iris"
+    @AppStorage("forma.showArtwork") private var showArtwork = true
     @State private var code = ""
     var body: some View {
         ScrollView {
@@ -31,9 +32,29 @@ struct SettingsView: View {
                         }.pickerStyle(.segmented)
                     }
                 }
+                GlassPanel {
+                    Toggle("Показывать обложки", isOn: $showArtwork)
+                }
+                GlassPanel { DisclosureGroup("Скорость воспроизведения") { PlaybackPerformanceView(player: model.player) } }
                 NavigationLink { PulseSettingsView(model: model) } label: { Label("Настроить Пульс", systemImage: "slider.horizontal.3").font(.headline) }
                 Text("Forma 1.0.2 · iOS 17+\nВоспроизведение работает через нативный плеер. YouTube должен быть доступен в твоей сети.").font(.footnote).foregroundStyle(.secondary)
             }.padding(20)
         }.background(FormaTheme.background).navigationTitle("Настройки")
+    }
+}
+
+@MainActor
+private struct PlaybackPerformanceView: View {
+    @ObservedObject var player: PlaybackController
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let last = player.measurements.last {
+                Text(last.title).font(.subheadline).lineLimit(2)
+                Text("Последний старт: \(last.totalMilliseconds / 1000, specifier: "%.2f") с").font(.headline).monospacedDigit()
+                Text("Получение потока: \(last.resolutionMilliseconds / 1000, specifier: "%.2f") с · буфер: \(last.bufferMilliseconds / 1000, specifier: "%.2f") с").font(.footnote).foregroundStyle(.secondary)
+                ShareLink(item: player.performanceReport) { Label("Поделиться замерами", systemImage: "square.and.arrow.up") }
+            } else { Text("Выбери несколько треков, чтобы увидеть время запуска.").font(.subheadline) }
+            Text("Для сравнения с ПК выбирай одинаковые треки в одной Wi-Fi сети. Загрузка нового и заранее подготовленного трека измеряется отдельно.").font(.footnote).foregroundStyle(.secondary)
+        }.padding(.top, 12)
     }
 }

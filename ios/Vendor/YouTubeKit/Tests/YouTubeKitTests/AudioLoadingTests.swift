@@ -6,11 +6,13 @@ private final class AudioFixtureProtocol: URLProtocol {
     static let lock = NSLock()
     static var handler: ((URLRequest) -> (Data, TimeInterval, Int))!
     static var clients: [String] = []
+    static var paths: [String] = []
     private var work: DispatchWorkItem?
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         Self.lock.lock()
+        Self.paths.append(request.url?.path ?? "")
         if request.url?.path == "/youtubei/v1/player" { Self.clients.append(request.value(forHTTPHeaderField: "X-Youtube-Client-Name") ?? "") }
         let (data, delay, status) = Self.handler(request)
         Self.lock.unlock()
@@ -26,6 +28,7 @@ private final class AudioFixtureProtocol: URLProtocol {
 }
 
 final class AudioLoadingTests: XCTestCase {
+    private var fixtureSession: URLSession!
     private static func requestBody(_ request: URLRequest) -> Data? {
         if let data = request.httpBody { return data }
         guard let stream = request.httpBodyStream else { return nil }
@@ -46,7 +49,7 @@ final class AudioLoadingTests: XCTestCase {
     private func video(native: String = "aac", nativeDelay: Double = 0.01, scriptDelay: Double = 0.01, watchDelay: Double = 0.01) -> YouTube {
         let fixture = UUID().uuidString.replacingOccurrences(of: "-", with: "")
         let html = #"ytplayer.config = {"assets":{"js":"/s/player/FIXTURE/base.js"}}; ytcfg.set({"VISITOR_DATA":"fixture-visitor"}); var ytInitialPlayerResponse = {"playabilityStatus":{"status":"OK"}};"#.replacingOccurrences(of: "FIXTURE", with: fixture)
-        AudioFixtureProtocol.lock.lock(); AudioFixtureProtocol.clients = []
+        AudioFixtureProtocol.lock.lock(); AudioFixtureProtocol.clients = []; AudioFixtureProtocol.paths = []
         AudioFixtureProtocol.handler = { request in
             let path = request.url!.path
             if path == "/watch" { return (Data(html.utf8), watchDelay, 200) }
@@ -69,14 +72,15 @@ final class AudioLoadingTests: XCTestCase {
             if native == "default-track" { format["audioTrack"] = ["displayName": "Русский", "id": "ru.0", "audioIsDefault": true] }
             if native == "partial-track" { format["audioTrack"] = ["id": "ru.0", "audioIsDefault": true] }
             if native == "sabr" { format["url"] = nil }
-            var object: [String: Any] = ["playabilityStatus": ["status": "OK"], "videoDetails": ["videoId": "abcdefghijk", "thumbnail": ["thumbnails": []]], "streamingData": ["adaptiveFormats": [format]]]
+            var object: [String: Any] = ["playabilityStatus": ["status": "OK"], "videoDetails": ["videoId": (body?["videoId"] as? String) ?? "abcdefghijk", "thumbnail": ["thumbnails": []]], "streamingData": ["adaptiveFormats": [format]]]
             if native == "no-status" { object["playabilityStatus"] = nil }
             return (try! JSONSerialization.data(withJSONObject: object), isNative ? nativeDelay : 0.01, 200)
         }
         AudioFixtureProtocol.lock.unlock()
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [AudioFixtureProtocol.self]
-        return YouTube(videoID: "abcdefghijk", methods: [.local], session: URLSession(configuration: configuration))
+        fixtureSession = URLSession(configuration: configuration)
+        return YouTube(videoID: "abcdefghijk", methods: [.local], session: fixtureSession)
     }
     func testFastAudioDoesNotWaitForSlowWebScript() async throws {
         let video = video(scriptDelay: 3), start = Date()
@@ -115,6 +119,41 @@ final class AudioLoadingTests: XCTestCase {
         AudioFixtureProtocol.lock.lock(); let clients = AudioFixtureProtocol.clients; AudioFixtureProtocol.lock.unlock()
         XCTAssertEqual(clients.filter { $0 == "101" }.count, 2)
         XCTAssertFalse(clients.contains("1"), "Configured native audio must not wait for WEB or JS")
+    }
+    func testWarmContextStartsAnotherVideoWithoutWatchOrScriptRequests() async throws {
+        let first = video(native: "visitor", watchDelay: 0.2)
+        _ = try await first.audioStreams
+        AudioFixtureProtocol.lock.lock(); AudioFixtureProtocol.paths = []; AudioFixtureProtocol.clients = []; AudioFixtureProtocol.lock.unlock()
+        let start = Date()
+        let next = YouTube(videoID: "lmnopqrstuv", methods: [.local], session: fixtureSession!)
+        let streams = try await next.audioStreams
+        XCTAssertEqual(streams.first?.fileExtension, .m4a)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 0.15)
+        AudioFixtureProtocol.lock.lock(); let paths = AudioFixtureProtocol.paths, clients = AudioFixtureProtocol.clients; AudioFixtureProtocol.lock.unlock()
+        XCTAssertEqual(paths, ["/youtubei/v1/player"])
+        XCTAssertEqual(clients, ["101"])
+    }
+    func testRejectedWarmContextRefreshesInsteadOfPoisoningNextTracks() async throws {
+        _ = try await video(native: "visitor").audioStreams
+        AudioFixtureProtocol.lock.lock()
+        AudioFixtureProtocol.paths = []
+        AudioFixtureProtocol.handler = { request in
+            if request.url!.path == "/watch" {
+                return (Data(#"ytcfg.set({"VISITOR_DATA":"fresh-visitor"});"#.utf8), 0.01, 200)
+            }
+            if request.value(forHTTPHeaderField: "X-Goog-Visitor-Id") != "fresh-visitor" {
+                return (Data(#"{"playabilityStatus":{"status":"LOGIN_REQUIRED"}}"#.utf8), 0.01, 200)
+            }
+            let body = Self.requestBody(request).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            let id = body?["videoId"] as? String ?? ""
+            let json: [String: Any] = ["playabilityStatus": ["status": "OK"], "videoDetails": ["videoId": id, "thumbnail": ["thumbnails": []]], "streamingData": ["adaptiveFormats": [["itag":140, "mimeType":"audio/mp4; codecs=\"mp4a.40.2\"", "url":"https://r1.googlevideo.com/audio?sig=ready"]]]]
+            return (try! JSONSerialization.data(withJSONObject: json), 0.01, 200)
+        }
+        AudioFixtureProtocol.lock.unlock()
+        let streams = try await YouTube(videoID: "lmnopqrstuv", methods: [.local], session: fixtureSession!).audioStreams
+        XCTAssertEqual(streams.count, 1)
+        AudioFixtureProtocol.lock.lock(); let paths = AudioFixtureProtocol.paths; AudioFixtureProtocol.lock.unlock()
+        XCTAssertTrue(paths.contains("/watch"))
     }
     func testValidStreamsDoNotRequireOptionalStatus() async throws {
         let streams = try await video(native: "no-status").audioStreams

@@ -31,3 +31,25 @@ actor PlayerScriptCache {
         cached = nil; generation = UUID()
     }
 }
+
+/// Anonymous visitor/player context is reusable across public videos on the same session.
+/// Never cache a video's availability, streaming data, account cookies or authorization.
+actor AudioContextCache {
+    struct Entry {
+        let session: URLSession
+        let configuration: Extraction.YtCfg
+        let playerURL: URL?
+        let expiresAt: Date
+    }
+    private var entries: [ObjectIdentifier: Entry] = [:]
+    func cached(session: URLSession) -> Entry? {
+        guard let entry = entries[ObjectIdentifier(session)], entry.expiresAt > Date() else { return nil }
+        return entry
+    }
+    func store(configuration: Extraction.YtCfg, playerURL: URL?, session: URLSession) {
+        entries = entries.filter { $0.value.expiresAt > Date() }
+        if entries.count >= 8 { entries.removeAll() }
+        entries[ObjectIdentifier(session)] = Entry(session: session, configuration: configuration, playerURL: playerURL, expiresAt: Date().addingTimeInterval(1200))
+    }
+    func invalidate(session: URLSession) { entries[ObjectIdentifier(session)] = nil }
+}
