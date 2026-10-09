@@ -111,14 +111,14 @@ public enum PulseEngine {
         let hidden = Set(library.hiddenIDs), saved = Set(library.likedIDs + library.playlists.flatMap(\.trackIDs))
         let trackWeights = weights(library, now: now)
         var positive: Vector = [:], negative: Vector = [:], positiveSession: Vector = [:], negativeSession: Vector = [:]
-        var totals: [String: Double] = [:], counts: [String: Int] = [:], positiveCount = 0.0, negativeCount = 0.0, negativeEvidence = 0.0
+        var totals: [String: Double] = [:], saveCounts: [String: Int] = [:], positiveCount = 0.0, negativeCount = 0.0, negativeEvidence = 0.0
         for (id, weight) in trackWeights where weight > 0 {
-            for artist in artistNames[id] ?? [] { totals[artist, default: 0] += weight; counts[artist, default: 0] += 1 }
+            for artist in artistNames[id] ?? [] { totals[artist, default: 0] += weight; saveCounts[artist, default: 0] += 1 }
         }
         for (id, weight) in trackWeights.sorted(by: { $0.key < $1.key }) {
             guard let track = library.tracks[id] else { continue }
             if weight >= 0 {
-                let scale = min(1, (artistNames[id] ?? []).map { (10 + 3 * log1p(Double(counts[$0] ?? 0))) / max(1, totals[$0] ?? 0) }.min() ?? 1)
+                let scale = min(1, (artistNames[id] ?? []).map { (10 + 3 * log1p(Double(saveCounts[$0] ?? 0))) / max(1, totals[$0] ?? 0) }.min() ?? 1)
                 add(features(track), weight: weight * scale, to: &positive)
             } else { add(features(track), weight: -weight, to: &negative); negativeEvidence += min(2.5, abs(weight)) }
         }
