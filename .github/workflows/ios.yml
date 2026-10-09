@@ -1,7 +1,7 @@
 name: Build and verify Forma iOS
 on:
   push:
-    branches: [main, ios-ready, ios-pulse-learning]
+    branches: [main, ios-ready]
     paths: ['ios/**', 'electron/sync*.cjs', 'src/core/sync.mjs', '.github/workflows/ios.yml']
   pull_request:
     paths: ['ios/**', 'electron/sync*.cjs', 'src/core/sync.mjs', '.github/workflows/ios.yml']
