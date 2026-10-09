@@ -205,14 +205,14 @@ public enum PulseEngine {
     }
     /// Bounded live selection over cached scores, used while AVQueuePlayer preloads audio.
     /// Models/full-catalogue ranking run in AppModel's detached task, never in this callback.
-    public static func selectCached(_ cached: [Recommendation], library: Library, exclude: Set<String>, currentID: String? = nil, now: Date = Date()) -> Recommendation? {
+    public static func selectCached(_ cached: [Recommendation], library: Library, exclude: Set<String>, currentID: String? = nil, now: Date = Date(), index: RankingIndex? = nil) -> Recommendation? {
         let cooldown = max(0, library.settings.repeatHours) * 3600
         let recent = Set(library.events.filter { $0.kind == .play && $0.at <= now && now.timeIntervalSince($0.at) < cooldown }.map(\.trackID))
         let saved = Set(library.likedIDs + library.playlists.flatMap(\.trackIDs))
-        let heardRecordings = Set(recent.compactMap { library.tracks[$0] }.map(PulseDiversity.recording))
-        let pool = cached.filter { !exclude.contains($0.id) && !recent.contains($0.id) && !heardRecordings.contains(PulseDiversity.recording($0.track)) && !library.hiddenIDs.contains($0.id) && !PulseDiversity.blocked($0.track, settings: library.settings) && (library.settings.includeLibrary || !saved.contains($0.id)) }
-        let index = makeIndex(pool.map(\.track), library: Library())
-        return select(pool, library: library, limit: 1, now: now, currentID: currentID, index: index).first
+        let heardRecordings = Set(recent.compactMap { id in index?.recordings[id] ?? library.tracks[id].map(PulseDiversity.recording) })
+        let pool = cached.filter { !exclude.contains($0.id) && !recent.contains($0.id) && !heardRecordings.contains(index?.recordings[$0.id] ?? PulseDiversity.recording($0.track)) && !library.hiddenIDs.contains($0.id) && !PulseDiversity.blocked($0.track, settings: library.settings) && (library.settings.includeLibrary || !saved.contains($0.id)) }
+        let prepared = index ?? makeIndex(pool.map(\.track), library: Library())
+        return select(pool, library: library, limit: 1, now: now, currentID: currentID, index: prepared).first
     }
     private static func select(_ initial: [Recommendation], library: Library, limit: Int, now: Date, currentID: String?, index: RankingIndex) -> [Recommendation] {
         var ranked = initial, result: [Recommendation] = [], artistCounts: [String: Int] = [:]

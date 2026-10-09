@@ -97,4 +97,22 @@ final class ContextualLearningTests: XCTestCase {
         let old = try JSONDecoder().decode(Track.self, from: Data(#"{"videoID":"abcdefghijk","title":"Old","artist":"Artist","genres":[],"moodHints":[],"relatedTo":[]}"#.utf8))
         XCTAssertEqual(old.directRelatedTo, []); XCTAssertEqual(old.language, "")
     }
+    func testIndexedCachedChoiceIsBoundedWithLongHistoryAndPlaylistProfileStaysIsolated() throws {
+        var library = Library(); library.settings.genres = []
+        let tracks = (0..<3000).map { track($0, genre: $0 % 2 == 0 ? "Pop" : "Rock") }
+        library.merge(tracks); library.likedIDs = Array(tracks.prefix(80).map(\.id))
+        library.events = (0..<3000).map { i in .init(trackID: tracks[i % 300].id, kind: i % 3 == 0 ? .play : .listen, at: now.addingTimeInterval(-Double(i + 1) * 200), seconds: 190, ratio: 0.95) }
+        let index = PulseEngine.makeIndex(tracks, library: library)
+        let cache = PulseEngine.rank(tracks, library: library, limit: 60, now: now, index: index)
+        let begin = Date()
+        XCTAssertNotNil(PulseEngine.selectCached(cache, library: library, exclude: [], now: now, index: index))
+        let elapsed = Date().timeIntervalSince(begin)
+        print("FORMA_CACHED_CHOICE_BENCHMARK: 3000 tracks / 3000 events = \(elapsed) seconds")
+        XCTAssertLessThan(elapsed, 0.5)
+        let pop = track(4000, genre: "Pop"), rock = track(4001, genre: "Rock")
+        library.merge([pop, rock]); library.playlists = [.init(id: "rock", name: "Rock", trackIDs: [tracks[1].id])]
+        XCTAssertEqual(PulseEngine.rank([pop, rock], library: library, limit: 1, now: now, playlistID: "rock").first?.id, rock.id)
+        XCTAssertTrue(PulseEngine.rank([pop, rock], library: library, now: now, playlistID: "deleted").isEmpty)
+    }
+
 }

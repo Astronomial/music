@@ -24,13 +24,14 @@ final class AppModel: ObservableObject {
     private var pulseCache: [Recommendation] = []
     private var selectedContexts: [String: RecommendationContext] = [:]
     private var activeContext: RecommendationContext?
+    private var playbackIndex: PulseEngine.RankingIndex?
     private var pulsePlaylistID: String?
     private var searchGeneration = UUID()
     private var recommendationGeneration = UUID()
     private var pulseGeneration = UUID()
     private var syncEpoch = UUID()
     private var recommendationTask: Task<Void, Never>?
-    private var rankingWork: Task<([Recommendation], [Recommendation], [String: [Recommendation]]), Never>?
+    private var rankingWork: Task<([Recommendation], [Recommendation], [String: [Recommendation]], PulseEngine.RankingIndex), Never>?
     private var settingsTask: Task<Void, Never>?
     private var persistTask: Task<Void, Never>?
     private var syncTask: Task<Void, Never>?
@@ -69,7 +70,7 @@ final class AppModel: ObservableObject {
             guard let self else { return nil }
             if let id = self.pulsePlaylistID, !self.library.playlists.contains(where: { $0.id == id }) { return nil }
             let source = mood.flatMap { self.moodCache[$0] } ?? self.pulseCache
-            guard let choice = PulseEngine.selectCached(source, library: self.selectionLibrary(), exclude: excluded, currentID: self.player.current?.id) else { return nil }
+            guard let choice = PulseEngine.selectCached(source, library: self.selectionLibrary(), exclude: excluded, currentID: self.player.current?.id, index: self.playbackIndex) else { return nil }
             if let exposure = choice.exposure { self.selectedContexts[choice.id] = exposure }
             return choice.track
         }
@@ -143,7 +144,7 @@ final class AppModel: ObservableObject {
         let snapshot = library, excluded = player.current.map { Set([$0.id]) } ?? []
         let token = UUID(); pulseGeneration = token
         let cached = mood.flatMap { moodCache[$0] } ?? pulseCache
-        if playlistID == nil, let first = PulseEngine.selectCached(cached, library: snapshot, exclude: excluded, currentID: player.current?.id) {
+        if playlistID == nil, let first = PulseEngine.selectCached(cached, library: snapshot, exclude: excluded, currentID: player.current?.id, index: playbackIndex) {
             if let exposure = first.exposure { selectedContexts[first.id] = exposure }
             player.startPulse(first.track, mood: mood); return
         }
@@ -254,12 +255,12 @@ final class AppModel: ObservableObject {
                 let home = BilingualDiscovery.rankHome(candidates, library: snapshot, limit: 40, index: index)
                 let next = PulseEngine.rank(candidates, library: snapshot, limit: 60, index: index, playlistID: playlistID)
                 let moods = Dictionary(uniqueKeysWithValues: MoodMix.all.map { ($0.id, BilingualDiscovery.rankHome(candidates, library: snapshot, limit: 30, mood: $0.id, allowRecent: true, index: index)) })
-                return (home, next, moods)
+                return (home, next, moods, index)
             }
             rankingWork = work
             let result = await work.value
             guard recommendationGeneration == token, !Task.isCancelled else { return }
-            recommendations = result.0; pulseCache = result.1; moodCache = result.2
+            recommendations = result.0; pulseCache = result.1; moodCache = result.2; playbackIndex = result.3
             player.refreshPreparedSelection()
             if player.current == nil { await audioResolver.prewarm(videoIDs: Array(pulseCache.prefix(3).map(\.id))) }
         }
