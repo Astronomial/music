@@ -1,9 +1,20 @@
 import Foundation
 import FormaCore
+import YouTubeKit
+
+protocol MusicCatalogProviding: Sendable {
+    func search(_ query: String, genre: String?, mood: String?, hints: [String]) async throws -> [Track]
+    func related(to track: Track) async throws -> [Track]
+    func describe(videoID: String) async -> Track?
+}
+extension MusicCatalogProviding {
+    func search(_ query: String) async throws -> [Track] { try await search(query, genre: nil, mood: nil, hints: []) }
+    func search(_ query: String, hints: [String]) async throws -> [Track] { try await search(query, genre: nil, mood: nil, hints: hints) }
+}
 
 /// Anonymous public YouTube Music metadata. No official API key/subscription.
 /// Unofficial renderer formats can change; the parser is isolated in FormaCore.
-actor YouTubeCatalog {
+actor YouTubeCatalog: MusicCatalogProviding {
     private let session: URLSession
     private var version: (String, Date)?
     private var versionTask: Task<String, Error>?
@@ -39,6 +50,12 @@ actor YouTubeCatalog {
         return try CatalogParser.tracks(from: data).filter { $0.id != track.id }.map { t in
             var related = t; related.relatedTo = [track.id]; related.directRelatedTo = [track.id]; return related
         }
+    }
+    func describe(videoID: String) async -> Track? {
+        guard VideoID.isValid(videoID), !Task.isCancelled else { return nil }
+        let video = YouTube(videoID: videoID, useOAuth: false, allowOAuthCache: false, methods: [.local])
+        guard let metadata = try? await video.metadata, !metadata.title.isEmpty, !Task.isCancelled else { return nil }
+        return Track(videoID: videoID, title: metadata.title, artist: "Исполнитель не указан", artworkURL: metadata.thumbnail?.url)
     }
     private func clientVersion() async throws -> String {
         if let cached = version, Date().timeIntervalSince(cached.1) < 1800 { return cached.0 }

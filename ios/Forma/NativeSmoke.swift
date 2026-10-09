@@ -50,11 +50,35 @@ private actor HandoffFixtureResolver: StreamResolving {
     }
     func invalidate() async {}
 }
+private struct ConstantFixtureResolver: StreamResolving {
+    let audio: ResolvedAudio
+    func resolve(videoID: String, forceRefresh: Bool) async throws -> ResolvedAudio { audio }
+    func invalidate() async {}
+}
+private actor FixtureCatalog: MusicCatalogProviding {
+    let tracks = (0..<4).map { Track(videoID: String(format: "%011d", $0), title: "Проверка \($0)", artist: "Artist \($0)", duration: 5, genres: ["House"]) }
+    private(set) var slowSearchStarted = false
+    private(set) var descriptionStarted = false
+    func search(_ query: String, genre: String?, mood: String?, hints: [String]) async throws -> [Track] {
+        if query == "slow" { slowSearchStarted = true; try await Task.sleep(nanoseconds: 300_000_000); return [tracks[0]] }
+        if query == "fast" { return [tracks[1]] }
+        return tracks.map { old in var track = old; track.moodHints = mood.map { [$0] } ?? []; return track }
+    }
+    func related(to track: Track) async throws -> [Track] {
+        tracks.filter { $0.id != track.id }.map { old in var item = old; item.relatedTo = [track.id]; item.directRelatedTo = [track.id]; return item }
+    }
+    func describe(videoID: String) async -> Track? {
+        descriptionStarted = true
+        do { try await Task.sleep(nanoseconds: 500_000_000) } catch { return nil }
+        return Track(videoID: videoID, title: "Delayed metadata", artist: "Fixture")
+    }
+}
 @MainActor
 enum NativeSmoke {
     private static var started = false
     static var miniFrame: CGRect = .zero
     private static var fixtureResolver: FixtureResolver!
+    private static var fixtureCatalog: FixtureCatalog!
     static func makeModel() -> AppModel {
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let url = dir.appendingPathComponent("fixture.wav")
@@ -64,7 +88,8 @@ enum NativeSmoke {
         for i in 0..<Int(buffer.frameLength) { buffer.floatChannelData![0][i] = sin(Float(i) * 440 * 2 * .pi / 22050) * 0.02 }
         do { let file = try AVAudioFile(forWriting: url, settings: format.settings); try file.write(from: buffer) } catch { fatalError("Cannot write native audio fixture") }
         fixtureResolver = FixtureResolver(url: url)
-        return AppModel(playbackResolver: fixtureResolver)
+        fixtureCatalog = FixtureCatalog()
+        return AppModel(playbackResolver: fixtureResolver, catalog: fixtureCatalog)
     }
     static func startOnce(model: AppModel) { guard !started else { return }; started = true; Task { await run(model: model) } }
     static func run(model: AppModel) async {
@@ -95,6 +120,11 @@ enum NativeSmoke {
             stage = "native-playback"
             let tracks = merged.tracks.values.sorted { $0.id < $1.id }.map { track -> Track in var next = track; next.duration = 5; return next }
             let recoveryAudio = try await fixtureResolver.resolve(videoID: tracks[0].id, forceRefresh: false)
+            guard let slowIndex = args.firstIndex(of: "--forma-slow-audio"), args.count > slowIndex + 1,
+                  let slowURL = URL(string: args[slowIndex + 1]) else { throw SyncError.rejected("Slow audio fixture missing") }
+            stage = "playback-boundaries"
+            let stability = try await checkBoundaries(model: model, tracks: tracks, audio: recoveryAudio, slowURL: slowURL)
+            stage = "native-playback"
             let recoveryResolver = RecoveringFixtureResolver(audio: recoveryAudio)
             let recoveryPlayer = PlaybackController(resolver: recoveryResolver, extractionTimeout: 0.1, bufferTimeout: 4)
             recoveryPlayer.play(tracks[0], list: [tracks[0]])
@@ -149,7 +179,7 @@ enum NativeSmoke {
                 try await Task.sleep(nanoseconds: 20_000_000)
             }
             guard model.recommendations.contains(where: { $0.id == tracks[0].id && $0.exposure?.isValid == true }) else { throw SyncError.rejected("AppModel did not prepare a learning snapshot") }
-            player.play(tracks[0], list: tracks)
+            model.play(tracks[0], list: tracks)
             // Current extraction takes 500ms. Wait for the second track's real AVPlayerItem.
             for _ in 0..<100 {
                 if player.debugPreparedTrackID == tracks[1].id { break }
@@ -168,7 +198,7 @@ enum NativeSmoke {
             guard explicit.count == 2, explicit.allSatisfy({ $0.reward == 1 }) else { throw SyncError.rejected("Like and playlist feedback lost the selected learning snapshot") }
             let callsBefore = await fixtureResolver.calls[tracks[1].id]
             let switchedAt = ProcessInfo.processInfo.systemUptime
-            player.play(tracks[1], list: tracks)
+            model.play(tracks[1], list: tracks)
             let switchDelay = ProcessInfo.processInfo.systemUptime - switchedAt
             guard player.current?.id == tracks[1].id, switchDelay < 0.2 else { throw SyncError.rejected("Manual next-track reuse failed") }
             try await Task.sleep(nanoseconds: 100_000_000)
@@ -235,9 +265,84 @@ enum NativeSmoke {
             guard !player.isPlaying else { throw SyncError.rejected("Explicit pause failed") }
             player.resume(); try await Task.sleep(nanoseconds: 500_000_000)
             guard player.isPlaying else { throw SyncError.rejected("Resume failed") }
-            write(["status": "passed", "nativeStarts": starts.count, "automaticTransitions": feedback.count, "background": background, "pinnedTLS": true, "wrongPinRejected": rejectedWrongPin, "bidirectionalSync": true, "pauseResume": true, "miniPlayerAboveTabs": true, "miniPlayerBottom": miniFrame.maxY, "tabBarTop": barFrame.minY, "preparedManualSwitchMilliseconds": switchDelay * 1000, "preparedStreamReused": true, "controlledColdStartMilliseconds": coldStartMilliseconds, "preparedPlayingMilliseconds": preparedPlayingMilliseconds, "startupTimeoutRecovered": true, "recommendationSnapshotCaptured": true, "explicitLearningFeedbackCaptured": true, "networkHandoffRecovered": true, "oldNetworkPreparedItemDiscarded": true, "networkRecoveryRespectsPause": true])
+            var final: [String: Any] = ["status": "passed", "nativeStarts": starts.count, "automaticTransitions": feedback.count, "background": background, "pinnedTLS": true, "wrongPinRejected": rejectedWrongPin, "bidirectionalSync": true, "pauseResume": true, "miniPlayerAboveTabs": true, "miniPlayerBottom": miniFrame.maxY, "tabBarTop": barFrame.minY, "preparedManualSwitchMilliseconds": switchDelay * 1000, "preparedStreamReused": true, "controlledColdStartMilliseconds": coldStartMilliseconds, "preparedPlayingMilliseconds": preparedPlayingMilliseconds, "startupTimeoutRecovered": true, "recommendationSnapshotCaptured": true, "explicitLearningFeedbackCaptured": true, "networkHandoffRecovered": true, "oldNetworkPreparedItemDiscarded": true, "networkRecoveryRespectsPause": true]
+            stability.forEach { final[$0.key] = $0.value }; write(final)
             player.pause()
         } catch { let failure = error as NSError; write(["status": "failed", "stage": stage, "error": error.localizedDescription, "domain": failure.domain, "code": failure.code, "taskCancelled": Task.isCancelled]) }
+    }
+    private static func checkBoundaries(model: AppModel, tracks: [Track], audio: ResolvedAudio, slowURL: URL) async throws -> [String: Bool] {
+        func until(_ condition: () async -> Bool) async throws {
+            for _ in 0..<120 {
+                if await condition() { return }
+                try await Task.sleep(nanoseconds: 20_000_000)
+            }
+            throw SyncError.rejected("Playback boundary condition timed out")
+        }
+        // Pause an actual AVPlayerItem while its HTTP WAV body is withheld. A new
+        // resume must re-arm the buffer deadline, rather than spinning forever.
+        let bufferPlayer = PlaybackController(resolver: ConstantFixtureResolver(audio: ResolvedAudio(debugFixture: slowURL)), bufferTimeout: 0.3)
+        bufferPlayer.play(tracks[0], list: [tracks[0]])
+        try await until { bufferPlayer.debugHasPlayerItem }
+        guard bufferPlayer.isLoading, bufferPlayer.error == nil else { throw SyncError.rejected("Controlled slow stream did not enter buffering") }
+        bufferPlayer.pause(); try await Task.sleep(nanoseconds: 500_000_000)
+        guard bufferPlayer.error == nil, !bufferPlayer.isLoading else { throw SyncError.rejected("Paused startup produced a timeout/spinner") }
+        bufferPlayer.resume(); try await until { bufferPlayer.error != nil }
+        guard !bufferPlayer.isLoading else { throw SyncError.rejected("Resume never released the buffering spinner") }
+        bufferPlayer.pause()
+
+        let interruptions = HandoffFixtureResolver(audio: audio)
+        let interruptedPlayer = PlaybackController(resolver: interruptions, extractionTimeout: 0.1, bufferTimeout: 3)
+        var starts = 0, feedback = 0
+        interruptedPlayer.onStarted = { _ in starts += 1 }; interruptedPlayer.onFeedback = { _ in feedback += 1 }
+        interruptedPlayer.play(tracks[0], list: [tracks[0]])
+        try await until { await interruptions.calls == 1 }
+        interruptedPlayer.debugInterruption(began: true)
+        try await Task.sleep(nanoseconds: 400_000_000)
+        guard interruptedPlayer.error == nil, !interruptedPlayer.isPlaying else { throw SyncError.rejected("A call caused a false startup failure") }
+        interruptedPlayer.debugInterruption(began: false)
+        try await until { interruptedPlayer.isPlaying }
+        interruptedPlayer.pause()
+        interruptedPlayer.debugInterruption(began: true); interruptedPlayer.debugInterruption(began: false)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        guard !interruptedPlayer.isPlaying else { throw SyncError.rejected("Interruption end overrode manual pause") }
+        interruptedPlayer.debugMediaServicesReset()
+        guard !interruptedPlayer.isPlaying, interruptedPlayer.current?.id == tracks[0].id else { throw SyncError.rejected("Audio reset lost paused selection") }
+        interruptedPlayer.resume(); try await until { interruptedPlayer.isPlaying }
+        guard starts == 1, feedback == 0 else { throw SyncError.rejected("Audio recovery created duplicate taste feedback") }
+        interruptedPlayer.pause()
+
+        let rapid = HandoffFixtureResolver(audio: audio), rapidPlayer = PlaybackController(resolver: rapid)
+        var rapidStarts: [String] = []
+        rapidPlayer.onStarted = { rapidStarts.append($0.id) }
+        rapidPlayer.play(tracks[0], list: [tracks[0]])
+        try await until { await rapid.calls == 1 }
+        rapidPlayer.play(tracks[1], list: [tracks[1]])
+        try await until { rapidPlayer.isPlaying }
+        let cancelled = await rapid.cancelled
+        guard rapidPlayer.current?.id == tracks[1].id, rapidStarts == [tracks[1].id], cancelled == 1 else { throw SyncError.rejected("Rapid selection kept old playback alive") }
+        rapidPlayer.pause()
+
+        try await until { !model.isRestoringLibrary }
+        let slowSearch = Task { await model.search("slow") }
+        try await until { await fixtureCatalog.slowSearchStarted }
+        await model.search("fast"); await slowSearch.value
+        guard model.searchResults.map(\.id) == [tracks[1].id], !model.isSearching else { throw SyncError.rejected("Stale search result replaced the latest query") }
+        let link = Task { await model.openYouTube("abcdefghijk") }
+        try await until { await fixtureCatalog.descriptionStarted }
+        model.play(tracks[3], list: [tracks[3]]); await link.value
+        try await until { model.player.isPlaying }
+        guard model.player.current?.id == tracks[3].id, model.message == nil else { throw SyncError.rejected("Old link metadata overrode manual selection") }
+        model.createPlaylist("Race fixture")
+        guard let playlist = model.library.playlists.last else { throw SyncError.rejected("Pulse fixture playlist missing") }
+        model.add(tracks[0], to: playlist.id); model.add(tracks[1], to: playlist.id)
+        model.startPulse(playlistID: playlist.id); model.play(tracks[2], list: [tracks[2]])
+        try await until { model.player.isPlaying }
+        try await Task.sleep(nanoseconds: 200_000_000)
+        guard model.player.current?.id == tracks[2].id, model.player.selectionSurface == "manual" else { throw SyncError.rejected("Delayed Pulse ranking overrode manual playback") }
+        model.player.pause(); model.deletePlaylist(playlist.id)
+        return ["resumeBufferDeadlineRearmed": true, "pausedLoadingNoSpinner": true, "interruptionRecovered": true,
+                "interruptionRespectsPause": true, "mediaServicesResetRecovered": true, "recoveryNoDuplicateFeedback": true,
+                "rapidSelectionCancelsOldLoad": true, "staleSearchIgnored": true, "staleLinkIgnored": true, "stalePulseIgnored": true]
     }
 }
 #endif

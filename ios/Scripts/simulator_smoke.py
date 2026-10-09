@@ -40,7 +40,11 @@ with tempfile.TemporaryDirectory(prefix='forma-simulator-') as directory:
         if parsed.scheme != 'forma' or parsed.netloc != 'pair' or not all(parameters.get(key) for key in ('host', 'port', 'pin', 'code')):
             raise RuntimeError('Test server published an incomplete pairing code')
         # --console intentionally stays attached; inspect app reports without blocking on launch.
-        launch = subprocess.Popen(['xcrun','simctl','launch','--console',device,'music.forma.ios','--forma-smoke','--forma-pair-code',pairing], stdout=stream, stderr=stream)
+        slow_audio = (pathlib.Path(directory)/'audio-fixture-url.txt').read_text().strip()
+        audio_address = urllib.parse.urlparse(slow_audio)
+        if audio_address.scheme != 'http' or audio_address.hostname != '127.0.0.1' or not audio_address.port:
+            raise RuntimeError('Audio fixture must stay on loopback')
+        launch = subprocess.Popen(['xcrun','simctl','launch','--console',device,'music.forma.ios','--forma-smoke','--forma-pair-code',pairing,'--forma-slow-audio',slow_audio], stdout=stream, stderr=stream)
         print('Launching native app; waiting for foreground audio', flush=True)
         last_stage = None
         for _ in range(360):

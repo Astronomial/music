@@ -23,9 +23,8 @@ final class AppModel: ObservableObject {
     private var syncRouteAllowed = false
     private var lastAutomaticRefresh = Date.distantPast
     let player: PlaybackController
-    private let streams: YouTubeStreamResolver
     private let audioResolver: any StreamResolving
-    private let catalog = YouTubeCatalog()
+    private let catalog: any MusicCatalogProviding
     private let sync = SyncClient()
     private var storage: LibraryStorage?
     private var storageURL: URL?
@@ -50,8 +49,9 @@ final class AppModel: ObservableObject {
     private var persistTask: Task<Void, Never>?
     private var syncTask: Task<Void, Never>?
 
-    init(playbackResolver: (any StreamResolving)? = nil) {
-        let streams = YouTubeStreamResolver(); self.streams = streams
+    init(playbackResolver: (any StreamResolving)? = nil, catalog: any MusicCatalogProviding = YouTubeCatalog()) {
+        self.catalog = catalog
+        let streams = YouTubeStreamResolver()
         let audioResolver = playbackResolver ?? streams; self.audioResolver = audioResolver
         player = PlaybackController(resolver: audioResolver)
         if let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
@@ -71,6 +71,7 @@ final class AppModel: ObservableObject {
         }
         player.onSelected = { [weak self] track in
             guard let self else { return }
+            self.library.merge([track])
             self.activeContext = self.selectedContexts.removeValue(forKey: track.id) ?? self.context(for: track)
         }
         player.onStarted = { [weak self] track in
@@ -333,7 +334,7 @@ final class AppModel: ObservableObject {
         let token = UUID(); pulseGeneration = token; pulseWork?.cancel(); linkTask?.cancel()
         guard let id = VideoID.parse(value) else { message = "Вставь ссылку на трек или видео YouTube."; return }
         if let existing = library.tracks[id] { play(existing, list: [existing]); return }
-        let work = Task { await streams.describe(videoID: id) }; linkTask = work
+        let work = Task { await catalog.describe(videoID: id) }; linkTask = work
         let track = await work.value
         guard pulseGeneration == token, !Task.isCancelled else { return }
         guard let track else { message = "Не удалось получить сведения о треке. Попробуй поиск по названию."; return }

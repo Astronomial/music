@@ -18,9 +18,9 @@ public struct ResolvedAudio: Sendable {
         expiresAt = min(upstream, resolvedAt.addingTimeInterval(300))
     }
 #if DEBUG
-    /// On-disk audio fixture used only by the simulator integration check.
+    /// On-disk or loopback audio fixture used only by native integration checks.
     public init(debugFixture url: URL) {
-        precondition(url.isFileURL)
+        precondition(url.isFileURL || (url.scheme == "http" && url.host == "127.0.0.1" && url.port != nil && url.user == nil && url.password == nil))
         self.url = url; resolvedAt = Date(); expiresAt = Date().addingTimeInterval(300)
         title = nil; artworkURL = nil
     }

@@ -272,10 +272,11 @@ final class PlaybackController: ObservableObject {
     }
 #if DEBUG && targetEnvironment(simulator)
     var debugPreparedTrackID: String? { prepared?.item.status == .readyToPlay ? prepared?.track.id : nil }
+    var debugHasPlayerItem: Bool { engine.currentItem != nil }
 #endif
     func previous() { seek(to: 0) }
     func seek(to value: Double) {
-        guard engine.currentItem != nil else { return }
+        guard value.isFinite, engine.currentItem != nil else { return }
         seeking = true
         let seekGeneration = generation
         let target = max(0, min(value, duration > 0 ? duration : value))
@@ -324,7 +325,7 @@ final class PlaybackController: ObservableObject {
         clock.tick(at: ProcessInfo.processInfo.systemUptime, playing: engine.timeControlStatus == .playing, seeking: seeking)
         let time = engine.currentTime().seconds
         if time.isFinite { position = max(0, time) }
-        if let total = engine.currentItem?.duration.seconds, total.isFinite, total > 0 { duration = total }
+        if let total = engine.currentItem?.duration.seconds, total.isFinite, total > 0 { duration = min(86400, total) }
         if let ready = prepared, !ready.audio.isFresh(margin: 45), engine.currentItem !== ready.item {
             engine.remove(ready.item); prepared = nil; prefetchedCurrent = nil
         }
