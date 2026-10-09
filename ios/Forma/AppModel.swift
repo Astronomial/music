@@ -30,6 +30,8 @@ final class AppModel: ObservableObject {
     private var storageURL: URL?
     private var didLoadLibrary = false
     private var syncBase: Library?
+    private var pcIdentity: String?
+    private var saveRevision: UInt64 = 0
     private var moodCache: [String: [Recommendation]] = [:]
     private var pulseCache: [Recommendation] = []
     private var pulseCachePlaylistID: String?
@@ -97,9 +99,10 @@ final class AppModel: ObservableObject {
         let startupEpoch = syncEpoch
         Task {
             await restoreLibrary()
-            let connection = await sync.restore(), base = await storage?.syncBase()
+            let connection = await sync.restore()
+            let base = await storage?.syncBase(peerID: connection?.pin, allowLegacy: connection?.baselineVersion == nil)
             guard syncEpoch == startupEpoch else { return }
-            pcHost = connection?.host; syncBase = base
+            pcHost = connection?.host; pcIdentity = connection?.pin; syncBase = base
             if pcHost != nil { syncStatus = canSynchronizePC ? "ПК подключён. Синхронизируем в общей Wi-Fi сети" : "Синхронизация продолжится по Wi-Fi. Изменения сохранены"; scheduleSync() }
         }
     }
@@ -376,13 +379,14 @@ final class AppModel: ObservableObject {
     func persist(immediately: Bool = false, background: Bool = false) {
         guard didLoadLibrary else { return }
         persistTask?.cancel()
+        saveRevision += 1; let revision = saveRevision
         let snapshot = library
         let lease = background ? BackgroundSaveLease() : nil
         persistTask = Task {
             defer { lease?.finish() }
             if !immediately { try? await Task.sleep(nanoseconds: 250_000_000) }
             guard !Task.isCancelled, let storage else { return }
-            do { try await storage.save(snapshot) } catch { message = "Не удалось сохранить библиотеку: \(error.localizedDescription)" }
+            do { try await storage.save(snapshot, revision: revision) } catch { message = "Не удалось сохранить библиотеку: \(error.localizedDescription)" }
         }
         scheduleSync()
     }
@@ -402,17 +406,23 @@ final class AppModel: ObservableObject {
         do {
             try await sync.pair(code)
             guard syncEpoch == epoch else { return }
-            syncBase = nil; try await storage?.saveSyncBase(nil)
+            let connection = await sync.connection
             guard syncEpoch == epoch else { return }
-            pcHost = await sync.connection?.host; isSyncing = false; await synchronize(showErrors: true)
+            pcHost = connection?.host; pcIdentity = connection?.pin; syncBase = nil
+            try await storage?.saveSyncBase(nil)
+            guard syncEpoch == epoch else { return }
+            isSyncing = false; await synchronize(showErrors: true)
         } catch { guard syncEpoch == epoch else { return }; isSyncing = false; syncStatus = error.localizedDescription; message = error.localizedDescription }
     }
     func disconnectPC() async {
-        syncEpoch = UUID(); isSyncing = false; syncTask?.cancel(); await sync.disconnect(); pcHost = nil; syncBase = nil
-        try? await storage?.saveSyncBase(nil); syncStatus = "ПК отключён"
+        syncEpoch = UUID(); let epoch = syncEpoch; isSyncing = false; syncTask?.cancel(); await sync.disconnect()
+        guard syncEpoch == epoch else { return }
+        pcHost = nil; pcIdentity = nil; syncBase = nil
+        try? await storage?.saveSyncBase(nil)
+        if syncEpoch == epoch { syncStatus = "ПК отключён" }
     }
     func synchronize(showErrors: Bool = false) async {
-        guard didLoadLibrary, !isSyncing, pcHost != nil else { return }
+        guard didLoadLibrary, !isSyncing, pcHost != nil, let pcIdentity else { return }
         guard canSynchronizePC else { stopSyncForNetwork(); return }
         guard syncBackoff.allows(manual: showErrors) else { return }
         let epoch = syncEpoch
@@ -423,7 +433,8 @@ final class AppModel: ObservableObject {
             guard epoch == syncEpoch else { return }
             persistTask?.cancel()
             library = LibrarySync.merge(current: LibrarySync.preservingLearning(in: remote, from: sent), base: sent, incoming: library)
-            do { try await storage?.saveSynchronized(library, base: remote) }
+            saveRevision += 1; let revision = saveRevision
+            do { try await storage?.saveSynchronized(library, base: remote, peerID: pcIdentity, revision: revision) }
             catch {
                 syncBackoff.failed()
                 syncStatus = "Библиотека получена, но сохранить её не удалось"

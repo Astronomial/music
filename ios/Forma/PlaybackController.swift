@@ -25,6 +25,7 @@ final class PlaybackController: ObservableObject {
     var selectionSurface: String { mood != nil ? "mood" : pulseMode ? "pulse" : "manual" }
     private var startedID: String?
     private var interrupted = false
+    private var mediaServicesLost = false
     private var preparationToken = UUID()
     private var lastNowPlayingUpdate: TimeInterval = 0
     var onFeedback: ((ListeningEvent) -> Void)?
@@ -89,7 +90,10 @@ final class PlaybackController: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 self.adoptPreparedItem()
-                self.isPlaying = self.requestedPlayback && !self.interrupted && self.engine.timeControlStatus == .playing
+                let now = ProcessInfo.processInfo.systemUptime
+                self.clock.tick(at: now, playing: self.isPlaying, seeking: self.seeking)
+                self.clock.tick(at: now, playing: false)
+                self.isPlaying = self.requestedPlayback && !self.interrupted && !self.mediaServicesLost && self.engine.timeControlStatus == .playing
                 if self.isPlaying { self.isLoading = false; self.markStarted() }
                 self.updateNowPlaying()
             }
@@ -146,7 +150,7 @@ final class PlaybackController: ObservableObject {
         stallTask = Task { [weak self] in
             do { try await Task.sleep(nanoseconds: 2_000_000_000) } catch { return }
             guard let self, generation == token, requestedPlayback, !networkRecovering,
-                  !interrupted,
+                  !interrupted, !mediaServicesLost,
                   networkPolicy.reachable, engine.timeControlStatus != .playing,
                   retryCount < 2, let current else { return }
             retryCount += 1
@@ -162,7 +166,7 @@ final class PlaybackController: ObservableObject {
             queue = Array(list.drop { $0.id != track.id }.dropFirst())
             pulseMode = asPulse; mood = context; playedInRun = []
         }
-        if alreadyAdvanced { resume(); return }
+        if alreadyAdvanced { refreshPreparedSelection(); resume(); return }
         if let ready = prepared, ready.track.id == track.id, ready.audio.isFresh(margin: 15), ready.item.status != .failed, engine.items().contains(ready.item) {
             beginTiming(source: "prepared")
             requestedPlayback = true; engine.advanceToNextItem(); adoptPreparedItem()
@@ -184,7 +188,7 @@ final class PlaybackController: ObservableObject {
         if !refreshing { clock.reset() }; seeking = false; error = nil; isLoading = true; isPlaying = false; requestedPlayback = true
         if !refreshing { retryCount = 0; artwork = nil }
         updateNowPlaying()
-        if networkPolicy.known && !networkPolicy.reachable { return }
+        if mediaServicesLost || (networkPolicy.known && !networkPolicy.reachable) { return }
         if !interrupted { armStartWatchdog(seconds: networkPolicy.extractionDeadline(base: extractionTimeout), token: token) }
         task = Task { [weak self] in
             guard let self else { return }
@@ -225,7 +229,7 @@ final class PlaybackController: ObservableObject {
     func resume() {
         guard let current else { return }
         requestedPlayback = true
-        guard !interrupted else { updateNowPlaying(); return }
+        guard !interrupted, !mediaServicesLost else { updateNowPlaying(); return }
         if engine.currentItem == nil || engine.currentItem?.status == .failed { start(current, at: position, refreshing: true); return }
         do {
             try activateAudio(); error = nil
@@ -273,6 +277,7 @@ final class PlaybackController: ObservableObject {
 #if DEBUG && targetEnvironment(simulator)
     var debugPreparedTrackID: String? { prepared?.item.status == .readyToPlay ? prepared?.track.id : nil }
     var debugHasPlayerItem: Bool { engine.currentItem != nil }
+    func debugAdvanceEngine() { engine.advanceToNextItem() }
 #endif
     func previous() { seek(to: 0) }
     func seek(to value: Double) {
@@ -347,7 +352,8 @@ final class PlaybackController: ObservableObject {
         }
         itemObservation = item.observe(\.status, options: [.initial, .new]) { [weak self, weak item] _, _ in
             Task { @MainActor in
-                guard let self, let item, self.generation == token, item.status == .failed, !self.networkRecovering else { return }
+                guard let self, let item, self.generation == token, item.status == .failed,
+                      !self.networkRecovering, !self.interrupted, !self.mediaServicesLost else { return }
 #if DEBUG && targetEnvironment(simulator)
                 if ProcessInfo.processInfo.arguments.contains("--forma-smoke") { print("Native item failed for \(self.current?.id ?? "none"): \(item.error?.localizedDescription ?? "unknown")") }
 #endif
@@ -399,7 +405,7 @@ final class PlaybackController: ObservableObject {
         startWatchdog?.cancel()
         startWatchdog = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(max(0.1, seconds) * 1_000_000_000))
-            guard !Task.isCancelled, let self, generation == token, requestedPlayback, !interrupted, isLoading, engine.timeControlStatus != .playing, let track = current else { return }
+            guard !Task.isCancelled, let self, generation == token, requestedPlayback, !interrupted, !mediaServicesLost, isLoading, engine.timeControlStatus != .playing, let track = current else { return }
             generation = UUID(); task?.cancel(); engine.removeAllItems()
             fail(PlayerError.startTimedOut)
             await resolver.cancel(videoID: track.id)
@@ -457,6 +463,9 @@ final class PlaybackController: ObservableObject {
         systemObservers.append(NotificationCenter.default.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.resetMediaServices() }
         })
+        systemObservers.append(NotificationCenter.default.addObserver(forName: AVAudioSession.mediaServicesWereLostNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.suspendForMediaServicesLoss() }
+        })
     }
     private func handleInterruption(began: Bool, shouldResume: Bool) {
         if began {
@@ -473,8 +482,17 @@ final class PlaybackController: ObservableObject {
 #if DEBUG && targetEnvironment(simulator)
     func debugInterruption(began: Bool, shouldResume: Bool = true) { handleInterruption(began: began, shouldResume: shouldResume) }
     func debugMediaServicesReset() { resetMediaServices() }
+    func debugMediaServicesLost() { suspendForMediaServicesLoss() }
 #endif
+    private func suspendForMediaServicesLoss() {
+        clock.tick(at: ProcessInfo.processInfo.systemUptime, playing: isPlaying, seeking: seeking)
+        mediaServicesLost = true; generation = UUID(); preparationToken = UUID()
+        task?.cancel(); prefetch?.cancel(); startWatchdog?.cancel(); stallTask?.cancel()
+        preparing = false; prepared = nil; engine.pause()
+        isPlaying = false; isLoading = false; updateNowPlaying()
+    }
     private func resetMediaServices() {
+        mediaServicesLost = false
         task?.cancel(); prefetch?.cancel(); startWatchdog?.cancel(); stallTask?.cancel()
         generation = UUID(); preparationToken = UUID(); prepared = nil; preparing = false
         engine.pause(); engine.removeAllItems()

@@ -29,6 +29,27 @@ private final class AudioFixtureProtocol: URLProtocol {
 
 final class AudioLoadingTests: XCTestCase {
     private var fixtureSession: URLSession!
+    func testOldConfigurationCannotRepopulateCacheAfterNetworkReset() async throws {
+        let cache = AudioContextCache(), session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+        let configuration = try JSONDecoder().decode(Extraction.YtCfg.self, from: Data(#"{"VISITOR_DATA":"old-route"}"#.utf8))
+        let old = await cache.ticket(session: session)
+        await cache.invalidate(session: session)
+        await cache.store(configuration: configuration, playerURL: nil, session: session, ticket: old)
+        let rejected = await cache.cached(session: session); XCTAssertNil(rejected)
+        let fresh = await cache.ticket(session: session)
+        await cache.store(configuration: configuration, playerURL: nil, session: session, ticket: fresh)
+        let accepted = await cache.cached(session: session); XCTAssertNotNil(accepted)
+    }
+    func testResettingOneSessionDoesNotInvalidateAnotherSessionContext() async throws {
+        let cache = AudioContextCache(), a = URLSession(configuration: .ephemeral), b = URLSession(configuration: .ephemeral)
+        defer { a.invalidateAndCancel(); b.invalidateAndCancel() }
+        let configuration = try JSONDecoder().decode(Extraction.YtCfg.self, from: Data("{}".utf8))
+        let ticket = await cache.ticket(session: b)
+        await cache.invalidate(session: a)
+        await cache.store(configuration: configuration, playerURL: nil, session: b, ticket: ticket)
+        let accepted = await cache.cached(session: b); XCTAssertNotNil(accepted)
+    }
     private static func requestBody(_ request: URLRequest) -> Data? {
         if let data = request.httpBody { return data }
         guard let stream = request.httpBodyStream else { return nil }

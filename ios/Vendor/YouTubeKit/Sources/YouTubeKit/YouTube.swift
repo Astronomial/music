@@ -306,6 +306,7 @@ public class YouTube {
             return try await withThrowingTaskGroup(of: AudioAttempt.self) { group in
                 func submit(configured: Bool) {
                     group.addTask { [videoID, useOAuth, allowOAuthCache, session] in
+                        let contextTicket = await Self.audioContexts.ticket(session: session)
                         let worker = YouTube(videoID: videoID, useOAuth: useOAuth, allowOAuthCache: allowOAuthCache, methods: [.local], session: session)
                         if !configured, let cachedContext {
                             worker._ytcfg = cachedContext.configuration
@@ -323,7 +324,7 @@ public class YouTube {
                                     configuration = try await worker.ytcfg
                                     let playerURL = (try? Extraction.jsURL(html: await worker.watchHTML)).flatMap { URL(string: $0) }
                                     try Task.checkCancellation()
-                                    await Self.audioContexts.store(configuration: configuration, playerURL: playerURL, session: session)
+                                    await Self.audioContexts.store(configuration: configuration, playerURL: playerURL, session: session, ticket: contextTicket)
                                 } else if let cachedContext { configuration = cachedContext.configuration }
                                 else { configuration = try JSONDecoder().decode(Extraction.YtCfg.self, from: Data("{}".utf8)) }
                                 // Native clients do not require player JS; WEB requires a matching STS.

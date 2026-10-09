@@ -30,7 +30,11 @@ public enum LibrarySync {
                 playlists[id] = actual
             } else { playlists[id] = next }
         }
-        result.playlists = playlists.values.sorted { $0.id < $1.id }
+        var seenPlaylists = Set<String>()
+        result.playlists = (current.playlists + incoming.playlists).compactMap { playlist in
+            guard seenPlaylists.insert(playlist.id).inserted else { return nil }
+            return playlists[playlist.id]
+        }
         func key(_ e: ListeningEvent) -> String { "\(e.trackID)|\(e.kind.rawValue)|\((e.at.timeIntervalSince1970 * 1000).rounded())|\(e.seconds)|\(e.ratio)|\(e.mood ?? "")" }
         var history = Dictionary(current.events.map { (key($0), $0) }, uniquingKeysWith: { a, _ in a })
         let oldEvents = Dictionary(base.events.map { (key($0), $0) }, uniquingKeysWith: { a, _ in a })

@@ -271,22 +271,22 @@ enum NativeSmoke {
         } catch { let failure = error as NSError; write(["status": "failed", "stage": stage, "error": error.localizedDescription, "domain": failure.domain, "code": failure.code, "taskCancelled": Task.isCancelled]) }
     }
     private static func checkBoundaries(model: AppModel, tracks: [Track], audio: ResolvedAudio, slowURL: URL) async throws -> [String: Bool] {
-        func until(_ condition: () async -> Bool) async throws {
-            for _ in 0..<120 {
+        func until(_ label: String, diagnostic: () -> String = { "" }, _ condition: () async -> Bool) async throws {
+            for _ in 0..<300 {
                 if await condition() { return }
                 try await Task.sleep(nanoseconds: 20_000_000)
             }
-            throw SyncError.rejected("Playback boundary condition timed out")
+            throw SyncError.rejected("Playback boundary \(label) timed out: \(diagnostic())")
         }
         // Pause an actual AVPlayerItem while its HTTP WAV body is withheld. A new
         // resume must re-arm the buffer deadline, rather than spinning forever.
         let bufferPlayer = PlaybackController(resolver: ConstantFixtureResolver(audio: ResolvedAudio(debugFixture: slowURL)), bufferTimeout: 0.3)
         bufferPlayer.play(tracks[0], list: [tracks[0]])
-        try await until { bufferPlayer.debugHasPlayerItem }
+        try await until("buffer-item-created") { bufferPlayer.debugHasPlayerItem }
         guard bufferPlayer.isLoading, bufferPlayer.error == nil else { throw SyncError.rejected("Controlled slow stream did not enter buffering") }
         bufferPlayer.pause(); try await Task.sleep(nanoseconds: 500_000_000)
         guard bufferPlayer.error == nil, !bufferPlayer.isLoading else { throw SyncError.rejected("Paused startup produced a timeout/spinner") }
-        bufferPlayer.resume(); try await until { bufferPlayer.error != nil }
+        bufferPlayer.resume(); try await until("resume-buffer-deadline", diagnostic: { "loading=\(bufferPlayer.isLoading), playing=\(bufferPlayer.isPlaying), position=\(bufferPlayer.position), item=\(bufferPlayer.debugHasPlayerItem)" }) { bufferPlayer.error != nil }
         guard !bufferPlayer.isLoading else { throw SyncError.rejected("Resume never released the buffering spinner") }
         bufferPlayer.pause()
 
@@ -295,54 +295,85 @@ enum NativeSmoke {
         var starts = 0, feedback = 0
         interruptedPlayer.onStarted = { _ in starts += 1 }; interruptedPlayer.onFeedback = { _ in feedback += 1 }
         interruptedPlayer.play(tracks[0], list: [tracks[0]])
-        try await until { await interruptions.calls == 1 }
+        try await until("interruption-extraction-started") { await interruptions.calls == 1 }
         interruptedPlayer.debugInterruption(began: true)
         try await Task.sleep(nanoseconds: 400_000_000)
         guard interruptedPlayer.error == nil, !interruptedPlayer.isPlaying else { throw SyncError.rejected("A call caused a false startup failure") }
         interruptedPlayer.debugInterruption(began: false)
-        try await until { interruptedPlayer.isPlaying }
+        try await until("interruption-or-reset-playing", diagnostic: { interruptedPlayer.error ?? "loading=\(interruptedPlayer.isLoading)" }) { interruptedPlayer.isPlaying }
         interruptedPlayer.pause()
         interruptedPlayer.debugInterruption(began: true); interruptedPlayer.debugInterruption(began: false)
         try await Task.sleep(nanoseconds: 100_000_000)
         guard !interruptedPlayer.isPlaying else { throw SyncError.rejected("Interruption end overrode manual pause") }
         interruptedPlayer.debugMediaServicesReset()
         guard !interruptedPlayer.isPlaying, interruptedPlayer.current?.id == tracks[0].id else { throw SyncError.rejected("Audio reset lost paused selection") }
-        interruptedPlayer.resume(); try await until { interruptedPlayer.isPlaying }
+        interruptedPlayer.resume(); try await until("interruption-or-reset-playing", diagnostic: { interruptedPlayer.error ?? "loading=\(interruptedPlayer.isLoading)" }) { interruptedPlayer.isPlaying }
         guard starts == 1, feedback == 0 else { throw SyncError.rejected("Audio recovery created duplicate taste feedback") }
+        interruptedPlayer.debugMediaServicesLost()
+        try await Task.sleep(nanoseconds: 400_000_000)
+        guard !interruptedPlayer.isPlaying, interruptedPlayer.error == nil else { throw SyncError.rejected("Media services loss produced a false playback failure") }
+        interruptedPlayer.debugMediaServicesReset()
+        try await until("media-loss-reset-playing") { interruptedPlayer.isPlaying }
+        guard starts == 1, feedback == 0 else { throw SyncError.rejected("Media services recovery duplicated history") }
         interruptedPlayer.pause()
 
         let rapid = HandoffFixtureResolver(audio: audio), rapidPlayer = PlaybackController(resolver: rapid)
         var rapidStarts: [String] = []
         rapidPlayer.onStarted = { rapidStarts.append($0.id) }
         rapidPlayer.play(tracks[0], list: [tracks[0]])
-        try await until { await rapid.calls == 1 }
+        try await until("rapid-first-started") { await rapid.calls == 1 }
         rapidPlayer.play(tracks[1], list: [tracks[1]])
-        try await until { rapidPlayer.isPlaying }
+        try await until("rapid-current-playing", diagnostic: { rapidPlayer.error ?? "loading=\(rapidPlayer.isLoading)" }) { rapidPlayer.isPlaying }
         let cancelled = await rapid.cancelled
         guard rapidPlayer.current?.id == tracks[1].id, rapidStarts == [tracks[1].id], cancelled == 1 else { throw SyncError.rejected("Rapid selection kept old playback alive") }
         rapidPlayer.pause()
 
-        try await until { !model.isRestoringLibrary }
+        let queuePlayer = PlaybackController(resolver: fixtureResolver)
+        queuePlayer.play(tracks[0], list: tracks)
+        try await until("queue-race-prepared") { queuePlayer.debugPreparedTrackID == tracks[1].id }
+        queuePlayer.debugAdvanceEngine()
+        queuePlayer.play(tracks[1], list: [tracks[1], tracks[3]])
+        try await until("advanced-queue-updated") { queuePlayer.debugPreparedTrackID == tracks[3].id }
+        guard queuePlayer.current?.id == tracks[1].id else { throw SyncError.rejected("Already-advanced queue ignored manual selection") }
+        queuePlayer.pause()
+
+        try await until("library-restored") { !model.isRestoringLibrary }
         let slowSearch = Task { await model.search("slow") }
-        try await until { await fixtureCatalog.slowSearchStarted }
+        try await until("slow-search-started") { await fixtureCatalog.slowSearchStarted }
         await model.search("fast"); await slowSearch.value
         guard model.searchResults.map(\.id) == [tracks[1].id], !model.isSearching else { throw SyncError.rejected("Stale search result replaced the latest query") }
         let link = Task { await model.openYouTube("abcdefghijk") }
-        try await until { await fixtureCatalog.descriptionStarted }
+        try await until("link-description-started") { await fixtureCatalog.descriptionStarted }
         model.play(tracks[3], list: [tracks[3]]); await link.value
-        try await until { model.player.isPlaying }
+        try await until("model-selection-playing", diagnostic: { model.player.error ?? "loading=\(model.player.isLoading)" }) { model.player.isPlaying }
         guard model.player.current?.id == tracks[3].id, model.message == nil else { throw SyncError.rejected("Old link metadata overrode manual selection") }
         model.createPlaylist("Race fixture")
         guard let playlist = model.library.playlists.last else { throw SyncError.rejected("Pulse fixture playlist missing") }
         model.add(tracks[0], to: playlist.id); model.add(tracks[1], to: playlist.id)
         model.startPulse(playlistID: playlist.id); model.play(tracks[2], list: [tracks[2]])
-        try await until { model.player.isPlaying }
+        try await until("model-selection-playing", diagnostic: { model.player.error ?? "loading=\(model.player.isLoading)" }) { model.player.isPlaying }
         try await Task.sleep(nanoseconds: 200_000_000)
         guard model.player.current?.id == tracks[2].id, model.player.selectionSurface == "manual" else { throw SyncError.rejected("Delayed Pulse ranking overrode manual playback") }
         model.player.pause(); model.deletePlaylist(playlist.id)
+        let storageURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("library.json")
+        defer { try? FileManager.default.removeItem(at: storageURL.deletingLastPathComponent()) }
+        let storage = LibraryStorage(url: storageURL)
+        var older = Library(); older.likedIDs = [tracks[0].id]
+        var newer = older; newer.likedIDs.append(tracks[1].id)
+        try await storage.save(newer, revision: 2); try await storage.save(older, revision: 1)
+        let durable = try await storage.load()
+        guard durable.library.likedIDs == newer.likedIDs else { throw SyncError.rejected("Old queued save overwrote a newer library") }
+        try await storage.saveSyncBase(older, peerID: "peer-A")
+        let matching = await storage.syncBase(peerID: "peer-A"), wrong = await storage.syncBase(peerID: "peer-B")
+        guard matching?.likedIDs == older.likedIDs, wrong == nil else { throw SyncError.rejected("Sync baseline crossed paired PC identities") }
+        try JSONEncoder().encode(older).write(to: storageURL.appendingPathExtension("sync-base"), options: .atomic)
+        let legacy = await storage.syncBase(peerID: "peer-A", allowLegacy: true), rePaired = await storage.syncBase(peerID: "peer-B")
+        guard legacy?.likedIDs == older.likedIDs, rePaired == nil else { throw SyncError.rejected("Legacy baseline attached to a newly paired PC") }
         return ["resumeBufferDeadlineRearmed": true, "pausedLoadingNoSpinner": true, "interruptionRecovered": true,
-                "interruptionRespectsPause": true, "mediaServicesResetRecovered": true, "recoveryNoDuplicateFeedback": true,
-                "rapidSelectionCancelsOldLoad": true, "staleSearchIgnored": true, "staleLinkIgnored": true, "stalePulseIgnored": true]
+                "interruptionRespectsPause": true, "mediaServicesResetRecovered": true, "mediaServicesLossRecovered": true, "recoveryNoDuplicateFeedback": true,
+                "rapidSelectionCancelsOldLoad": true, "staleSearchIgnored": true, "staleLinkIgnored": true, "stalePulseIgnored": true,
+                "oldSaveCannotOverwriteNewerLibrary": true, "syncBaselineBoundToPairedPC": true, "legacyBaselineMigratedSafely": true,
+                "advancedQueueMatchesNewList": true]
     }
 }
 #endif

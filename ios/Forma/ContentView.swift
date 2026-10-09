@@ -57,7 +57,7 @@ struct HomeView: View {
     @Binding var showSettings: Bool
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            LazyVStack(alignment: .leading, spacing: 24) {
                 Text("Музыка ближе к тебе.").font(.largeTitle.bold()).padding(.top, 8)
                 if model.isRestoringLibrary { ProgressView("Открываем библиотеку…") }
                 GlassPanel {

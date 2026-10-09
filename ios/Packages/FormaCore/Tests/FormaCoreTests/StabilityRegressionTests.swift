@@ -99,4 +99,10 @@ final class StabilityRegressionTests: XCTestCase {
         XCTAssertEqual(Set(restored.likedIDs), Set([a, b])); XCTAssertEqual(restored.settings.discovery, 0.9)
         XCTAssertEqual(restored.playlists.map(\.id), ["new"])
     }
+    func testRestoreAndSyncPreservePlaylistDisplayOrder() {
+        var stored = Library(); stored.playlists = [Playlist(id: "z", name: "First", trackIDs: [a]), Playlist(id: "a", name: "Second", trackIDs: [b])]
+        XCTAssertEqual(LibrarySync.merge(current: stored, base: Library(), incoming: Library()).playlists.map(\.id), ["z", "a"])
+        var incoming = stored; incoming.playlists.append(Playlist(id: "m", name: "New", trackIDs: [c]))
+        XCTAssertEqual(LibrarySync.merge(current: stored, base: stored, incoming: incoming).playlists.map(\.id), ["z", "a", "m"])
+    }
 }

@@ -51,7 +51,7 @@ actor YouTubeCatalog: MusicCatalogProviding {
             var related = t; related.relatedTo = [track.id]; related.directRelatedTo = [track.id]; return related
         }
     }
-    func describe(videoID: String) async -> Track? {
+    nonisolated func describe(videoID: String) async -> Track? {
         guard VideoID.isValid(videoID), !Task.isCancelled else { return nil }
         let video = YouTube(videoID: videoID, useOAuth: false, allowOAuthCache: false, methods: [.local])
         guard let metadata = try? await video.metadata, !metadata.title.isEmpty, !Task.isCancelled else { return nil }

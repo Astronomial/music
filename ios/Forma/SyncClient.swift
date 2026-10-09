@@ -8,6 +8,7 @@ struct PCConnection: Codable, Sendable {
     let port: Int
     let pin: String
     var token: String
+    var baselineVersion: Int? = nil
     static func parse(_ code: String) throws -> (PCConnection, String) {
         guard let url = URLComponents(string: code.trimmingCharacters(in: .whitespacesAndNewlines)), url.scheme == "forma", url.host == "pair", url.user == nil, url.password == nil else { throw SyncError.invalidCode }
         func value(_ key: String) -> String? { url.queryItems?.first { $0.name == key }?.value }
@@ -97,6 +98,7 @@ actor SyncClient {
         try Task.checkCancellation()
         guard pairingGeneration == generation, !reply.token.isEmpty, reply.token.count <= 512 else { throw CancellationError() }
         next.token = reply.token
+        next.baselineVersion = 2
         let data = try JSONEncoder().encode(next)
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrAccount as String: account]
         let changes: [String: Any] = [kSecValueData as String: data, kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]

@@ -45,14 +45,24 @@ actor AudioContextCache {
         let expiresAt: Date
     }
     private var entries: [ObjectIdentifier: Entry] = [:]
+    private var tickets: [ObjectIdentifier: UUID] = [:]
+    func ticket(session: URLSession) -> UUID {
+        let id = ObjectIdentifier(session)
+        if let ticket = tickets[id] { return ticket }
+        if tickets.count >= 64 { tickets = tickets.filter { entries[$0.key] != nil } }
+        let ticket = UUID(); tickets[id] = ticket; return ticket
+    }
     func cached(session: URLSession) -> Entry? {
         guard let entry = entries[ObjectIdentifier(session)], entry.expiresAt > Date() else { return nil }
         return entry
     }
-    func store(configuration: Extraction.YtCfg, playerURL: URL?, session: URLSession) {
+    func store(configuration: Extraction.YtCfg, playerURL: URL?, session: URLSession, ticket: UUID) {
+        guard tickets[ObjectIdentifier(session)] == ticket, !Task.isCancelled else { return }
         entries = entries.filter { $0.value.expiresAt > Date() }
         if entries.count >= 8 { entries.removeAll() }
         entries[ObjectIdentifier(session)] = Entry(session: session, configuration: configuration, playerURL: playerURL, expiresAt: Date().addingTimeInterval(1200))
     }
-    func invalidate(session: URLSession) { entries[ObjectIdentifier(session)] = nil }
+    func invalidate(session: URLSession) {
+        let id = ObjectIdentifier(session); entries[id] = nil; tickets[id] = UUID()
+    }
 }
