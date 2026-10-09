@@ -82,6 +82,17 @@ final class AudioLoadingTests: XCTestCase {
         fixtureSession = URLSession(configuration: configuration)
         return YouTube(videoID: "abcdefghijk", methods: [.local], session: fixtureSession)
     }
+    func testNetworkContextResetForcesFreshConfigurationWithoutBreakingAudio() async throws {
+        let first = video(native: "visitor")
+        _ = try await first.audioStreams
+        await YouTube.resetAudioContext(session: fixtureSession)
+        AudioFixtureProtocol.lock.lock(); AudioFixtureProtocol.paths = []; AudioFixtureProtocol.lock.unlock()
+        let second = YouTube(videoID: "abcdefghij2", methods: [.local], session: fixtureSession)
+        let streams = try await second.audioStreams
+        XCTAssertFalse(streams.isEmpty)
+        AudioFixtureProtocol.lock.lock(); let paths = AudioFixtureProtocol.paths; AudioFixtureProtocol.lock.unlock()
+        XCTAssertTrue(paths.contains("/watch"), "A former VPN visitor context must not survive route reset")
+    }
     func testFastAudioDoesNotWaitForSlowWebScript() async throws {
         let video = video(scriptDelay: 3), start = Date()
         let streams = try await video.audioStreams

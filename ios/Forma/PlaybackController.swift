@@ -17,6 +17,8 @@ final class PlaybackController: ObservableObject {
     @Published private(set) var measurements: [PlaybackMeasurement] = []
     private var startTiming: (at: TimeInterval, wall: Date, resolved: TimeInterval?, source: String)?
     @Published var volume: Float = 0.7 { didSet { engine.volume = volume } }
+    @Published private(set) var networkPolicy = NetworkPolicy.unknown
+    var onConnectivityChange: ((NetworkPolicy) -> Void)?
     var onStarted: ((Track) -> Void)?
     var onSelected: ((Track) -> Void)?
     var selectionMood: String? { mood }
@@ -58,6 +60,10 @@ final class PlaybackController: ObservableObject {
     private var artwork: MPMediaItemArtwork?
     private var artworkTask: Task<Void, Never>?
     private var networkSignature: String?
+    private var networkRecoveryTask: Task<Void, Never>?
+    private var stallTask: Task<Void, Never>?
+    private var stallObserver: NSObjectProtocol?
+    private var networkRecovering = false
 
     init(resolver: any StreamResolving = YouTubeStreamResolver(), extractionTimeout: TimeInterval = 12, bufferTimeout: TimeInterval = 8) {
         self.resolver = resolver; self.extractionTimeout = extractionTimeout; self.bufferTimeout = bufferTimeout
@@ -83,22 +89,65 @@ final class PlaybackController: ObservableObject {
         installRemoteCommands()
         installAudioEvents()
         network.pathUpdateHandler = { [weak self] path in
-            let signature = "\(path.status)|\(path.usesInterfaceType(.wifi))|\(path.usesInterfaceType(.cellular))|\(path.usesInterfaceType(.wiredEthernet))"
-            Task { @MainActor in
-                guard let self else { return }
-                let previous = self.networkSignature; self.networkSignature = signature
-                // Initial monitor delivery must not cancel the first track's extraction.
-                if let previous, previous != signature { await self.resolver.invalidate() }
-            }
+            let policy = NetworkPolicy(reachable: path.status == .satisfied, cellular: path.usesInterfaceType(.cellular), expensive: path.isExpensive, constrained: path.isConstrained)
+            let interfaces = path.availableInterfaces.filter { path.usesInterfaceType($0.type) }.map(\.name).sorted().joined(separator: ",")
+            let signature = "\(path.status)|\(interfaces)|\(path.gateways)|\(policy.cellular)|\(policy.expensive)"
+            Task { @MainActor in self?.networkChanged(policy, signature: signature) }
         }
         network.start(queue: DispatchQueue(label: "music.forma.network"))
     }
     deinit {
-        task?.cancel(); startWatchdog?.cancel(); prefetch?.cancel(); artworkTask?.cancel(); network.cancel()
+        task?.cancel(); startWatchdog?.cancel(); prefetch?.cancel(); artworkTask?.cancel(); networkRecoveryTask?.cancel(); stallTask?.cancel(); network.cancel()
         if let periodic { engine.removeTimeObserver(periodic) }
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+        if let stallObserver { NotificationCenter.default.removeObserver(stallObserver) }
         for observer in systemObservers { NotificationCenter.default.removeObserver(observer) }
         for (command, target) in remoteTargets { command.removeTarget(target) }
+    }
+    private func networkChanged(_ policy: NetworkPolicy, signature: String) {
+        let previous = networkSignature; networkSignature = signature
+        networkPolicy = policy; onConnectivityChange?(policy)
+        if previous == nil, policy.reachable {
+            // Initial delivery updates budgets, without cancelling the cold start.
+            if isLoading { armStartWatchdog(seconds: engine.currentItem == nil ? policy.extractionDeadline(base: extractionTimeout) : policy.bufferDeadline(base: bufferTimeout), token: generation) }
+            return
+        }
+        guard previous != signature else { return }
+        networkRecoveryTask?.cancel(); stallTask?.cancel(); networkRecovering = true
+        adoptPreparedItem()
+        preparationToken = UUID(); prefetch?.cancel(); preparing = false; prefetchedCurrent = nil; failedCandidates = []
+        if let ready = prepared, engine.currentItem !== ready.item { engine.remove(ready.item) }
+        prepared = nil
+        // URLs are tied to the connection that resolved them. Keep audible buffered
+        // audio, but cancel an unfinished old-route start and replace it after settling.
+        if isLoading {
+            generation = UUID(); task?.cancel(); startWatchdog?.cancel(); engine.removeAllItems()
+        }
+        networkRecoveryTask = Task { [weak self] in
+            do { try await Task.sleep(nanoseconds: 350_000_000) } catch { return }
+            guard let self, networkSignature == signature, !Task.isCancelled else { return }
+            await resolver.invalidate()
+            guard networkSignature == signature, !Task.isCancelled else { return }
+            networkRecovering = !policy.reachable
+            guard policy.reachable, requestedPlayback else { return }
+            if let current, isLoading || engine.currentItem == nil || engine.currentItem?.status == .failed || engine.timeControlStatus != .playing {
+                start(current, at: position, refreshing: true)
+            } else { prepareNext() }
+        }
+    }
+#if DEBUG && targetEnvironment(simulator)
+    func debugNetworkChanged(_ policy: NetworkPolicy, signature: String) { networkChanged(policy, signature: signature) }
+#endif
+    private func recoverStall(token: UUID) {
+        stallTask?.cancel()
+        stallTask = Task { [weak self] in
+            do { try await Task.sleep(nanoseconds: 2_000_000_000) } catch { return }
+            guard let self, generation == token, requestedPlayback, !networkRecovering,
+                  networkPolicy.reachable, engine.timeControlStatus != .playing,
+                  retryCount < 2, let current else { return }
+            retryCount += 1
+            start(current, at: position, refreshing: true)
+        }
     }
     func play(_ track: Track, list: [Track]? = nil, asPulse: Bool = false, context: String? = nil) {
         // AVQueuePlayer may have advanced before its asynchronous KVO callback arrives.
@@ -122,7 +171,7 @@ final class PlaybackController: ObservableObject {
     }
     private func start(_ track: Track, at seconds: Double = 0, refreshing: Bool = false) {
         if !refreshing || startTiming == nil { beginTiming(source: "network") }
-        task?.cancel(); prefetch?.cancel(); artworkTask?.cancel()
+        task?.cancel(); prefetch?.cancel(); artworkTask?.cancel(); stallTask?.cancel()
         prefetchedCurrent = nil; failedCandidates = []
         let token = UUID(); generation = token
         engine.pause(); engine.removeAllItems(); prepared = nil; preparing = false
@@ -131,7 +180,8 @@ final class PlaybackController: ObservableObject {
         if !refreshing { clock.reset() }; seeking = false; error = nil; isLoading = true; isPlaying = false; requestedPlayback = true
         if !refreshing { retryCount = 0; artwork = nil; loadArtwork(for: track) }
         updateNowPlaying()
-        armStartWatchdog(seconds: extractionTimeout, token: token)
+        if networkPolicy.known && !networkPolicy.reachable { return }
+        armStartWatchdog(seconds: networkPolicy.extractionDeadline(base: extractionTimeout), token: token)
         task = Task { [weak self] in
             guard let self else { return }
             do {
@@ -143,9 +193,9 @@ final class PlaybackController: ObservableObject {
                     if resolved.resolvedAt < timing.wall { timing.source = "cached" }
                     startTiming = timing
                 }
-                if requestedPlayback { armStartWatchdog(seconds: bufferTimeout, token: token) }
+                if requestedPlayback { armStartWatchdog(seconds: networkPolicy.bufferDeadline(base: bufferTimeout), token: token) }
                 let item = AVPlayerItem(url: resolved.url)
-                item.preferredForwardBufferDuration = 3
+                item.preferredForwardBufferDuration = networkPolicy.lean ? 6 : 3
                 observe(item, token: token)
                 engine.insert(item, after: nil)
                 if seconds > 0 { await engine.seek(to: CMTime(seconds: seconds, preferredTimescale: 600)) }
@@ -160,7 +210,7 @@ final class PlaybackController: ObservableObject {
         }
     }
     func toggle() { requestedPlayback ? pause() : resume() }
-    func pause() { startWatchdog?.cancel(); startTiming = nil; requestedPlayback = false; engine.pause(); isPlaying = false; updateNowPlaying() }
+    func pause() { stallTask?.cancel(); startWatchdog?.cancel(); startTiming = nil; requestedPlayback = false; engine.pause(); isPlaying = false; updateNowPlaying() }
     func resume() {
         guard let current else { return }
         if engine.currentItem == nil || engine.currentItem?.status == .failed { start(current, at: position, refreshing: true); return }
@@ -224,9 +274,8 @@ final class PlaybackController: ObservableObject {
         return header + measurements.map { "\($0.title) | \($0.source) | всего \(Int($0.totalMilliseconds)) мс | поток \(Int($0.resolutionMilliseconds)) мс | буфер \(Int($0.bufferMilliseconds)) мс" }.joined(separator: "\n")
     }
     private func markStarted() {
-        guard let current, startedID != current.id else { return }
-        startWatchdog?.cancel()
-        startedID = current.id
+        guard let current else { return }
+        startWatchdog?.cancel(); stallTask?.cancel()
         if let timing = startTiming {
             let now = ProcessInfo.processInfo.systemUptime
             let sample = PlaybackMeasurement(title: "\(current.artist) — \(current.title)", source: timing.source,
@@ -234,7 +283,7 @@ final class PlaybackController: ObservableObject {
                 resolutionMilliseconds: timing.resolved.map { ($0 - timing.at) * 1000 } ?? 0)
             measurements = Array((measurements + [sample]).suffix(30)); startTiming = nil
         }
-        onStarted?(current)
+        if startedID != current.id { startedID = current.id; onStarted?(current) }
         // Begin next-track extraction as soon as the current track is audible.
         prepareNext()
     }
@@ -266,9 +315,13 @@ final class PlaybackController: ObservableObject {
                 else { self.next(ended: true) }
             }
         }
+        if let stallObserver { NotificationCenter.default.removeObserver(stallObserver) }
+        stallObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemPlaybackStalled, object: item, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.recoverStall(token: token) }
+        }
         itemObservation = item.observe(\.status, options: [.initial, .new]) { [weak self, weak item] _, _ in
             Task { @MainActor in
-                guard let self, let item, self.generation == token, item.status == .failed else { return }
+                guard let self, let item, self.generation == token, item.status == .failed, !self.networkRecovering else { return }
 #if DEBUG && targetEnvironment(simulator)
                 if ProcessInfo.processInfo.arguments.contains("--forma-smoke") { print("Native item failed for \(self.current?.id ?? "none"): \(item.error?.localizedDescription ?? "unknown")") }
 #endif
@@ -280,7 +333,7 @@ final class PlaybackController: ObservableObject {
         }
     }
     private func prepareNext() {
-        guard !preparing, prepared == nil, let next = candidate(), let active = engine.currentItem else { return }
+        guard !networkRecovering, !preparing, prepared == nil, let next = candidate(), let active = engine.currentItem else { return }
         preparing = true
         prefetchedCurrent = next.id
         let token = generation, requestToken = UUID(); preparationToken = requestToken
@@ -290,10 +343,10 @@ final class PlaybackController: ObservableObject {
                 let audio = try await resolver.resolve(videoID: next.id, forceRefresh: false)
                 try Task.checkCancellation()
                 guard generation == token, preparationToken == requestToken, engine.currentItem === active else { return }
-                let item = AVPlayerItem(url: audio.url); item.preferredForwardBufferDuration = 8
+                let item = AVPlayerItem(url: audio.url); item.preferredForwardBufferDuration = networkPolicy.lean ? 12 : 8
                 guard engine.canInsert(item, after: active) else { preparing = false; return }
                 prepared = (next, item, audio); engine.insert(item, after: active); preparing = false
-                if let later = candidate(excluding: [next.id]) { await resolver.prewarm(videoIDs: [later.id]) }
+                if networkPolicy.canPrewarmExtraTracks, let later = candidate(excluding: [next.id]) { await resolver.prewarm(videoIDs: [later.id]) }
             } catch {
                 guard generation == token, preparationToken == requestToken else { return }
                 preparing = false

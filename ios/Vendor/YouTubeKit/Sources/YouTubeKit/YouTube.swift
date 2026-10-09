@@ -16,6 +16,11 @@ public class YouTube {
     
     private static let playerScripts = PlayerScriptCache()
     private static let audioContexts = AudioContextCache()
+    /// Clear connection-sensitive anonymous context after a network/VPN handoff.
+    /// Player JavaScript is connection-independent and remains cached.
+    public static func resetAudioContext(session: URLSession = YouTubeNetwork.session) async {
+        await audioContexts.invalidate(session: session)
+    }
     private let session: URLSession
     
     private var _videoInfos: [InnerTube.VideoInfo]?
@@ -317,6 +322,7 @@ public class YouTube {
                                 if configured {
                                     configuration = try await worker.ytcfg
                                     let playerURL = (try? Extraction.jsURL(html: await worker.watchHTML)).flatMap { URL(string: $0) }
+                                    try Task.checkCancellation()
                                     await Self.audioContexts.store(configuration: configuration, playerURL: playerURL, session: session)
                                 } else if let cachedContext { configuration = cachedContext.configuration }
                                 else { configuration = try JSONDecoder().decode(Extraction.YtCfg.self, from: Data("{}".utf8)) }

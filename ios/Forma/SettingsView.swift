@@ -14,9 +14,9 @@ struct SettingsView: View {
                         Text("Синхронизация с ПК").font(.title2.bold())
                         Text("Подключи iPhone и ПК к одной Wi-Fi сети. Открой в Forma на ПК «Настройки → Подключить iPhone».").foregroundStyle(.secondary)
                         TextField("Вставь код подключения", text: $code, axis: .vertical).textInputAutocapitalization(.never).autocorrectionDisabled().textFieldStyle(.roundedBorder)
-                        Button { Task { await model.pairPC(code) } } label: { Label("Подключить", systemImage: "laptopcomputer.and.iphone") }.buttonStyle(.borderedProminent).disabled(model.isSyncing || code.isEmpty)
+                        Button { Task { await model.pairPC(code) } } label: { Label("Подключить", systemImage: "laptopcomputer.and.iphone") }.buttonStyle(.borderedProminent).disabled(model.isSyncing || code.isEmpty || !model.canSynchronizePC)
                         if model.pcHost != nil {
-                            Button("Синхронизировать сейчас") { Task { await model.synchronize(showErrors: true) } }.buttonStyle(.bordered).disabled(model.isSyncing)
+                            Button("Синхронизировать сейчас") { Task { await model.synchronize(showErrors: true) } }.buttonStyle(.bordered).disabled(model.isSyncing || !model.canSynchronizePC)
                             Button("Отключить ПК", role: .destructive) { Task { await model.disconnectPC() } }
                         }
                         if model.isSyncing { ProgressView("Переносим библиотеку…") }
@@ -38,7 +38,7 @@ struct SettingsView: View {
                 }
                 GlassPanel { DisclosureGroup("Скорость воспроизведения") { PlaybackPerformanceView(player: model.player) } }
                 NavigationLink { PulseSettingsView(model: model) } label: { Label("Настроить Пульс", systemImage: "slider.horizontal.3").font(.headline) }
-                Text("Forma 1.1.0 · iOS 17+\nВоспроизведение работает через нативный плеер. YouTube должен быть доступен в твоей сети.").font(.footnote).foregroundStyle(.secondary)
+                Text("Forma 1.1.1 · iOS 17+\nВоспроизведение работает через нативный плеер. YouTube должен быть доступен в твоей сети.").font(.footnote).foregroundStyle(.secondary)
             }.padding(20)
         }.background(FormaTheme.background).navigationTitle("Настройки")
     }

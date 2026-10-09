@@ -23,7 +23,8 @@ struct ContentView: View {
         } message: { Text(model.message ?? "") }
         .task {
             guard !ProcessInfo.processInfo.arguments.contains("--forma-smoke") else { return }
-            if model.library.tracks.isEmpty || UserDefaults.standard.integer(forKey: "forma.discoveryRevision") < 4 { await model.refresh() }
+            while !model.player.networkPolicy.known, !Task.isCancelled { try? await Task.sleep(nanoseconds: 50_000_000) }
+            if model.library.tracks.isEmpty || UserDefaults.standard.integer(forKey: "forma.discoveryRevision") < 4 { await model.refresh(automatic: true) }
             while !Task.isCancelled {
                 if scenePhase == .active { await model.synchronize() }
                 try? await Task.sleep(nanoseconds: 30_000_000_000)

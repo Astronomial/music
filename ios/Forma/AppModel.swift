@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import Network
 import FormaCore
 
 @MainActor
@@ -13,6 +14,11 @@ final class AppModel: ObservableObject {
     @Published private(set) var pcHost: String?
     @Published private(set) var syncStatus = "Подключи ПК, чтобы перенести библиотеку"
     @Published var message: String?
+    @Published private(set) var localWiFiAvailable = false
+    var canSynchronizePC: Bool { player.networkPolicy.canSyncPC(localWiFi: localWiFiAvailable) }
+    private let localWiFiMonitor = NWPathMonitor(requiredInterfaceType: .wifi)
+    private var syncBackoff = SyncBackoff()
+    private var lastAutomaticRefresh = Date.distantPast
     let player: PlaybackController
     private let streams: YouTubeStreamResolver
     private let audioResolver: any StreamResolving
@@ -50,6 +56,16 @@ final class AppModel: ObservableObject {
             library.settings.discovery = 0.7; library.settings.recommendationVersion = 2
         }
         updateRecommendations()
+        localWiFiMonitor.pathUpdateHandler = { [weak self] path in
+            let available = path.status == .satisfied
+            Task { @MainActor in self?.localWiFiChanged(available) }
+        }
+        localWiFiMonitor.start(queue: DispatchQueue(label: "music.forma.local-wifi"))
+        player.onConnectivityChange = { [weak self] policy in
+            guard let self else { return }
+            if !canSynchronizePC { stopSyncForNetwork() }
+            if !policy.canPrewarmExtraTracks { Task { await self.audioResolver.prewarm(videoIDs: []) } }
+        }
         player.onSelected = { [weak self] track in
             guard let self else { return }
             self.activeContext = self.selectedContexts.removeValue(forKey: track.id) ?? self.context(for: track)
@@ -64,7 +80,7 @@ final class AppModel: ObservableObject {
             let exposure = self.library.events.last { $0.trackID == event.trackID && $0.kind == .play }
             self.library.record(ListeningEvent(trackID: event.trackID, kind: event.kind, at: event.at, seconds: event.seconds, ratio: event.ratio, mood: event.mood, newArtist: exposure?.newArtist, recommendation: exposure?.recommendation, surface: exposure?.surface))
             self.persist(); self.updateRecommendations()
-            if self.library.events.count % 4 == 0 { Task { await self.refresh() } }
+            if self.library.events.count % 4 == 0 { Task { await self.refresh(automatic: true) } }
         }
         player.pulseNext = { [weak self] excluded, mood in
             guard let self else { return nil }
@@ -77,10 +93,21 @@ final class AppModel: ObservableObject {
         Task {
             let connection = await sync.restore(); pcHost = connection?.host
             syncBase = await storage?.syncBase()
-            if pcHost != nil { syncStatus = "ПК подключён. Синхронизируем в общей Wi-Fi сети" }
+            if pcHost != nil { syncStatus = canSynchronizePC ? "ПК подключён. Синхронизируем в общей Wi-Fi сети" : "Синхронизация продолжится по Wi-Fi. Изменения сохранены"; scheduleSync() }
         }
     }
-    func prepareTracks(_ tracks: [Track]) async { await audioResolver.prewarm(videoIDs: Array(tracks.prefix(3).map(\.id))) }
+    deinit { localWiFiMonitor.cancel() }
+    private func localWiFiChanged(_ available: Bool) {
+        guard available != localWiFiAvailable else { return }
+        localWiFiAvailable = available; syncBackoff.reset()
+        if canSynchronizePC { scheduleSync() } else { stopSyncForNetwork() }
+    }
+    private func stopSyncForNetwork() {
+        syncTask?.cancel(); syncEpoch = UUID(); isSyncing = false
+        Task { await sync.cancelPendingRequests() }
+        if pcHost != nil { syncStatus = "Синхронизация продолжится по Wi-Fi. Изменения сохранены" }
+    }
+    func prepareTracks(_ tracks: [Track]) async { guard player.networkPolicy.canPrewarmExtraTracks else { return }; await audioResolver.prewarm(videoIDs: Array(tracks.prefix(3).map(\.id))) }
     var liked: [Track] { library.likedIDs.compactMap { library.tracks[$0] } }
     func isLiked(_ track: Track) -> Bool { library.likedIDs.contains(track.id) }
     func toggleLike(_ track: Track) {
@@ -165,8 +192,14 @@ final class AppModel: ObservableObject {
             if let tracks = try? await catalog.related(to: track) { merge(tracks) }
         }
     }
-    func refresh() async {
+    func refresh(automatic: Bool = false) async {
         guard !isRefreshing else { return }
+        let networkPolicy = player.networkPolicy
+        if automatic {
+            guard networkPolicy.reachable, !player.isLoading,
+                  Date().timeIntervalSince(lastAutomaticRefresh) >= networkPolicy.automaticRefreshInterval else { return }
+            lastAutomaticRefresh = Date()
+        }
         isRefreshing = true; defer { isRefreshing = false }
         let settings = library.settings
         let genres = (settings.genres.isEmpty ? ["Pop"] : settings.genres).filter { !settings.excludedGenres.contains($0) }
@@ -174,8 +207,18 @@ final class AppModel: ObservableObject {
         let anchors = PulseEngine.anchors(in: contextualLibrary(), limit: 6)
         let catalog = self.catalog
         enum Request: Sendable { case search(BilingualDiscovery.Search), related(Track), artist(String) }
-        let requests: [Request] = anchors.map { .related($0) } + settings.preferredArtists.prefix(3).map { .artist($0) } + BilingualDiscovery.searches(genres: genres, suffix: suffix, hints: hints, language: settings.languagePreference).map { .search($0) }
-        let parallelism = player.current == nil ? 3 : 2
+        let searches = BilingualDiscovery.searches(genres: genres, suffix: suffix, hints: hints, language: settings.languagePreference)
+        let selectedSearches: [BilingualDiscovery.Search]
+        if automatic && networkPolicy.lean {
+            // Keep all six moods and the preferred language, without starting
+            // two searches per mood plus every genre while audio needs the VPN.
+            selectedSearches = MoodMix.all.compactMap { mood in
+                let choices = searches.filter { $0.mood == mood.id }
+                return settings.languagePreference == "ru" ? choices.first(where: { $0.hints.contains("discovery:ru") }) : choices.last
+            }
+        } else { selectedSearches = searches }
+        let requests: [Request] = anchors.prefix(networkPolicy.lean ? 2 : 6).map { .related($0) } + settings.preferredArtists.prefix(networkPolicy.lean ? 1 : 3).map { .artist($0) } + selectedSearches.map { .search($0) }
+        let parallelism = min(networkPolicy.catalogParallelism, player.current == nil ? 3 : 2)
         var index = 0, successes = 0, failure: String?, collected: [Track] = []
         // Bound parallelism to three network requests; show completed batches immediately.
         await withTaskGroup(of: ([Track], String?).self) { group in
@@ -196,14 +239,14 @@ final class AppModel: ObservableObject {
             for await (tracks, notice) in group {
                 if Task.isCancelled { group.cancelAll(); break }
                 if notice == nil { collected += tracks; merge(tracks); successes += 1 } else { failure = notice }
-                if index < requests.count { submit(requests[index]); index += 1 }
+                if index < requests.count, !(automatic && player.isLoading) { submit(requests[index]); index += 1 }
             }
         }
         if successes > 0, !Task.isCancelled {
             let snapshot = library, candidates = collected
-            let bridges = await Task.detached(priority: .utility) { Array(PulseEngine.rank(candidates, library: snapshot, limit: 12).filter(\.newArtist).prefix(3).map(\.track)) }.value
+            let bridges = await Task.detached(priority: .utility) { Array(PulseEngine.rank(candidates, library: snapshot, limit: 12).filter(\.newArtist).prefix(networkPolicy.lean ? 1 : 3).map(\.track)) }.value
             for bridge in bridges {
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, !(automatic && player.isLoading) else { return }
                 if var next = try? await catalog.related(to: bridge) {
                     for i in next.indices { next[i].relatedTo = Array(Set(next[i].relatedTo + bridge.relatedTo)).sorted() }
                     merge(next)
@@ -221,7 +264,7 @@ final class AppModel: ObservableObject {
             let tracks = try await catalog.search(query)
             guard searchGeneration == token, !Task.isCancelled else { return }
             searchResults = tracks; merge(tracks)
-            await audioResolver.prewarm(videoIDs: Array(tracks.prefix(3).map(\.id)))
+            if player.networkPolicy.canPrewarmExtraTracks { await audioResolver.prewarm(videoIDs: Array(tracks.prefix(3).map(\.id))) }
         } catch is CancellationError { }
         catch { if searchGeneration == token, !Task.isCancelled { message = error.localizedDescription; searchResults = [] } }
         if searchGeneration == token { isSearching = false }
@@ -262,7 +305,7 @@ final class AppModel: ObservableObject {
             guard recommendationGeneration == token, !Task.isCancelled else { return }
             recommendations = result.0; pulseCache = result.1; moodCache = result.2; playbackIndex = result.3
             player.refreshPreparedSelection()
-            if player.current == nil { await audioResolver.prewarm(videoIDs: Array(pulseCache.prefix(3).map(\.id))) }
+            if player.current == nil, player.networkPolicy.canPrewarmExtraTracks { await audioResolver.prewarm(videoIDs: Array(pulseCache.prefix(3).map(\.id))) }
         }
     }
     func persist(immediately: Bool = false) {
@@ -276,13 +319,14 @@ final class AppModel: ObservableObject {
         scheduleSync()
     }
     private func scheduleSync() {
-        guard pcHost != nil else { return }
+        guard pcHost != nil, canSynchronizePC, syncBackoff.allows() else { return }
         syncTask?.cancel(); syncTask = Task {
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             guard !Task.isCancelled else { return }; await synchronize()
         }
     }
     func pairPC(_ code: String) async {
+        guard canSynchronizePC else { message = "Для подключения ПК нужна общая Wi-Fi сеть."; return }
         guard !isSyncing else { return }
         isSyncing = true
         do {
@@ -296,8 +340,10 @@ final class AppModel: ObservableObject {
     }
     func synchronize(showErrors: Bool = false) async {
         guard !isSyncing, pcHost != nil else { return }
-        isSyncing = true; defer { isSyncing = false }
+        guard canSynchronizePC else { stopSyncForNetwork(); return }
+        guard syncBackoff.allows(manual: showErrors) else { return }
         let epoch = syncEpoch
+        isSyncing = true; defer { if syncEpoch == epoch { isSyncing = false } }
         let sent = library
         do {
             let remote = try await sync.synchronize(library: sent, base: syncBase)
@@ -305,8 +351,10 @@ final class AppModel: ObservableObject {
             persistTask?.cancel()
             library = LibrarySync.merge(current: LibrarySync.preservingLearning(in: remote, from: sent), base: sent, incoming: library)
             syncBase = remote; try await storage?.saveSyncBase(remote); try await storage?.save(library)
-            updateRecommendations(); syncStatus = "Синхронизировано · \(Date().formatted(date: .omitted, time: .shortened))"
+            syncBackoff.reset(); updateRecommendations(); syncStatus = "Синхронизировано · \(Date().formatted(date: .omitted, time: .shortened))"
         } catch {
+            guard epoch == syncEpoch else { return }
+            syncBackoff.failed()
             syncStatus = "ПК недоступен. Изменения сохранены на iPhone"
             if showErrors { message = error.localizedDescription }
         }

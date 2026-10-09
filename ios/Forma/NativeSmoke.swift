@@ -34,6 +34,22 @@ private actor RecoveringFixtureResolver: StreamResolving {
     func cancel(videoID: String) async { cancellations += 1 }
     func invalidate() async {}
 }
+private actor HandoffFixtureResolver: StreamResolving {
+    let audio: ResolvedAudio
+    private(set) var calls = 0
+    private(set) var cancelled = 0
+    private(set) var freshRequests = 0
+    init(audio: ResolvedAudio) { self.audio = audio }
+    func resolve(videoID: String, forceRefresh: Bool) async throws -> ResolvedAudio {
+        calls += 1; if forceRefresh { freshRequests += 1 }
+        if calls == 1 {
+            do { try await Task.sleep(nanoseconds: 5_000_000_000) }
+            catch { cancelled += 1; throw error }
+        }
+        return audio
+    }
+    func invalidate() async {}
+}
 @MainActor
 enum NativeSmoke {
     private static var started = false
@@ -96,6 +112,33 @@ enum NativeSmoke {
             }
             guard recoveryPlayer.isPlaying else { throw SyncError.rejected("Retry failed to recover after timeout") }
             recoveryPlayer.pause()
+            let handoffResolver = HandoffFixtureResolver(audio: recoveryAudio)
+            let handoffPlayer = PlaybackController(resolver: handoffResolver)
+            for _ in 0..<100 {
+                if handoffPlayer.networkPolicy.known { break }
+                try await Task.sleep(nanoseconds: 20_000_000)
+            }
+            var handoffStarts = 0, handoffFeedback = 0
+            handoffPlayer.onStarted = { _ in handoffStarts += 1 }
+            handoffPlayer.onFeedback = { _ in handoffFeedback += 1 }
+            handoffPlayer.play(tracks[0], list: [tracks[0]])
+            for _ in 0..<100 {
+                if await handoffResolver.calls > 0 { break }
+                try await Task.sleep(nanoseconds: 10_000_000)
+            }
+            handoffPlayer.debugNetworkChanged(NetworkPolicy(reachable: true, cellular: true, expensive: true), signature: "cellular-vpn")
+            for _ in 0..<100 {
+                if handoffPlayer.isPlaying { break }
+                try await Task.sleep(nanoseconds: 30_000_000)
+            }
+            let cancelledRequests = await handoffResolver.cancelled, freshRequests = await handoffResolver.freshRequests
+            guard handoffPlayer.isPlaying, handoffPlayer.error == nil, cancelledRequests == 1,
+                  freshRequests == 1, handoffStarts == 1, handoffFeedback == 0 else { throw SyncError.rejected("Network handoff did not restart unfinished audio cleanly") }
+            handoffPlayer.pause()
+            handoffPlayer.debugNetworkChanged(NetworkPolicy(reachable: false), signature: "vpn-reconnecting")
+            handoffPlayer.debugNetworkChanged(NetworkPolicy(reachable: true, cellular: true, expensive: true), signature: "vpn-restored")
+            try await Task.sleep(nanoseconds: 500_000_000)
+            guard !handoffPlayer.isPlaying else { throw SyncError.rejected("Network recovery overrode a manual pause") }
             let player = model.player
             model.toggleLike(tracks[0])
             guard model.isLiked(tracks[0]) else { throw SyncError.rejected("Mini-player favourite state failed") }
@@ -133,6 +176,15 @@ enum NativeSmoke {
             let preparedPlayingMilliseconds = warmed.totalMilliseconds
             let callsAfter = await fixtureResolver.calls[tracks[1].id]
             guard callsAfter == callsBefore else { throw SyncError.rejected("Prepared track was extracted twice: \(callsBefore ?? 0) -> \(callsAfter ?? 0); \(player.error ?? "no error"), playing \(player.isPlaying)") }
+            // Rebuild the queued asset on a new network even if its URL has not
+            // expired; continuing buffered current audio must remain uninterrupted.
+            player.debugNetworkChanged(NetworkPolicy(reachable: true, cellular: true, expensive: true), signature: "prepared-cellular-vpn")
+            guard player.debugPreparedTrackID == nil else { throw SyncError.rejected("Prepared old-network URL survived handoff") }
+            for _ in 0..<100 {
+                if player.debugPreparedTrackID == tracks[2].id { break }
+                try await Task.sleep(nanoseconds: 30_000_000)
+            }
+            guard player.isPlaying, player.debugPreparedTrackID == tracks[2].id else { throw SyncError.rejected("Next audio was not prepared on the new network") }
             try await Task.sleep(nanoseconds: 200_000_000)
             func tabBar(in view: UIView) -> UITabBar? {
                 if let bar = view as? UITabBar { return bar }
@@ -176,7 +228,7 @@ enum NativeSmoke {
             guard !player.isPlaying else { throw SyncError.rejected("Explicit pause failed") }
             player.resume(); try await Task.sleep(nanoseconds: 500_000_000)
             guard player.isPlaying else { throw SyncError.rejected("Resume failed") }
-            write(["status": "passed", "nativeStarts": starts.count, "automaticTransitions": feedback.count, "background": background, "pinnedTLS": true, "wrongPinRejected": rejectedWrongPin, "bidirectionalSync": true, "pauseResume": true, "miniPlayerAboveTabs": true, "miniPlayerBottom": miniFrame.maxY, "tabBarTop": barFrame.minY, "preparedManualSwitchMilliseconds": switchDelay * 1000, "preparedStreamReused": true, "controlledColdStartMilliseconds": coldStartMilliseconds, "preparedPlayingMilliseconds": preparedPlayingMilliseconds, "startupTimeoutRecovered": true, "recommendationSnapshotCaptured": true, "explicitLearningFeedbackCaptured": true])
+            write(["status": "passed", "nativeStarts": starts.count, "automaticTransitions": feedback.count, "background": background, "pinnedTLS": true, "wrongPinRejected": rejectedWrongPin, "bidirectionalSync": true, "pauseResume": true, "miniPlayerAboveTabs": true, "miniPlayerBottom": miniFrame.maxY, "tabBarTop": barFrame.minY, "preparedManualSwitchMilliseconds": switchDelay * 1000, "preparedStreamReused": true, "controlledColdStartMilliseconds": coldStartMilliseconds, "preparedPlayingMilliseconds": preparedPlayingMilliseconds, "startupTimeoutRecovered": true, "recommendationSnapshotCaptured": true, "explicitLearningFeedbackCaptured": true, "networkHandoffRecovered": true, "oldNetworkPreparedItemDiscarded": true, "networkRecoveryRespectsPause": true])
             player.pause()
         } catch { let failure = error as NSError; write(["status": "failed", "stage": stage, "error": error.localizedDescription, "domain": failure.domain, "code": failure.code, "taskCancelled": Task.isCancelled]) }
     }

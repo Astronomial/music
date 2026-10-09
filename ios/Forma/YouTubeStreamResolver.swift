@@ -11,6 +11,11 @@ actor YouTubeStreamResolver: StreamResolving {
     private var warmingGeneration = UUID()
     private var cache: [String: ResolvedAudio] = [:]
     func resolve(videoID: String, forceRefresh: Bool = false) async throws -> ResolvedAudio {
+        let optionalIDs = warmingIDs; warming?.cancel(); warmingIDs = []; warmingGeneration = UUID()
+        for id in optionalIDs where id != videoID { inflight[id]?.task.cancel(); inflight[id] = nil }
+        return try await resolveAudio(videoID: videoID, forceRefresh: forceRefresh)
+    }
+    private func resolveAudio(videoID: String, forceRefresh: Bool) async throws -> ResolvedAudio {
         guard VideoID.isValid(videoID) else { throw ResolverError.invalidID }
         if !forceRefresh, let hit = cache[videoID], hit.isFresh() { return hit }
         if !forceRefresh, let pending = inflight[videoID] { return try await pending.task.value }
@@ -45,13 +50,15 @@ actor YouTubeStreamResolver: StreamResolving {
     func prewarm(videoIDs: [String]) {
         let ids = Array(videoIDs.filter { VideoID.isValid($0) && cache[$0]?.isFresh() != true }.prefix(3))
         guard ids != warmingIDs else { return }
-        warming?.cancel(); warmingIDs = ids
+        warming?.cancel()
+        for old in warmingIDs where !ids.contains(old) { inflight[old]?.task.cancel(); inflight[old] = nil }
+        warmingIDs = ids
         let token = UUID(); warmingGeneration = token
         warming = Task(priority: .utility) { [weak self] in
             try? await Task.sleep(nanoseconds: 250_000_000)
             for id in ids {
                 guard !Task.isCancelled, let self else { return }
-                _ = try? await self.resolve(videoID: id, forceRefresh: false)
+                _ = try? await self.resolveAudio(videoID: id, forceRefresh: false)
             }
             await self?.finishWarming(token: token)
         }
@@ -62,7 +69,11 @@ actor YouTubeStreamResolver: StreamResolving {
     func cancel(videoID: String) {
         inflight[videoID]?.task.cancel(); inflight[videoID] = nil; cache[videoID] = nil
     }
-    func invalidate() { warming?.cancel(); warmingIDs = []; cache.removeAll(); inflight.values.forEach { $0.task.cancel() }; inflight.removeAll() }
+    func invalidate() async {
+        warming?.cancel(); warmingIDs = []; warmingGeneration = UUID(); cache.removeAll()
+        inflight.values.forEach { $0.task.cancel() }; inflight.removeAll()
+        await YouTube.resetAudioContext()
+    }
     enum ResolverError: LocalizedError {
         case invalidID, noAudio, expired
         case extraction(String)

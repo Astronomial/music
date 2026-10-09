@@ -7,6 +7,9 @@ public enum YouTubeNetwork {
         configuration.timeoutIntervalForRequest = 12
         configuration.timeoutIntervalForResource = 20
         configuration.httpCookieStorage = nil
+        configuration.waitsForConnectivity = true
+        configuration.allowsCellularAccess = true
+        configuration.networkServiceType = .avStreaming
         configuration.httpMaximumConnectionsPerHost = 4
         return URLSession(configuration: configuration)
     }()

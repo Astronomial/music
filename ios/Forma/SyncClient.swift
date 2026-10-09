@@ -70,6 +70,7 @@ actor SyncClient {
     private let account = "music.forma.pc-connection"
     private let restoration: Task<PCConnection?, Never>
     private var restored = false
+    private var pendingSessions: [UUID: URLSession] = [:]
     init() {
         // Security services can take time to start; never block the first UI frame.
         restoration = Task.detached(priority: .utility) {
@@ -99,7 +100,8 @@ actor SyncClient {
         guard SecItemAdd(attributes as CFDictionary, nil) == errSecSuccess else { throw SyncError.rejected("Не удалось сохранить подключение в защищённом хранилище.") }
         restored = true; connection = next
     }
-    func disconnect() { restored = true; SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrAccount as String: account] as CFDictionary); connection = nil }
+    func cancelPendingRequests() { pendingSessions.values.forEach { $0.invalidateAndCancel() }; pendingSessions.removeAll() }
+    func disconnect() { cancelPendingRequests(); restored = true; SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrAccount as String: account] as CFDictionary); connection = nil }
     func synchronize(library: Library, base: Library?) async throws -> Library {
         guard let connection else { throw SyncError.rejected("Сначала подключи ПК.") }
         struct Request: Encodable { let library: Library; let base: Library? }
@@ -112,9 +114,10 @@ actor SyncClient {
         let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .millisecondsSince1970
         let data = try encoder.encode(body); guard data.count <= 8 * 1024 * 1024 else { throw SyncError.tooLarge }
         let delegate = PinnedPCSession(connection), config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 12; config.timeoutIntervalForResource = 20; config.httpShouldSetCookies = false
+        config.timeoutIntervalForRequest = 3; config.timeoutIntervalForResource = 8; config.allowsCellularAccess = false; config.waitsForConnectivity = false; config.networkServiceType = .background; config.httpShouldSetCookies = false
         let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
-        defer { session.invalidateAndCancel() }
+        let requestID = UUID(); pendingSessions[requestID] = session
+        defer { session.invalidateAndCancel(); pendingSessions[requestID] = nil }
         var req = URLRequest(url: connection.url(path)); req.httpMethod = "POST"; req.httpBody = data
         req.setValue("application/json", forHTTPHeaderField: "Content-Type"); req.setValue("Bearer \(connection.token)", forHTTPHeaderField: "Authorization")
         let bytes: Data, response: URLResponse
