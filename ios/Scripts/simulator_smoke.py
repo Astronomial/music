@@ -1,5 +1,5 @@
 """Run native AVQueuePlayer and pinned TLS sync in an actual iOS Simulator."""
-import json, pathlib, signal, subprocess, tempfile, time
+import json, pathlib, signal, subprocess, tempfile, time, urllib.parse
 run = lambda *args: subprocess.check_output(args, text=True, timeout=180).strip()
 root = pathlib.Path(__file__).resolve().parents[2]
 with tempfile.TemporaryDirectory(prefix='forma-simulator-') as directory:
@@ -33,8 +33,14 @@ with tempfile.TemporaryDirectory(prefix='forma-simulator-') as directory:
         for _ in range(50):
             if code.stat().st_mtime_ns != previous: break
             time.sleep(.1)
+        else: raise RuntimeError('Test server did not publish a fresh pairing code')
+        pairing = code.read_text()
+        parsed = urllib.parse.urlparse(pairing)
+        parameters = urllib.parse.parse_qs(parsed.query)
+        if parsed.scheme != 'forma' or parsed.netloc != 'pair' or not all(parameters.get(key) for key in ('host', 'port', 'pin', 'code')):
+            raise RuntimeError('Test server published an incomplete pairing code')
         # --console intentionally stays attached; inspect app reports without blocking on launch.
-        launch = subprocess.Popen(['xcrun','simctl','launch','--console',device,'music.forma.ios','--forma-smoke','--forma-pair-code',code.read_text()], stdout=stream, stderr=stream)
+        launch = subprocess.Popen(['xcrun','simctl','launch','--console',device,'music.forma.ios','--forma-smoke','--forma-pair-code',pairing], stdout=stream, stderr=stream)
         print('Launching native app; waiting for foreground audio', flush=True)
         last_stage = None
         for _ in range(360):
