@@ -9,7 +9,7 @@ public enum LibrarySync {
     public static func mergeIDs(current: [String], base: [String], incoming: [String]) -> [String] {
         let old = Set(base), next = Set(incoming)
         var seen = Set<String>()
-        return (current.filter { !old.contains($0) || next.contains($0) } + incoming).filter { seen.insert($0).inserted }
+        return (current.filter { !old.contains($0) || next.contains($0) } + incoming.filter { !old.contains($0) }).filter { seen.insert($0).inserted }
     }
     public static func merge(current: Library, base: Library, incoming: Library) -> Library {
         var result = current
@@ -22,6 +22,8 @@ public enum LibrarySync {
         for id in Set(before.keys).union(after.keys) {
             guard !equal(before[id], after[id]) else { continue }
             guard let next = after[id] else { playlists.removeValue(forKey: id); continue }
+            // A concurrent local deletion wins over an incoming rename/addition.
+            if before[id] != nil, playlists[id] == nil { continue }
             if let old = before[id], var actual = playlists[id] {
                 if old.name != next.name { actual.name = next.name }
                 actual.trackIDs = mergeIDs(current: actual.trackIDs, base: old.trackIDs, incoming: next.trackIDs)
@@ -29,7 +31,7 @@ public enum LibrarySync {
             } else { playlists[id] = next }
         }
         result.playlists = playlists.values.sorted { $0.id < $1.id }
-        func key(_ e: ListeningEvent) -> String { "\(e.trackID)|\(e.kind.rawValue)|\(e.at.timeIntervalSince1970)|\(e.seconds)|\(e.ratio)|\(e.mood ?? "")" }
+        func key(_ e: ListeningEvent) -> String { "\(e.trackID)|\(e.kind.rawValue)|\((e.at.timeIntervalSince1970 * 1000).rounded())|\(e.seconds)|\(e.ratio)|\(e.mood ?? "")" }
         var history = Dictionary(current.events.map { (key($0), $0) }, uniquingKeysWith: { a, _ in a })
         let oldEvents = Dictionary(base.events.map { (key($0), $0) }, uniquingKeysWith: { a, _ in a })
         let newEvents = Dictionary(incoming.events.map { (key($0), $0) }, uniquingKeysWith: { a, _ in a })
@@ -77,7 +79,7 @@ public enum LibrarySync {
             if result.tracks[id]?.tags.isEmpty == true { result.tracks[id]?.tags = old.tags }
             if result.tracks[id]?.language.isEmpty == true { result.tracks[id]?.language = old.language }
         }
-        func key(_ e: ListeningEvent) -> String { "\(e.trackID)|\(e.kind.rawValue)|\(Int64((e.at.timeIntervalSince1970 * 1000).rounded()))|\(e.seconds)|\(e.ratio)|\(e.mood ?? "")" }
+        func key(_ e: ListeningEvent) -> String { "\(e.trackID)|\(e.kind.rawValue)|\((e.at.timeIntervalSince1970 * 1000).rounded())|\(e.seconds)|\(e.ratio)|\(e.mood ?? "")" }
         let metadata = Dictionary(local.events.map { (key($0), $0) }, uniquingKeysWith: { a, _ in a })
         result.events = remote.events.map { event in
             let old = metadata[key(event)]

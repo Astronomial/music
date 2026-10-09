@@ -30,14 +30,17 @@ public enum CatalogParser {
             let inner = outer?["musicThumbnailRenderer"] as? [String: Any]
             thumbs = (inner?["thumbnail"] as? [String: Any])?["thumbnails"] as? [[String: Any]]
         }
-        let best = thumbs?.max { (($0["width"] as? Int) ?? 0) * (($0["height"] as? Int) ?? 0) < (($1["width"] as? Int) ?? 0) * (($1["height"] as? Int) ?? 0) }
+        func area(_ image: [String: Any]) -> Double { max(0, (image["width"] as? Double) ?? 0) * max(0, (image["height"] as? Double) ?? 0) }
+        let best = thumbs?.max { area($0) < area($1) }
         guard let value = best?["url"] as? String, let url = URL(string: value), url.scheme == "https" else { return nil }
         return url
     }
     static func seconds(_ value: String) -> Double {
-        let parts = value.split(separator: ":").compactMap { Double($0) }
-        guard (2...3).contains(parts.count) else { return 0 }
-        return parts.reduce(0) { $0 * 60 + $1 }
+        let fields = value.split(separator: ":", omittingEmptySubsequences: false)
+        let parts = fields.compactMap { Double($0) }
+        guard (2...3).contains(fields.count), parts.count == fields.count,
+              parts.allSatisfy({ $0.isFinite && $0 >= 0 }), parts.dropFirst().allSatisfy({ $0 < 60 }) else { return 0 }
+        return min(86400, parts.reduce(0) { $0 * 60 + $1 })
     }
     static func song(_ renderer: [String: Any]) -> Track? {
         let columns = renderer["flexColumns"] as? [[String: Any]] ?? []

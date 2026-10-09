@@ -23,7 +23,7 @@ struct ContentView: View {
         } message: { Text(model.message ?? "") }
         .task {
             guard !ProcessInfo.processInfo.arguments.contains("--forma-smoke") else { return }
-            while !model.player.networkPolicy.known, !Task.isCancelled { try? await Task.sleep(nanoseconds: 50_000_000) }
+            while (!model.player.networkPolicy.known || model.isRestoringLibrary), !Task.isCancelled { try? await Task.sleep(nanoseconds: 50_000_000) }
             if model.library.tracks.isEmpty || UserDefaults.standard.integer(forKey: "forma.discoveryRevision") < 4 { await model.refresh(automatic: true) }
             while !Task.isCancelled {
                 if scenePhase == .active { await model.synchronize() }
@@ -31,8 +31,8 @@ struct ContentView: View {
             }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await model.synchronize() } }
-            else { model.persist(immediately: true) }
+            if phase == .active { Task { await model.becameActive() } }
+            else { model.persist(immediately: true, background: phase == .background) }
         }
     }
 }
@@ -59,12 +59,13 @@ struct HomeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 Text("Музыка ближе к тебе.").font(.largeTitle.bold()).padding(.top, 8)
+                if model.isRestoringLibrary { ProgressView("Открываем библиотеку…") }
                 GlassPanel {
                     VStack(alignment: .leading, spacing: 16) {
                         Label("Твой Пульс", systemImage: "waveform").font(.title.bold())
                         Text("Твой вкус задаёт направление. Оставим место открытиям.").foregroundStyle(.secondary)
                         HStack {
-                            Button { model.startPulse() } label: { Label("Слушать", systemImage: "play.fill").fontWeight(.semibold) }.buttonStyle(.borderedProminent)
+                            Button { model.startPulse() } label: { Label("Слушать", systemImage: "play.fill").fontWeight(.semibold) }.buttonStyle(.borderedProminent).disabled(model.isRestoringLibrary)
                             Spacer()
                             Button { showSettings = true } label: { Image(systemName: "slider.horizontal.3") }.accessibilityLabel("Настроить Пульс")
                         }
@@ -87,7 +88,7 @@ struct HomeView: View {
                 }
                 Text("Следующее любимое").font(.title2.bold())
                 if model.recommendations.isEmpty { EmptyState(title: "Начни со своей музыки", text: "Найди любимые треки в поиске. Пульс будет учиться на сохранениях и прослушиваниях.") }
-                ForEach(model.recommendations.prefix(12)) { item in TrackRow(model: model, track: item.track, reason: item.reason) { model.player.play(item.track, list: model.recommendations.map(\.track)) } }
+                ForEach(model.recommendations.prefix(12)) { item in TrackRow(model: model, track: item.track, reason: item.reason) { model.play(item.track, list: model.recommendations.map(\.track)) } }
             }.padding(20)
         }.background(FormaTheme.background).navigationTitle("forma.").navigationBarTitleDisplayMode(.inline)
             .toolbar { Button { Task { await model.refresh() } } label: { Image(systemName: "arrow.clockwise") }.disabled(model.isRefreshing).accessibilityLabel("Обновить подборки") }
@@ -133,7 +134,7 @@ struct MoodView: View {
                 Text("Собрано под твой вкус и настроение").foregroundStyle(.secondary)
                 Button { model.startPulse(mood: mix.id) } label: { Label("Слушать подборку", systemImage: "play.fill") }.buttonStyle(.borderedProminent).disabled(tracks.isEmpty)
                 if tracks.isEmpty { EmptyState(title: "Подборка ещё впереди", text: "Обнови каталог. Мы покажем музыку, когда найдём подходящие треки.") }
-                ForEach(tracks) { track in TrackRow(model: model, track: track) { model.player.play(track, list: tracks, context: mix.id) } }
+                ForEach(tracks) { track in TrackRow(model: model, track: track) { model.play(track, list: tracks, context: mix.id) } }
             }.padding(20)
         }.background(FormaTheme.background).navigationBarTitleDisplayMode(.inline)
             .task { await model.prepareTracks(tracks) }
@@ -151,7 +152,7 @@ struct SearchView: View {
                 if model.isSearching { ProgressView("Ищем музыку…").padding() }
                 if query.isEmpty { EmptyState(title: "Что хочется услышать?", text: "Название трека, исполнитель или ссылка на YouTube.") }
                 else if !model.isSearching, model.searchResults.isEmpty { EmptyState(title: "Пока ничего не найдено", text: "Уточни название или попробуй прямую ссылку.") }
-                ForEach(model.searchResults) { track in TrackRow(model: model, track: track) { model.player.play(track, list: model.searchResults) } }
+                ForEach(model.searchResults) { track in TrackRow(model: model, track: track) { model.play(track, list: model.searchResults) } }
             }.padding(20)
         }.background(FormaTheme.background).navigationTitle("Поиск")
             .searchable(text: $query, prompt: "Трек или исполнитель")
@@ -173,8 +174,8 @@ struct LibraryView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 12) {
                 if model.liked.isEmpty { EmptyState(title: "Здесь будет любимое", text: "Сохраняй треки сердечком — они станут основой Пульса.") }
-                else { Button { if let first = model.liked.first { model.player.play(first, list: model.liked) } } label: { Label("Слушать любимое", systemImage: "play.fill") }.buttonStyle(.borderedProminent) }
-                ForEach(model.liked) { track in TrackRow(model: model, track: track) { model.player.play(track, list: model.liked) } }
+                else { Button { if let first = model.liked.first { model.play(first, list: model.liked) } } label: { Label("Слушать любимое", systemImage: "play.fill") }.buttonStyle(.borderedProminent) }
+                ForEach(model.liked) { track in TrackRow(model: model, track: track) { model.play(track, list: model.liked) } }
             }.padding(20)
         }.background(FormaTheme.background).navigationTitle("Любимое")
     }

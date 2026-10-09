@@ -20,7 +20,7 @@ public struct Track: Codable, Hashable, Identifiable, Sendable {
     public init(videoID: String, title: String, artist: String, duration: Double = 0,
                 artworkURL: URL? = nil, genres: [String] = [], moodHints: [String] = [], relatedTo: [String] = [], directRelatedTo: [String] = [], discoveryLanguages: [String] = [], genre: String = "", mood: String = "", tags: [String] = [], language: String = "") {
         self.videoID = videoID; self.title = title; self.artist = artist
-        self.duration = duration; self.artworkURL = artworkURL
+        self.duration = Self.safeDuration(duration); self.artworkURL = artworkURL
         self.genres = genres; self.moodHints = moodHints; self.relatedTo = relatedTo
         self.directRelatedTo = directRelatedTo; self.discoveryLanguages = discoveryLanguages
         self.genre = genre; self.mood = mood; self.tags = tags; self.language = language
@@ -30,7 +30,7 @@ public struct Track: Codable, Hashable, Identifiable, Sendable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         videoID = try c.decode(String.self, forKey: .videoID)
         title = try c.decode(String.self, forKey: .title); artist = try c.decode(String.self, forKey: .artist)
-        duration = try c.decodeIfPresent(Double.self, forKey: .duration) ?? 0
+        duration = Self.safeDuration(try c.decodeIfPresent(Double.self, forKey: .duration) ?? 0)
         artworkURL = try c.decodeIfPresent(URL.self, forKey: .artworkURL)
         genres = try c.decodeIfPresent([String].self, forKey: .genres) ?? []
         moodHints = try c.decodeIfPresent([String].self, forKey: .moodHints) ?? []
@@ -42,7 +42,7 @@ public struct Track: Codable, Hashable, Identifiable, Sendable {
         tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
         language = try c.decodeIfPresent(String.self, forKey: .language) ?? ""
     }
-
+    private static func safeDuration(_ value: Double) -> Double { value.isFinite ? min(86400, max(0, value)) : 0 }
 }
 
 public enum FeedbackKind: String, Codable, Sendable { case play, listen, skip, error, like; case playlistAdd = "playlist-add" }
@@ -60,7 +60,8 @@ public struct ListeningEvent: Codable, Sendable {
         self.recommendation = recommendation; self.surface = surface
         self.newArtist = newArtist
         self.trackID = trackID; self.kind = kind; self.at = at
-        self.seconds = seconds; self.ratio = min(1, max(0, ratio)); self.mood = mood
+        self.seconds = seconds.isFinite ? min(86400, max(0, seconds)) : 0
+        self.ratio = ratio.isFinite ? min(1, max(0, ratio)) : 0; self.mood = mood
     }
     public var reward: Double? {
         if kind == .like || kind == .playlistAdd { return 1 }
@@ -122,6 +123,10 @@ public struct PulseSettings: Codable, Sendable {
         skipSensitivity = try c.decodeIfPresent(String.self, forKey: .skipSensitivity) ?? "strict"
         sessionInfluence = try c.decodeIfPresent(Double.self, forKey: .sessionInfluence) ?? 0.65
         recommendationVersion = try c.decodeIfPresent(Int.self, forKey: .recommendationVersion) ?? 1
+        discovery = discovery.isFinite ? min(1, max(0, discovery)) : 0.7
+        artistDiversity = artistDiversity.isFinite ? min(1, max(0, artistDiversity)) : 0.6
+        sessionInfluence = sessionInfluence.isFinite ? min(1, max(0, sessionInfluence)) : 0.65
+        repeatHours = repeatHours.isFinite ? min(24, max(0, repeatHours)) : 2
     }
 }
 public struct Library: Codable, Sendable {
@@ -147,6 +152,10 @@ public struct Library: Codable, Sendable {
     public mutating func merge(_ incoming: [Track]) {
         for var track in incoming {
             if let old = tracks[track.id] {
+                if track.duration <= 0 { track.duration = old.duration }
+                if track.artworkURL == nil { track.artworkURL = old.artworkURL }
+                if track.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { track.title = old.title }
+                if track.artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || track.artist == "Исполнитель не указан" { track.artist = old.artist }
                 track.genres = Array(Set(old.genres + track.genres)).sorted()
                 track.moodHints = Array(Set(old.moodHints + track.moodHints)).sorted()
                 track.relatedTo = Array(Set(old.relatedTo + track.relatedTo)).sorted()

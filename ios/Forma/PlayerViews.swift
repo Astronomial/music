@@ -43,6 +43,7 @@ struct NowPlayingView: View {
     @ObservedObject private var player: PlaybackController
     @State private var seekValue: Double = 0
     @State private var dragging = false
+    @State private var seekTrackID: String?
     init(model: AppModel) { self.model = model; self.player = model.player }
     var body: some View {
         GeometryReader { bounds in
@@ -56,8 +57,12 @@ struct NowPlayingView: View {
                     }
                     VStack(spacing: 8) {
                         Slider(value: Binding(get: { dragging ? seekValue : player.position }, set: { seekValue = $0 }), in: 0...max(1, player.duration), onEditingChanged: { editing in
-                            if editing { seekValue = player.position; dragging = true }
-                            else { dragging = false; player.seek(to: seekValue) }
+                            if editing { seekValue = player.position; seekTrackID = player.current?.id; dragging = true }
+                            else {
+                                dragging = false
+                                if seekTrackID == player.current?.id { player.seek(to: seekValue) }
+                                seekTrackID = nil
+                            }
                         }).disabled(player.duration <= 0).accessibilityLabel("Позиция воспроизведения")
                         HStack { Text(formatTime(dragging ? seekValue : player.position)); Spacer(); Text(formatTime(player.duration)) }.font(.caption).monospacedDigit().foregroundStyle(.secondary)
                     }
@@ -77,6 +82,7 @@ struct NowPlayingView: View {
                     if let track = player.current { Button { model.toggleLike(track) } label: { Label(model.isLiked(track) ? "В любимом" : "Сохранить", systemImage: model.isLiked(track) ? "heart.fill" : "heart") }.buttonStyle(.bordered) }
                 }.padding(32)
             }.background(LinearGradient(colors: [FormaTheme.accent.opacity(0.09), FormaTheme.background], startPoint: .topLeading, endPoint: .bottomTrailing)).tint(FormaTheme.accent)
+                .onChange(of: player.current?.id) { _, _ in dragging = false; seekTrackID = nil; seekValue = player.position }
         }
     }
 }

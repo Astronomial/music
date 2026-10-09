@@ -41,7 +41,7 @@ struct Artwork: View {
     }
 }
 func formatTime(_ value: Double) -> String {
-    let time = max(0, Int(value.isFinite ? value : 0)); return "\(time / 60):\(String(format: "%02d", time % 60))"
+    let time = Int(value.isFinite ? min(86400, max(0, value)) : 0); return "\(time / 60):\(String(format: "%02d", time % 60))"
 }
 
 /// Short touch feedback without animating lists on every progress tick.

@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import Network
+import UIKit
 import FormaCore
 
 @MainActor
@@ -11,6 +12,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var isRefreshing = false
     @Published private(set) var isSearching = false
     @Published private(set) var isSyncing = false
+    @Published private(set) var isRestoringLibrary = true
     @Published private(set) var pcHost: String?
     @Published private(set) var syncStatus = "Подключи ПК, чтобы перенести библиотеку"
     @Published var message: String?
@@ -26,9 +28,12 @@ final class AppModel: ObservableObject {
     private let catalog = YouTubeCatalog()
     private let sync = SyncClient()
     private var storage: LibraryStorage?
+    private var storageURL: URL?
+    private var didLoadLibrary = false
     private var syncBase: Library?
     private var moodCache: [String: [Recommendation]] = [:]
     private var pulseCache: [Recommendation] = []
+    private var pulseCachePlaylistID: String?
     private var selectedContexts: [String: RecommendationContext] = [:]
     private var activeContext: RecommendationContext?
     private var playbackIndex: PulseEngine.RankingIndex?
@@ -36,6 +41,8 @@ final class AppModel: ObservableObject {
     private var searchGeneration = UUID()
     private var recommendationGeneration = UUID()
     private var pulseGeneration = UUID()
+    private var pulseWork: Task<[Recommendation], Never>?
+    private var linkTask: Task<Track?, Never>?
     private var syncEpoch = UUID()
     private var recommendationTask: Task<Void, Never>?
     private var rankingWork: Task<([Recommendation], [Recommendation], [String: [Recommendation]], PulseEngine.RankingIndex), Never>?
@@ -47,14 +54,9 @@ final class AppModel: ObservableObject {
         let streams = YouTubeStreamResolver(); self.streams = streams
         let audioResolver = playbackResolver ?? streams; self.audioResolver = audioResolver
         player = PlaybackController(resolver: audioResolver)
-        if let directory = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) {
+        if let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
             let url = directory.appendingPathComponent("forma-ios-library.json")
-            storage = LibraryStorage(url: url)
-            do { let loaded = try LibraryDiskStore(url: url).load(); library = loaded.library; message = loaded.notice }
-            catch { message = "Не удалось прочитать библиотеку: \(error.localizedDescription)" }
-        }
-        if library.settings.recommendationVersion < 2 {
-            library.settings.discovery = 0.7; library.settings.recommendationVersion = 2
+            storageURL = url
         }
         updateRecommendations()
         localWiFiMonitor.pathUpdateHandler = { [weak self] path in
@@ -87,17 +89,46 @@ final class AppModel: ObservableObject {
             guard let self else { return nil }
             if let id = self.pulsePlaylistID, !self.library.playlists.contains(where: { $0.id == id }) { return nil }
             let source = mood.flatMap { self.moodCache[$0] } ?? self.pulseCache
-            guard let choice = PulseEngine.selectCached(source, library: self.selectionLibrary(), exclude: excluded, currentID: self.player.current?.id, index: self.playbackIndex) else { return nil }
+            guard let choice = PulseEngine.selectCached(source, library: self.selectionLibrary(), exclude: excluded, currentID: self.player.current?.id, index: self.playbackIndex, mood: mood) else { return nil }
             if let exposure = choice.exposure { self.selectedContexts[choice.id] = exposure }
             return choice.track
         }
+        let startupEpoch = syncEpoch
         Task {
-            let connection = await sync.restore(); pcHost = connection?.host
-            syncBase = await storage?.syncBase()
+            await restoreLibrary()
+            let connection = await sync.restore(), base = await storage?.syncBase()
+            guard syncEpoch == startupEpoch else { return }
+            pcHost = connection?.host; syncBase = base
             if pcHost != nil { syncStatus = canSynchronizePC ? "ПК подключён. Синхронизируем в общей Wi-Fi сети" : "Синхронизация продолжится по Wi-Fi. Изменения сохранены"; scheduleSync() }
         }
     }
-    deinit { localWiFiMonitor.cancel() }
+    deinit {
+        localWiFiMonitor.cancel(); recommendationTask?.cancel(); rankingWork?.cancel()
+        settingsTask?.cancel(); persistTask?.cancel(); syncTask?.cancel()
+        pulseWork?.cancel(); linkTask?.cancel()
+    }
+    private func restoreLibrary() async {
+        guard !didLoadLibrary, let storageURL else { isRestoringLibrary = false; return }
+        isRestoringLibrary = true
+        let store = LibraryStorage(url: storageURL)
+        do {
+            var loaded = try await store.load()
+            if loaded.library.settings.recommendationVersion < 2 {
+                loaded.library.settings.discovery = 0.7; loaded.library.settings.recommendationVersion = 2
+            }
+            library = LibrarySync.merge(current: loaded.library, base: Library(), incoming: library)
+            storage = store; didLoadLibrary = true; message = loaded.notice
+        } catch {
+            // A read/access failure must never be followed by saving an empty profile.
+            storage = nil; message = "Не удалось прочитать библиотеку. Исходный файл не изменён: \(error.localizedDescription)"
+        }
+        isRestoringLibrary = false; updateRecommendations()
+        if didLoadLibrary { persist(immediately: true) }
+    }
+    func becameActive() async {
+        if !isRestoringLibrary, !didLoadLibrary { await restoreLibrary() }
+        await synchronize()
+    }
     private func localWiFiChanged(_ available: Bool) {
         guard available != localWiFiAvailable else { return }
         localWiFiAvailable = available; updateSyncRoute()
@@ -135,7 +166,9 @@ final class AppModel: ObservableObject {
         guard let index = library.playlists.firstIndex(where: { $0.id == playlistID }) else { return }
         library.playlists[index].trackIDs.removeAll { $0 == track.id }; changed()
     }
-    func deletePlaylist(_ id: String) { library.playlists.removeAll { $0.id == id }; changed() }
+    func deletePlaylist(_ id: String) {
+        library.playlists.removeAll { $0.id == id }; library.settings.seedPlaylistIDs.removeAll { $0 == id }; changed()
+    }
     func renamePlaylist(_ id: String, name: String) {
         let title = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty, let index = library.playlists.firstIndex(where: { $0.id == id }) else { return }
@@ -172,20 +205,37 @@ final class AppModel: ObservableObject {
     private func selectionLibrary() -> Library {
         var result = library; if pulsePlaylistID != nil { result.settings.discovery = 0.75 }; return result
     }
+    func play(_ track: Track, list: [Track], context: String? = nil) {
+        pulseGeneration = UUID(); pulseWork?.cancel(); linkTask?.cancel()
+        let exposure = self.context(for: track)
+        selectedContexts.removeAll()
+        if let exposure { selectedContexts[track.id] = exposure }
+        let hadPlaylist = pulsePlaylistID != nil; pulsePlaylistID = nil
+        player.play(track, list: list, context: context)
+        if hadPlaylist { updateRecommendations() }
+    }
     func startPulse(mood: String? = nil, playlistID: String? = nil) {
+        guard !isRestoringLibrary else { return }
+        pulseWork?.cancel(); linkTask?.cancel()
+        let changedProfile = pulsePlaylistID != playlistID
         pulsePlaylistID = playlistID
+        if changedProfile { updateRecommendations() }
         let snapshot = library, excluded = player.current.map { Set([$0.id]) } ?? []
         let token = UUID(); pulseGeneration = token
         let cached = mood.flatMap { moodCache[$0] } ?? pulseCache
-        if playlistID == nil, let first = PulseEngine.selectCached(cached, library: snapshot, exclude: excluded, currentID: player.current?.id, index: playbackIndex) {
+        if playlistID == nil, pulseCachePlaylistID == nil, let first = PulseEngine.selectCached(cached, library: snapshot, exclude: excluded, currentID: player.current?.id, index: playbackIndex, mood: mood) {
             if let exposure = first.exposure { selectedContexts[first.id] = exposure }
             player.startPulse(first.track, mood: mood); return
         }
         Task {
-            let result = await Task.detached(priority: .userInitiated) { PulseEngine.rank(Array(snapshot.tracks.values), library: snapshot, limit: 60, mood: mood, exclude: excluded, playlistID: playlistID) }.value
+            guard pulseGeneration == token else { return }
+            let work = Task.detached(priority: .userInitiated) { PulseEngine.rank(Array(snapshot.tracks.values), library: snapshot, limit: 60, mood: mood, exclude: excluded, playlistID: playlistID) }
+            pulseWork = work
+            let result = await work.value
             guard pulseGeneration == token else { return }
             guard let first = result.first else { message = "Пока нет подходящих треков. Обнови подборки или найди музыку в поиске."; return }
             pulseCache = result
+            pulseCachePlaylistID = playlistID
             if let mood { moodCache[mood] = result }
             if let exposure = first.exposure { selectedContexts[first.id] = exposure }
             player.startPulse(first.track, mood: mood)
@@ -280,10 +330,14 @@ final class AppModel: ObservableObject {
         if searchGeneration == token { isSearching = false }
     }
     func openYouTube(_ value: String) async {
+        let token = UUID(); pulseGeneration = token; pulseWork?.cancel(); linkTask?.cancel()
         guard let id = VideoID.parse(value) else { message = "Вставь ссылку на трек или видео YouTube."; return }
-        if let existing = library.tracks[id] { player.play(existing, list: [existing]); return }
-        guard let track = await streams.describe(videoID: id) else { message = "Не удалось получить сведения о треке. Попробуй поиск по названию."; return }
-        merge([track]); player.play(track, list: [track])
+        if let existing = library.tracks[id] { play(existing, list: [existing]); return }
+        let work = Task { await streams.describe(videoID: id) }; linkTask = work
+        let track = await work.value
+        guard pulseGeneration == token, !Task.isCancelled else { return }
+        guard let track else { message = "Не удалось получить сведения о треке. Попробуй поиск по названию."; return }
+        merge([track]); play(track, list: [track])
     }
     private func merge(_ tracks: [Track]) {
         library.merge(tracks)
@@ -312,16 +366,19 @@ final class AppModel: ObservableObject {
             }
             rankingWork = work
             let result = await work.value
-            guard recommendationGeneration == token, !Task.isCancelled else { return }
-            recommendations = result.0; pulseCache = result.1; moodCache = result.2; playbackIndex = result.3
+            guard recommendationGeneration == token, !Task.isCancelled, playlistID == pulsePlaylistID else { return }
+            recommendations = result.0; pulseCache = result.1; pulseCachePlaylistID = playlistID; moodCache = result.2; playbackIndex = result.3
             player.refreshPreparedSelection()
             if player.current == nil, player.networkPolicy.canPrewarmExtraTracks { await audioResolver.prewarm(videoIDs: Array(pulseCache.prefix(3).map(\.id))) }
         }
     }
-    func persist(immediately: Bool = false) {
+    func persist(immediately: Bool = false, background: Bool = false) {
+        guard didLoadLibrary else { return }
         persistTask?.cancel()
         let snapshot = library
+        let lease = background ? BackgroundSaveLease() : nil
         persistTask = Task {
+            defer { lease?.finish() }
             if !immediately { try? await Task.sleep(nanoseconds: 250_000_000) }
             guard !Task.isCancelled, let storage else { return }
             do { try await storage.save(snapshot) } catch { message = "Не удалось сохранить библиотеку: \(error.localizedDescription)" }
@@ -329,27 +386,32 @@ final class AppModel: ObservableObject {
         scheduleSync()
     }
     private func scheduleSync() {
-        guard pcHost != nil, canSynchronizePC, syncBackoff.allows() else { return }
+        guard didLoadLibrary, pcHost != nil, canSynchronizePC, syncBackoff.allows() else { return }
         syncTask?.cancel(); syncTask = Task {
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             guard !Task.isCancelled else { return }; await synchronize()
         }
     }
     func pairPC(_ code: String) async {
+        guard !isRestoringLibrary else { return }
         guard canSynchronizePC else { message = "Для подключения ПК нужна общая Wi-Fi сеть."; return }
         guard !isSyncing else { return }
+        syncEpoch = UUID(); let epoch = syncEpoch; syncTask?.cancel()
         isSyncing = true
         do {
-            try await sync.pair(code); syncBase = nil; try await storage?.saveSyncBase(nil)
+            try await sync.pair(code)
+            guard syncEpoch == epoch else { return }
+            syncBase = nil; try await storage?.saveSyncBase(nil)
+            guard syncEpoch == epoch else { return }
             pcHost = await sync.connection?.host; isSyncing = false; await synchronize(showErrors: true)
-        } catch { isSyncing = false; syncStatus = error.localizedDescription; message = error.localizedDescription }
+        } catch { guard syncEpoch == epoch else { return }; isSyncing = false; syncStatus = error.localizedDescription; message = error.localizedDescription }
     }
     func disconnectPC() async {
         syncEpoch = UUID(); isSyncing = false; syncTask?.cancel(); await sync.disconnect(); pcHost = nil; syncBase = nil
         try? await storage?.saveSyncBase(nil); syncStatus = "ПК отключён"
     }
     func synchronize(showErrors: Bool = false) async {
-        guard !isSyncing, pcHost != nil else { return }
+        guard didLoadLibrary, !isSyncing, pcHost != nil else { return }
         guard canSynchronizePC else { stopSyncForNetwork(); return }
         guard syncBackoff.allows(manual: showErrors) else { return }
         let epoch = syncEpoch
@@ -360,7 +422,14 @@ final class AppModel: ObservableObject {
             guard epoch == syncEpoch else { return }
             persistTask?.cancel()
             library = LibrarySync.merge(current: LibrarySync.preservingLearning(in: remote, from: sent), base: sent, incoming: library)
-            syncBase = remote; try await storage?.saveSyncBase(remote); try await storage?.save(library)
+            do { try await storage?.saveSynchronized(library, base: remote) }
+            catch {
+                syncBackoff.failed()
+                syncStatus = "Библиотека получена, но сохранить её не удалось"
+                message = "Не удалось сохранить библиотеку: \(error.localizedDescription)"; persist(immediately: true); return
+            }
+            guard epoch == syncEpoch else { return }
+            syncBase = remote
             syncBackoff.reset(); updateRecommendations(); syncStatus = "Синхронизировано · \(Date().formatted(date: .omitted, time: .shortened))"
         } catch {
             guard epoch == syncEpoch else { return }
@@ -373,5 +442,21 @@ final class AppModel: ObservableObject {
         let destination = FileManager.default.temporaryDirectory.appendingPathComponent("Forma-iOS-library.json")
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(library).write(to: destination, options: .atomic); return destination
+    }
+}
+
+/// A finite iOS background lease lets the last library write finish after a swipe
+/// to another app, even when playback is paused. Every completion ends the lease.
+@MainActor
+private final class BackgroundSaveLease {
+    private var identifier: UIBackgroundTaskIdentifier = .invalid
+    init() {
+        identifier = UIApplication.shared.beginBackgroundTask(withName: "Forma library save") { [weak self] in
+            Task { @MainActor in self?.finish() }
+        }
+    }
+    func finish() {
+        guard identifier != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(identifier); identifier = .invalid
     }
 }

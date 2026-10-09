@@ -5,23 +5,21 @@ import YouTubeKit
 /// Uses the vendored MIT YouTubeKit snapshot. All extraction runs on-device.
 /// Never opts in to the upstream public remote fallback or stores account cookies.
 actor YouTubeStreamResolver: StreamResolving {
-    private var inflight: [String: (id: UUID, task: Task<ResolvedAudio, Error>)] = [:]
+    private let requests = AudioRequestPool(loader: { try await YouTubeStreamResolver.extract($0) })
     private var warming: Task<Void, Never>?
     private var warmingIDs: [String] = []
     private var warmingGeneration = UUID()
-    private var cache: [String: ResolvedAudio] = [:]
     func resolve(videoID: String, forceRefresh: Bool = false) async throws -> ResolvedAudio {
-        let optionalIDs = warmingIDs; warming?.cancel(); warmingIDs = []; warmingGeneration = UUID()
-        for id in optionalIDs where id != videoID { inflight[id]?.task.cancel(); inflight[id] = nil }
-        return try await resolveAudio(videoID: videoID, forceRefresh: forceRefresh)
-    }
-    private func resolveAudio(videoID: String, forceRefresh: Bool) async throws -> ResolvedAudio {
         guard VideoID.isValid(videoID) else { throw ResolverError.invalidID }
-        if !forceRefresh, let hit = cache[videoID], hit.isFresh() { return hit }
-        if !forceRefresh, let pending = inflight[videoID] { return try await pending.task.value }
-        if forceRefresh { inflight[videoID]?.task.cancel() }
-        let requestID = UUID()
-        let job = Task<ResolvedAudio, Error> {
+        let optionalIDs = warmingIDs; warmingIDs = []; warmingGeneration = UUID()
+        // Preserve a shared extraction for this video; the old warmer stops before
+        // its next iteration. Cancelling it before joining would discard useful work.
+        if !optionalIDs.contains(videoID) { warming?.cancel() }
+        for id in optionalIDs where id != videoID { await requests.cancel(videoID: id) }
+        return try await requests.resolve(videoID: videoID, forceRefresh: forceRefresh)
+    }
+    nonisolated private static func extract(_ videoID: String) async throws -> ResolvedAudio {
+        guard VideoID.isValid(videoID) else { throw ResolverError.invalidID }
             let video = YouTube(videoID: videoID, useOAuth: false, allowOAuthCache: false, methods: [.local])
             let streams: [YouTubeKit.Stream]
             do { streams = try await video.audioStreams }
@@ -32,33 +30,23 @@ actor YouTubeStreamResolver: StreamResolving {
             let result = try ResolvedAudio(url: stream.url)
             guard result.isFresh() else { throw ResolverError.expired }
             return result
-        }
-        inflight[videoID] = (requestID, job)
-        defer { if inflight[videoID]?.id == requestID { inflight[videoID] = nil } }
-        let result = try await job.value
-        guard inflight[videoID]?.id == requestID else { throw CancellationError() }
-        if cache.count >= 30 { cache = cache.filter { $0.value.isFresh() } }
-        if cache.count >= 30 { cache.removeValue(forKey: cache.keys.sorted().first!) }
-        cache[videoID] = result
-        return result
     }
     func describe(videoID: String) async -> Track? {
         let video = YouTube(videoID: videoID, useOAuth: false, allowOAuthCache: false, methods: [.local])
         guard let metadata = try? await video.metadata else { return nil }
         return Track(videoID: videoID, title: metadata.title, artist: "Исполнитель не указан", artworkURL: metadata.thumbnail?.url)
     }
-    func prewarm(videoIDs: [String]) {
-        let ids = Array(videoIDs.filter { VideoID.isValid($0) && cache[$0]?.isFresh() != true }.prefix(3))
+    func prewarm(videoIDs: [String]) async {
+        let ids = Array(videoIDs.filter { VideoID.isValid($0) }.prefix(3))
         guard ids != warmingIDs else { return }
         warming?.cancel()
-        for old in warmingIDs where !ids.contains(old) { inflight[old]?.task.cancel(); inflight[old] = nil }
         warmingIDs = ids
         let token = UUID(); warmingGeneration = token
         warming = Task(priority: .utility) { [weak self] in
             try? await Task.sleep(nanoseconds: 250_000_000)
             for id in ids {
-                guard !Task.isCancelled, let self else { return }
-                _ = try? await self.resolveAudio(videoID: id, forceRefresh: false)
+                guard !Task.isCancelled, let self, self.warmingGeneration == token else { return }
+                _ = try? await self.requests.resolve(videoID: id)
             }
             await self?.finishWarming(token: token)
         }
@@ -66,12 +54,12 @@ actor YouTubeStreamResolver: StreamResolving {
     private func finishWarming(token: UUID) {
         if warmingGeneration == token { warmingIDs = [] }
     }
-    func cancel(videoID: String) {
-        inflight[videoID]?.task.cancel(); inflight[videoID] = nil; cache[videoID] = nil
+    func cancel(videoID: String) async {
+        await requests.cancel(videoID: videoID)
     }
     func invalidate() async {
-        warming?.cancel(); warmingIDs = []; warmingGeneration = UUID(); cache.removeAll()
-        inflight.values.forEach { $0.task.cancel() }; inflight.removeAll()
+        warming?.cancel(); warmingIDs = []; warmingGeneration = UUID()
+        await requests.invalidate()
         await YouTube.resetAudioContext()
     }
     enum ResolverError: LocalizedError {

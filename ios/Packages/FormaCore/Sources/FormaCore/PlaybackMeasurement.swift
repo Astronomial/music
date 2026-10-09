@@ -9,13 +9,14 @@ public struct PlaybackMeasurement: Codable, Sendable {
     public var bufferMilliseconds: Double { max(0, totalMilliseconds - resolutionMilliseconds) }
     public init(title: String, source: String, totalMilliseconds: Double, resolutionMilliseconds: Double) {
         self.title = title; self.source = source
-        self.totalMilliseconds = max(0, totalMilliseconds)
-        self.resolutionMilliseconds = min(self.totalMilliseconds, max(0, resolutionMilliseconds))
+        self.totalMilliseconds = totalMilliseconds.isFinite ? max(0, totalMilliseconds) : 0
+        self.resolutionMilliseconds = resolutionMilliseconds.isFinite ? min(self.totalMilliseconds, max(0, resolutionMilliseconds)) : 0
     }
     public static func percentile(_ measurements: [Self], source: String, fraction: Double) -> Double? {
         let values = measurements.filter { $0.source == source }.map(\.totalMilliseconds).sorted()
         guard !values.isEmpty else { return nil }
-        let index = min(values.count - 1, max(0, Int(ceil(min(1, max(0, fraction)) * Double(values.count))) - 1))
+        let fraction = fraction.isFinite ? min(1, max(0, fraction)) : 0.5
+        let index = min(values.count - 1, max(0, Int(ceil(fraction * Double(values.count))) - 1))
         return values[index]
     }
 }

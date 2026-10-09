@@ -4,7 +4,12 @@ public struct LibraryDiskStore {
     public let url: URL
     public init(url: URL) { self.url = url }
     public func load() throws -> (library: Library, notice: String?) {
-        guard FileManager.default.fileExists(atPath: url.path) else { return (Library(), nil) }
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            if let bytes = try? Data(contentsOf: url.appendingPathExtension("bak")), let library = decode(bytes) {
+                return (library, "Библиотека восстановлена из резервной копии.")
+            }
+            return (Library(), nil)
+        }
         let original = try Data(contentsOf: url)
         if let library = decode(original) { return (library, nil) }
         // Preserve the original even if recovery falls back to an empty profile.
@@ -18,13 +23,20 @@ public struct LibraryDiskStore {
     public func save(_ library: Library) throws {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         if let original = try? Data(contentsOf: url), decode(original) != nil {
-            try original.write(to: url.appendingPathExtension("bak"), options: .atomic)
+            try original.write(to: url.appendingPathExtension("bak"), options: writeOptions)
         }
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
-        try encoder.encode(library).write(to: url, options: .atomic)
+        try encoder.encode(library).write(to: url, options: writeOptions)
     }
     private func decode(_ data: Data) -> Library? {
         guard let library = try? JSONDecoder().decode(Library.self, from: data), library.version == 1 else { return nil }
-        return library
+        return LibraryValidation.normalized(library)
+    }
+    private var writeOptions: Data.WritingOptions {
+#if os(iOS)
+        return [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+#else
+        return .atomic
+#endif
     }
 }
