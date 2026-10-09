@@ -212,7 +212,7 @@ public enum PulseEngine {
         let saved = Set(library.likedIDs + library.playlists.flatMap(\.trackIDs))
         let heardRecordings = Set(recent.compactMap { id in index?.recordings[id] ?? library.tracks[id].map(PulseDiversity.recording) })
         let context = mood ?? (library.settings.mood == "any" ? nil : library.settings.mood)
-        let pool = cached.filter { !exclude.contains($0.id) && !recent.contains($0.id) && !heardRecordings.contains(index?.recordings[$0.id] ?? PulseDiversity.recording($0.track)) && !library.hiddenIDs.contains($0.id) && !PulseDiversity.blocked($0.track, settings: library.settings) && (library.settings.includeLibrary || !saved.contains($0.id)) && (context.map { mood in $0.track.mood == mood || $0.track.moodHints.contains(mood) } ?? true) }
+        let pool = cached.filter { item in !exclude.contains(item.id) && !recent.contains(item.id) && !heardRecordings.contains(index?.recordings[item.id] ?? PulseDiversity.recording(item.track)) && !library.hiddenIDs.contains(item.id) && !PulseDiversity.blocked(item.track, settings: library.settings) && (library.settings.includeLibrary || !saved.contains(item.id)) && (context.map { mood in item.track.mood == mood || item.track.moodHints.contains(mood) } ?? true) }
         let prepared = index ?? makeIndex(pool.map(\.track), library: Library())
         // A just-recorded skip must affect the immediate button press, before the
         // detached full-catalogue learner finishes. Only apply events newer than
