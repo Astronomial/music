@@ -22,14 +22,19 @@ struct GlassPanel<Content: View>: View {
 struct Artwork: View {
     let track: Track?
     var size: CGFloat = 48
+    @State private var image: UIImage?
     var body: some View {
         ZStack {
             LinearGradient(colors: [FormaTheme.accent.opacity(0.3), .indigo.opacity(0.2)], startPoint: .topLeading, endPoint: .bottomTrailing)
             Image(systemName: "music.note").foregroundStyle(FormaTheme.accent)
-            if let url = track?.artworkURL {
-                AsyncImage(url: url) { image in image.resizable().scaledToFill() } placeholder: { Color.clear }
-            }
+            if let image { Image(uiImage: image).resizable().scaledToFill() }
         }.frame(width: size, height: size).clipShape(RoundedRectangle(cornerRadius: size * 0.18))
+            .task(id: "\(track?.id ?? "")|\(track?.artworkURL?.absoluteString ?? "")|\(size > 100)") {
+                image = nil
+                guard let track else { return }
+                let loaded = await ArtworkStore.shared.image(for: track, pixels: size > 100 ? 1024 : 320)
+                guard !Task.isCancelled else { return }; image = loaded
+            }
     }
 }
 func formatTime(_ value: Double) -> String {

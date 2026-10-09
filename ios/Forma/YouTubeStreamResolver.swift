@@ -15,7 +15,7 @@ actor YouTubeStreamResolver: StreamResolving {
         let requestID = UUID()
         let job = Task<ResolvedAudio, Error> {
             let video = YouTube(videoID: videoID, useOAuth: false, allowOAuthCache: false, methods: [.local])
-            let streams = try await video.streams
+            let streams = try await video.audioStreams
             try Task.checkCancellation()
             guard let stream = streams.filterAudioOnly().filter({ $0.isNativelyPlayable && $0.fileExtension == .m4a }).highestAudioBitrateStream() else { throw ResolverError.noAudio }
             let result = try ResolvedAudio(url: stream.url)

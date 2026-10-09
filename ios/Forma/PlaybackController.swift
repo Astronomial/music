@@ -49,11 +49,13 @@ final class PlaybackController: ObservableObject {
     private var retryCount = 0
     private var artwork: MPMediaItemArtwork?
     private var artworkTask: Task<Void, Never>?
+    private var networkSignature: String?
 
     init(resolver: any StreamResolving = YouTubeStreamResolver()) {
         self.resolver = resolver
         engine.volume = volume
-        engine.automaticallyWaitsToMinimizeStalling = true
+        // AAC can start with a small buffer; AVPlayer's conservative wait can take seconds.
+        engine.automaticallyWaitsToMinimizeStalling = false
         periodic = engine.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
@@ -71,7 +73,15 @@ final class PlaybackController: ObservableObject {
         }
         installRemoteCommands()
         installAudioEvents()
-        network.pathUpdateHandler = { [resolver] _ in Task { await resolver.invalidate() } }
+        network.pathUpdateHandler = { [weak self] path in
+            let signature = "\(path.status)|\(path.usesInterfaceType(.wifi))|\(path.usesInterfaceType(.cellular))|\(path.usesInterfaceType(.wiredEthernet))"
+            Task { @MainActor in
+                guard let self else { return }
+                let previous = self.networkSignature; self.networkSignature = signature
+                // Initial monitor delivery must not cancel the first track's extraction.
+                if let previous, previous != signature { await self.resolver.invalidate() }
+            }
+        }
         network.start(queue: DispatchQueue(label: "music.forma.network"))
     }
     deinit {
@@ -86,6 +96,10 @@ final class PlaybackController: ObservableObject {
         if let list {
             queue = Array(list.drop { $0.id != track.id }.dropFirst())
             pulseMode = asPulse; mood = context; playedInRun = []
+        }
+        if let ready = prepared, ready.track.id == track.id, ready.audio.isFresh(margin: 15), ready.item.status != .failed, engine.items().contains(ready.item) {
+            requestedPlayback = true; engine.advanceToNextItem(); adoptPreparedItem()
+            if !interrupted { engine.play() }; return
         }
         start(track)
     }
@@ -108,14 +122,13 @@ final class PlaybackController: ObservableObject {
                 try Task.checkCancellation()
                 guard generation == token else { return }
                 let item = AVPlayerItem(url: resolved.url)
+                item.preferredForwardBufferDuration = 3
                 observe(item, token: token)
                 engine.insert(item, after: nil)
                 if seconds > 0 { await engine.seek(to: CMTime(seconds: seconds, preferredTimescale: 600)) }
                 guard generation == token, !Task.isCancelled else { return }
-                isLoading = false
                 if requestedPlayback, !interrupted { try activateAudio(); engine.play() }
                 updateNowPlaying()
-                if duration > 0, duration < 180 { prepareNext() }
             } catch is CancellationError { }
             catch {
                 guard generation == token, !Task.isCancelled else { return }
@@ -155,7 +168,7 @@ final class PlaybackController: ObservableObject {
         generation = UUID(); prefetchedCurrent = nil; failedCandidates = []
         observe(ready.item, token: generation); loadArtwork(for: ready.track)
         isPlaying = engine.timeControlStatus == .playing; if isPlaying { markStarted() }; updateNowPlaying()
-        if duration > 0, duration < 180 { prepareNext() }
+        if isPlaying { prepareNext() }
     }
     func previous() { seek(to: 0) }
     func seek(to value: Double) {
@@ -176,6 +189,8 @@ final class PlaybackController: ObservableObject {
     private func markStarted() {
         guard let current, startedID != current.id else { return }
         startedID = current.id; onStarted?(current)
+        // Begin next-track extraction as soon as the current track is audible.
+        prepareNext()
     }
     private func finish(_ kind: FeedbackKind) {
         guard let current, clock.seconds >= 3 else { clock.reset(); return }
@@ -192,7 +207,7 @@ final class PlaybackController: ObservableObject {
         if let ready = prepared, !ready.audio.isFresh(margin: 45), engine.currentItem !== ready.item {
             engine.remove(ready.item); prepared = nil; prefetchedCurrent = nil
         }
-        if duration > 0, duration - position < 90, requestedPlayback, prepared == nil, !preparing { prepareNext() }
+        if isPlaying, prepared == nil, !preparing { prepareNext() }
         if ProcessInfo.processInfo.systemUptime - lastNowPlayingUpdate >= 5 { updateNowPlaying() }
     }
     private func observe(_ item: AVPlayerItem, token: UUID) {
@@ -217,6 +232,7 @@ final class PlaybackController: ObservableObject {
     private func prepareNext() {
         guard !preparing, prepared == nil, let next = candidate(), let active = engine.currentItem else { return }
         preparing = true
+        prefetchedCurrent = next.id
         let token = generation, requestToken = UUID(); preparationToken = requestToken
         prefetch = Task { [weak self] in
             guard let self else { return }
@@ -224,12 +240,13 @@ final class PlaybackController: ObservableObject {
                 let audio = try await resolver.resolve(videoID: next.id, forceRefresh: false)
                 try Task.checkCancellation()
                 guard generation == token, preparationToken == requestToken, engine.currentItem === active else { return }
-                let item = AVPlayerItem(url: audio.url); item.preferredForwardBufferDuration = 12
+                let item = AVPlayerItem(url: audio.url); item.preferredForwardBufferDuration = 8
                 guard engine.canInsert(item, after: active) else { preparing = false; return }
                 prepared = (next, item, audio); engine.insert(item, after: active); preparing = false
             } catch {
                 guard generation == token, preparationToken == requestToken else { return }
                 preparing = false
+                prefetchedCurrent = nil
                 if !Task.isCancelled { failedCandidates.insert(next.id); if failedCandidates.count < 3 { prepareNext() } }
             }
         }
@@ -240,11 +257,12 @@ final class PlaybackController: ObservableObject {
             if let ready = prepared, engine.currentItem !== ready.item { engine.remove(ready.item); prepared = nil }
             return
         }
+        if preparing, prefetchedCurrent == next.id { return }
         if let ready = prepared, engine.currentItem !== ready.item, ready.track.id != next.id {
             engine.remove(ready.item); prepared = nil
         } else if prepared != nil { return }
         preparationToken = UUID(); prefetch?.cancel(); preparing = false
-        if duration > 0, duration - position < 90 { prepareNext() }
+        if isPlaying { prepareNext() }
     }
     private func activateAudio() throws {
         let session = AVAudioSession.sharedInstance()
@@ -300,10 +318,8 @@ final class PlaybackController: ObservableObject {
         })
     }
     private func loadArtwork(for track: Track) {
-        guard let url = track.artworkURL, url.scheme == "https" else { return }
         artworkTask = Task { [weak self] in
-            guard let (data, _) = try? await URLSession.shared.data(from: url), data.count < 5 * 1024 * 1024,
-                  let image = UIImage(data: data), !Task.isCancelled, let self, self.current?.id == track.id else { return }
+            guard let image = await ArtworkStore.shared.image(for: track, pixels: 960), !Task.isCancelled, let self, self.current?.id == track.id else { return }
             self.artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
             self.updateNowPlaying()
         }

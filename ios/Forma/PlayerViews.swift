@@ -9,17 +9,22 @@ struct MiniPlayer: View {
     init(model: AppModel, expand: @escaping () -> Void) { self.model = model; self.player = model.player; self.expand = expand }
     var body: some View {
         if let track = player.current {
-            HStack(spacing: 12) {
+            HStack(spacing: 4) {
                 Button(action: expand) {
                     HStack(spacing: 12) {
                         Artwork(track: track, size: 42)
                         VStack(alignment: .leading, spacing: 3) { Text(track.title).font(.subheadline.bold()).lineLimit(1); Text(track.artist).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
-                    }.frame(maxWidth: .infinity, alignment: .leading)
+                    }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityLabel("Открыть плеер")
-                if player.isLoading { ProgressView() }
-                else { Button { player.toggle() } label: { Image(systemName: player.isPlaying ? "pause.fill" : "play.fill").font(.title3) }.accessibilityLabel(player.isPlaying ? "Пауза" : "Воспроизвести") }
-                Button { player.next() } label: { Image(systemName: "forward.end.fill") }.accessibilityLabel("Следующий трек")
-            }.padding(14).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
+                Button { model.toggleLike(track) } label: {
+                    Image(systemName: model.isLiked(track) ? "heart.fill" : "heart").foregroundStyle(model.isLiked(track) ? FormaTheme.accent : .secondary).frame(width: 44, height: 44)
+                }.buttonStyle(.plain).accessibilityLabel(model.isLiked(track) ? "Убрать из любимого" : "Добавить в любимое").accessibilityIdentifier("mini-player-like")
+                Button { player.toggle() } label: {
+                    Group { if player.isLoading { ProgressView() } else { Image(systemName: player.isPlaying ? "pause.fill" : "play.fill").font(.title3) } }.frame(width: 44, height: 44)
+                }.buttonStyle(.plain).accessibilityLabel(player.isPlaying ? "Пауза" : "Воспроизвести")
+                Button { player.next() } label: { Image(systemName: "forward.end.fill").frame(width: 44, height: 44) }.buttonStyle(.plain).accessibilityLabel("Следующий трек")
+            }.padding(10).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
+                .accessibilityIdentifier("mini-player")
                 .overlay(alignment: .bottomLeading) {
                     GeometryReader { bounds in Capsule().fill(FormaTheme.accent).frame(width: bounds.size.width * (player.duration > 0 ? min(1, player.position / player.duration) : 0), height: 2) }.frame(height: 2).padding(.horizontal, 20)
                 }

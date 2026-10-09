@@ -10,13 +10,12 @@ struct ContentView: View {
     @State private var showSettings = false
     var body: some View {
         TabView {
-            NavigationStack { HomeView(model: model, showSettings: $showSettings) }.tabItem { Label("Главная", systemImage: "house") }
-            NavigationStack { SearchView(model: model) }.tabItem { Label("Поиск", systemImage: "magnifyingglass") }
-            NavigationStack { PlaylistsView(model: model) }.tabItem { Label("Библиотека", systemImage: "square.stack") }
-            NavigationStack { SettingsView(model: model) }.tabItem { Label("Настройки", systemImage: "gearshape") }
+            NavigationStack { HomeView(model: model, showSettings: $showSettings) }.modifier(PlayerInset(model: model, expand: { showPlayer = true })).tabItem { Label("Главная", systemImage: "house") }
+            NavigationStack { SearchView(model: model) }.modifier(PlayerInset(model: model, expand: { showPlayer = true })).tabItem { Label("Поиск", systemImage: "magnifyingglass") }
+            NavigationStack { PlaylistsView(model: model) }.modifier(PlayerInset(model: model, expand: { showPlayer = true })).tabItem { Label("Библиотека", systemImage: "square.stack") }
+            NavigationStack { SettingsView(model: model) }.modifier(PlayerInset(model: model, expand: { showPlayer = true })).tabItem { Label("Настройки", systemImage: "gearshape") }
         }
         .tint(FormaTheme.color(palette))
-        .safeAreaInset(edge: .bottom, spacing: 0) { MiniPlayer(model: model, expand: { showPlayer = true }).padding(.horizontal, 12).padding(.bottom, 8) }
         .sheet(isPresented: $showPlayer) { NowPlayingView(model: model).presentationDetents([.large]).presentationDragIndicator(.visible) }
         .sheet(isPresented: $showSettings) { NavigationStack { PulseSettingsView(model: model) }.presentationDetents([.large]).presentationDragIndicator(.visible) }
         .alert("Forma", isPresented: Binding(get: { model.message != nil }, set: { if !$0 { model.message = nil } })) {
@@ -33,6 +32,21 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await model.synchronize() } }
             else { model.persist(immediately: true) }
+        }
+    }
+}
+/// Reserve content space inside each tab, leaving the system tab bar untouched.
+@MainActor
+private struct PlayerInset: ViewModifier {
+    @ObservedObject var model: AppModel
+    @ObservedObject private var player: PlaybackController
+    let expand: () -> Void
+    init(model: AppModel, expand: @escaping () -> Void) { self.model = model; player = model.player; self.expand = expand }
+    func body(content: Content) -> some View {
+        content.safeAreaInset(edge: .bottom, spacing: 0) {
+            if player.current != nil {
+                MiniPlayer(model: model, expand: expand).padding(.horizontal, 12).padding(.vertical, 8)
+            }
         }
     }
 }

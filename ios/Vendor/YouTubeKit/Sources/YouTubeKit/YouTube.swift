@@ -14,13 +14,8 @@ public class YouTube {
     private var _js: String?
     private var _jsURL: URL?
     
-#if swift(>=5.10)
-    nonisolated(unsafe) private static var __js: String? // caches js between calls
-    nonisolated(unsafe) private static var __jsURL: URL?
-#else
-    private static var __js: String? // caches js between calls
-    private static var __jsURL: URL?
-#endif
+    private static let playerScripts = PlayerScriptCache()
+    private let session: URLSession
     
     private var _videoInfos: [InnerTube.VideoInfo]?
     
@@ -73,7 +68,8 @@ public class YouTube {
     private let log = OSLog(YouTube.self)
     
     /// - parameter methods: Methods used to extract streams from the video - ordered by priority (Default: `local` on iOS, macOS, tvOS, visionOS; `remote` on watchOS)
-    public init(videoID: String, proxies: [String: URL] = [:], useOAuth: Bool = false, allowOAuthCache: Bool = false, methods: [ExtractionMethod] = .default) {
+    public init(videoID: String, proxies: [String: URL] = [:], useOAuth: Bool = false, allowOAuthCache: Bool = false, methods: [ExtractionMethod] = .default, session: URLSession = YouTubeNetwork.session) {
+        self.session = session
         self.videoID = videoID
         self.useOAuth = useOAuth
         self.allowOAuthCache = allowOAuthCache
@@ -106,7 +102,7 @@ public class YouTube {
             request.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
             request.setValue("en-US,en", forHTTPHeaderField: "accept-language")
             request.httpShouldHandleCookies = false
-            let (data, _) = try await URLSession.shared.data(for: request)
+            let (data, _) = try await session.data(for: request)
             _watchHTML = String(data: data, encoding: .utf8) ?? ""
             return _watchHTML!
         }
@@ -122,7 +118,7 @@ public class YouTube {
             request.setValue("en-US,en", forHTTPHeaderField: "accept-language")
             request.setValue("https://www.reddit.com/", forHTTPHeaderField: "Referer")
             request.httpShouldHandleCookies = false
-            let (data, _) = try await URLSession.shared.data(for: request)
+            let (data, _) = try await session.data(for: request)
             _embedHTML = String(data: data, encoding: .utf8) ?? ""
             return _embedHTML!
         }
@@ -191,14 +187,7 @@ public class YouTube {
             
             let jsURL = try await jsURL
             
-            if YouTube.__jsURL != jsURL {
-                let (data, _) = try await URLSession.shared.data(from: jsURL)
-                _js = String(data: data, encoding: .utf8) ?? ""
-                YouTube.__js = _js
-                YouTube.__jsURL = jsURL
-            } else {
-                _js = YouTube.__js
-            }
+            _js = try await Self.playerScripts.script(at: jsURL, session: session)
             return _js!
         }
     }
@@ -255,8 +244,7 @@ public class YouTube {
                             // to force an update to the js file, we clear the cache and retry
                             _js = nil
                             _jsURL = nil
-                            YouTube.__js = nil
-                            YouTube.__jsURL = nil
+                            await Self.playerScripts.invalidate()
                             try await Extraction.applySignature(streamManifest: &streamManifest, videoInfo: videoInfo, js: js)
                         }
                         
@@ -301,6 +289,52 @@ public class YouTube {
         }
     }
     
+    /// Forma audio path: first usable client wins; never requests progressive video.
+    /// Each worker owns its mutable YouTube instance. No shared instance crosses tasks.
+    public var audioStreams: [Stream] {
+        get async throws {
+#if canImport(JavaScriptCore)
+            try await checkAvailability()
+            let html = try await watchHTML
+            let configuration = try await ytcfg
+            return try await withThrowingTaskGroup(of: [Stream].self) { group in
+                for client in [InnerTube.ClientType.visionOS, .web] {
+                    group.addTask { [videoID, useOAuth, allowOAuthCache, session] in
+                        let worker = YouTube(videoID: videoID, useOAuth: useOAuth, allowOAuthCache: allowOAuthCache, methods: [.local], session: session)
+                        worker._watchHTML = html; worker._ytcfg = configuration
+                        do {
+                            // Native clients do not need a web timestamp before /player.
+                            let timestamp = client == .web ? try await worker.signatureTimestamp : nil
+                            let tube = InnerTube(client: client, signatureTimestamp: timestamp, ytcfg: configuration, useOAuth: useOAuth, allowCache: allowOAuthCache, session: session)
+                            let info = try await tube.player(videoID: videoID)
+                            try Task.checkCancellation()
+                            guard info.videoDetails?.videoId == videoID, let data = info.streamingData else { return [] }
+                            var manifest = Extraction.applyDescrambler(streamData: data).filter { $0.mimeType.hasPrefix("audio/mp4;") }
+                            manifest = Extraction.filterOutDubbedAudio(streamManifest: manifest)
+                            guard !manifest.isEmpty else { return [] }
+                            let needsSignature = manifest.contains { format in
+                                format.s != nil || format.url.flatMap { URLComponents(string: $0)?.queryItems }?.contains { $0.name == "n" } == true
+                            }
+                            if needsSignature {
+                                try await Extraction.applyAudioSignature(streamManifest: &manifest, js: worker.js)
+                            }
+                            try Task.checkCancellation()
+                            return manifest.compactMap { try? Stream(format: $0) }.filter { $0.isNativelyPlayable && !$0.includesVideoTrack }
+                        } catch is CancellationError { throw CancellationError() }
+                        catch { return [] } // A second client may still provide valid audio.
+                    }
+                }
+                while let streams = try await group.next() {
+                    if !streams.isEmpty { group.cancelAll(); return streams }
+                }
+                throw YouTubeKitError.extractError
+            }
+#else
+            throw YouTubeKitError.extractError
+#endif
+        }
+    }
+
     /// Returns a list of live streams - currently only HLS supported
     /// - Note: Currently doesn't respect `method` set. It always uses `.local`
     public var livestreams: [Livestream] {
@@ -364,7 +398,7 @@ public class YouTube {
             let innertubeClients: [InnerTube.ClientType] = [.visionOS, .web]
             
             let results: [Result<InnerTube.VideoInfo, Error>] = await innertubeClients.concurrentMap { [videoID, useOAuth, allowOAuthCache] client in
-                let innertube = InnerTube(client: client, signatureTimestamp: signatureTimestamp, ytcfg: ytcfg, useOAuth: useOAuth, allowCache: allowOAuthCache)
+                let innertube = InnerTube(client: client, signatureTimestamp: signatureTimestamp, ytcfg: ytcfg, useOAuth: useOAuth, allowCache: allowOAuthCache, session: session)
                 
                 do {
                     let innertubeResponse = try await innertube.player(videoID: videoID)
@@ -413,7 +447,7 @@ public class YouTube {
         } else {
             try await ytcfg
         }
-        let innertube = InnerTube(client: client, signatureTimestamp: signatureTimestamp, ytcfg: ytcfg, useOAuth: useOAuth, allowCache: allowOAuthCache)
+        let innertube = InnerTube(client: client, signatureTimestamp: signatureTimestamp, ytcfg: ytcfg, useOAuth: useOAuth, allowCache: allowOAuthCache, session: session)
         let videoInfo = try await innertube.player(videoID: videoID)
         
         // ignore if incorrect videoID
@@ -428,7 +462,7 @@ public class YouTube {
     private func bypassAgeGate() async throws {
         let signatureTimestamp = try await signatureTimestamp
         let ytcfg = try await ytcfg
-        let innertube = InnerTube(client: .webCreator, signatureTimestamp: signatureTimestamp, ytcfg: ytcfg, useOAuth: useOAuth, allowCache: allowOAuthCache)
+        let innertube = InnerTube(client: .webCreator, signatureTimestamp: signatureTimestamp, ytcfg: ytcfg, useOAuth: useOAuth, allowCache: allowOAuthCache, session: session)
         let innertubeResponse = try await innertube.player(videoID: videoID)
 
         if innertubeResponse.playabilityStatus?.status == "UNPLAYABLE" || innertubeResponse.playabilityStatus?.status == "LOGIN_REQUIRED" {

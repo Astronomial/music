@@ -30,7 +30,8 @@ public enum CatalogParser {
             let inner = outer?["musicThumbnailRenderer"] as? [String: Any]
             thumbs = (inner?["thumbnail"] as? [String: Any])?["thumbnails"] as? [[String: Any]]
         }
-        guard let value = thumbs?.last?["url"] as? String, let url = URL(string: value), url.scheme == "https" else { return nil }
+        let best = thumbs?.max { (($0["width"] as? Int) ?? 0) * (($0["height"] as? Int) ?? 0) < (($1["width"] as? Int) ?? 0) * (($1["height"] as? Int) ?? 0) }
+        guard let value = best?["url"] as? String, let url = URL(string: value), url.scheme == "https" else { return nil }
         return url
     }
     static func seconds(_ value: String) -> Double {

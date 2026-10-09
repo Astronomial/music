@@ -17,6 +17,7 @@ class SignatureSolver {
     private let vm = JSVirtualMachine()
     private let ctx: JSContext
     
+    private var preprocessedPlayer: String?
     private let playerJS: String
     
     init(js: String) throws {
@@ -137,12 +138,12 @@ class SignatureSolver {
     
     // MARK: - Public
     
-    struct SolveRequest {
+    struct SolveRequest: Sendable {
         var nInputs: [String]
         var sigInputs: [String]
     }
     
-    struct SolveResponse {
+    struct SolveResponse: Sendable {
         let nMap: [String: String]
         let sigMap: [String: String]
     }
@@ -155,14 +156,15 @@ class SignatureSolver {
         ]
 
         let input = Input(
-            type: .player,
-            player: self.playerJS,
-            preprocessed_player: nil,
+            type: preprocessedPlayer == nil ? .player : .preprocessedPlayer,
+            player: preprocessedPlayer == nil ? self.playerJS : nil,
+            preprocessed_player: preprocessedPlayer,
             requests: requests,
-            output_preprocessed: false
+            output_preprocessed: preprocessedPlayer == nil
         )
 
         let response = try solve(with: input)
+        if let preprocessed = response.preprocessed_player { preprocessedPlayer = preprocessed }
 
         var nMap: [String: String] = [:]
         var sigMap: [String: String] = [:]
@@ -187,6 +189,18 @@ class SignatureSolver {
         }
 
         return SolveResponse(nMap: nMap, sigMap: sigMap)
+    }
+}
+/// Serializes JavaScriptCore work, reuses resources and the parsed player between tracks.
+actor AudioSignatureCache {
+    static let shared = AudioSignatureCache()
+    private var source: String?
+    private var solver: SignatureSolver?
+    func solve(js: String, request: SignatureSolver.SolveRequest) throws -> SignatureSolver.SolveResponse {
+        try Task.checkCancellation()
+        if source != js || solver == nil { solver = try SignatureSolver(js: js); source = js }
+        do { return try solver!.batchSolve(request: request) }
+        catch { source = nil; solver = nil; throw error }
     }
 }
 #endif

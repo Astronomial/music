@@ -396,6 +396,16 @@ class Extraction {
     class func applySignature(streamManifest: inout [InnerTube.StreamingData.Format], videoInfo: InnerTube.VideoInfo, js: String) throws {
         let solver = try SignatureSolver(js: js)
 
+        let response = try solver.batchSolve(request: signatureRequest(streamManifest))
+        applySolvedSignature(streamManifest: &streamManifest, response: response)
+    }
+
+    class func applyAudioSignature(streamManifest: inout [InnerTube.StreamingData.Format], js: String) async throws {
+        let response = try await AudioSignatureCache.shared.solve(js: js, request: signatureRequest(streamManifest))
+        applySolvedSignature(streamManifest: &streamManifest, response: response)
+    }
+
+    private class func signatureRequest(_ streamManifest: [InnerTube.StreamingData.Format]) -> SignatureSolver.SolveRequest {
         var sigInputs: [String] = []
         var nInputs: [String] = []
 
@@ -418,10 +428,10 @@ class Extraction {
             }
         }
 
-        // Batch solve all signatures and n-parameters
-        let request = SignatureSolver.SolveRequest(nInputs: nInputs, sigInputs: sigInputs)
-        let response = try solver.batchSolve(request: request)
+        return SignatureSolver.SolveRequest(nInputs: Array(Set(nInputs)), sigInputs: Array(Set(sigInputs)))
+    }
 
+    private class func applySolvedSignature(streamManifest: inout [InnerTube.StreamingData.Format], response: SignatureSolver.SolveResponse) {
         var invalidStreamIndices = [Int]()
 
         // Second pass: apply results

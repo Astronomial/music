@@ -99,10 +99,12 @@ class InnerTube {
 
     private let ytcfg: Extraction.YtCfg
     private let signatureTimestamp: Int?
+    private let session: URLSession
     
     private let baseURL = "https://www.youtube.com/youtubei/v1"
     
-    init(client: ClientType = .ios, signatureTimestamp: Int?, ytcfg: Extraction.YtCfg, useOAuth: Bool = false, allowCache: Bool = true) {
+    init(client: ClientType = .ios, signatureTimestamp: Int?, ytcfg: Extraction.YtCfg, useOAuth: Bool = false, allowCache: Bool = true, session: URLSession = YouTubeNetwork.session) {
+        self.session = session
         self.context = defaultClients[client]!.context
         self.apiKey = defaultClients[client]!.apiKey
         self.headers = defaultClients[client]!.headers
@@ -176,7 +178,10 @@ class InnerTube {
         
         // TODO: handle oauth auth case again
         
-        let (responseData, _) = try await URLSession.shared.data(for: request)
+        request.httpShouldHandleCookies = false
+        let (responseData, response) = try await session.data(for: request)
+        try Task.checkCancellation()
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw YouTubeKitError.extractError }
         
         return try JSONDecoder().decode(T.self, from: responseData)
     }

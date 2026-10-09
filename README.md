@@ -100,7 +100,7 @@ YouTube играет через **видимый официальный встр
 
 ## iPhone и синхронизация
 
-**[Скачать Forma iOS 1.0.0 (IPA для подписи)](https://github.com/Astronomial/music/releases/download/ios-v1.0.0/Forma-iOS-1.0.0-unsigned.ipa)** · **[Установка с Windows через Sideloadly](ios/INSTALL_WINDOWS.md)**
+**[Скачать Forma iOS 1.0.1 (IPA для подписи)](https://github.com/Astronomial/music/releases/download/ios-v1.0.1/Forma-iOS-1.0.1-unsigned.ipa)** · **[Установка с Windows через Sideloadly](ios/INSTALL_WINDOWS.md)**
 
 Нативное приложение для iOS 17+, включая iOS 18: SwiftUI, AVQueuePlayer, фоновый Пульс, системное управление, поиск, плейлисты, подборки и настройки разнообразия. Следующий поток готовится заранее. Музыкальная подписка не нужна; бесплатная личная подпись для установки обычно действует 7 дней и требует обновления.
 
