@@ -15,7 +15,7 @@ actor YouTubeStreamResolver: StreamResolving {
         let requestID = UUID()
         let job = Task<ResolvedAudio, Error> {
             let video = YouTube(videoID: videoID, useOAuth: false, allowOAuthCache: false, methods: [.local])
-            let streams: [Stream]
+            let streams: [YouTubeKit.Stream]
             do { streams = try await video.audioStreams }
             catch let extraction as AudioStreamExtractionError { throw ResolverError.extraction(extraction.attempts.joined(separator: "; ")) }
             catch let error as YouTubeKitError { throw ResolverError.extraction(error.rawValue) }
