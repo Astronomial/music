@@ -191,6 +191,7 @@ enum NativeSmoke {
                 try await Task.sleep(nanoseconds: 20_000_000)
             }
             guard model.recommendations.contains(where: { $0.id == tracks[0].id && $0.exposure?.isValid == true }) else { throw SyncError.rejected("AppModel did not prepare a learning snapshot") }
+            let coldSamples = player.measurements.count
             model.play(tracks[0], list: tracks)
             // Current extraction takes 500ms. Wait for the second track's real AVPlayerItem.
             for _ in 0..<100 {
@@ -198,7 +199,7 @@ enum NativeSmoke {
                 try await Task.sleep(nanoseconds: 30_000_000)
             }
             guard player.debugPreparedTrackID == tracks[1].id else { throw SyncError.rejected("Next track was not prepared immediately") }
-            guard let cold = player.measurements.first, cold.totalMilliseconds < 2500 else { throw SyncError.rejected("Controlled cold playback exceeded 2.5 seconds") }
+            guard let cold = player.measurements.dropFirst(coldSamples).first, cold.totalMilliseconds < 2500 else { throw SyncError.rejected("Controlled cold playback exceeded 2.5 seconds: \(player.debugPlaybackState)") }
             let coldStartMilliseconds = cold.totalMilliseconds
             guard let exposure = model.library.events.last(where: { $0.trackID == tracks[0].id && $0.kind == .play }),
                   exposure.recommendation?.isValid == true, exposure.surface == "manual" else { throw SyncError.rejected("Native start lost its recommendation context") }
@@ -213,12 +214,16 @@ enum NativeSmoke {
             let explicit = model.library.events.dropFirst(feedbackStart).filter { $0.trackID == tracks[0].id && ($0.kind == .like || $0.kind == .playlistAdd) }
             guard explicit.count == 2, explicit.allSatisfy({ $0.reward == 1 && $0.recommendation == exposure.recommendation }) else { throw SyncError.rejected("Like/playlist snapshot failed: \(explicit.count) reactions, \(explicit.filter { $0.recommendation == exposure.recommendation }.count) match selection") }
             let callsBefore = await fixtureResolver.calls[tracks[1].id]
+            let switchSamples = player.measurements.count
             let switchedAt = ProcessInfo.processInfo.systemUptime
             model.play(tracks[1], list: tracks)
             let switchDelay = ProcessInfo.processInfo.systemUptime - switchedAt
             guard player.current?.id == tracks[1].id, switchDelay < 0.2 else { throw SyncError.rejected("Manual next-track reuse failed") }
-            try await Task.sleep(nanoseconds: 100_000_000)
-            guard let warmed = player.measurements.last, warmed.source == "prepared", warmed.totalMilliseconds < 250 else { throw SyncError.rejected("Prepared playback did not reach playing within 250ms") }
+            for _ in 0..<25 {
+                if player.measurements.count > switchSamples { break }
+                try await Task.sleep(nanoseconds: 10_000_000)
+            }
+            guard let warmed = player.measurements.dropFirst(switchSamples).last, warmed.source == "prepared", warmed.totalMilliseconds < 250 else { throw SyncError.rejected("Prepared playback exceeded 250ms: \(player.debugPlaybackState); sample=\(player.measurements.dropFirst(switchSamples).last?.totalMilliseconds ?? -1)") }
             let preparedPlayingMilliseconds = warmed.totalMilliseconds
             let callsAfter = await fixtureResolver.calls[tracks[1].id]
             guard callsAfter == callsBefore else { throw SyncError.rejected("Prepared track was extracted twice: \(callsBefore ?? 0) -> \(callsAfter ?? 0); \(player.error ?? "no error"), playing \(player.isPlaying)") }

@@ -285,6 +285,7 @@ final class PlaybackController: ObservableObject {
 #if DEBUG && targetEnvironment(simulator)
     var debugPreparedTrackID: String? { prepared?.item.status == .readyToPlay ? prepared?.track.id : nil }
     var debugHasPlayerItem: Bool { engine.currentItem != nil }
+    var debugPlaybackState: String { "loading=\(isLoading), playing=\(isPlaying), cursor=\(engine.currentTime().seconds), itemCursor=\(engine.currentItem?.currentTime().seconds ?? -1), itemStatus=\(engine.currentItem?.status.rawValue ?? -1)" }
     func debugAdvanceEngine() { engine.advanceToNextItem() }
 #endif
     func previous() { seek(to: 0) }
@@ -313,14 +314,16 @@ final class PlaybackController: ObservableObject {
     private func confirmStart() {
         guard startConfirmation == nil, requestedPlayback, !interrupted, !mediaServicesLost, let item = engine.currentItem else { return }
         let token = generation, id = UUID(); confirmationID = id
-        let initial = engine.currentTime().seconds
+        let initial = item.currentTime().seconds
         startConfirmation = Task { [weak self, weak item] in
             var baseline: Double? = initial.isFinite ? initial : nil
             while !Task.isCancelled {
                 guard let self, let item, generation == token, confirmationID == id, requestedPlayback,
                       !interrupted, !mediaServicesLost, engine.currentItem === item else { break }
-                let cursor = engine.currentTime().seconds
-                if item.status == .readyToPlay, engine.timeControlStatus == .playing, cursor.isFinite {
+                let cursor = item.currentTime().seconds
+                if seeking { baseline = cursor.isFinite ? cursor : nil }
+                else if item.status == .readyToPlay, engine.timeControlStatus == .playing, cursor.isFinite {
+                    if let previous = baseline, cursor < previous { baseline = cursor }
                     if let baseline, cursor > baseline + 0.005 {
                         // `playing` alone can arrive before an HTTP asset supplies
                         // audio. Confirm an advancing item before cancelling its deadline.
