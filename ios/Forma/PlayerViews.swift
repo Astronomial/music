@@ -25,6 +25,12 @@ struct MiniPlayer: View {
                 Button { player.next() } label: { Image(systemName: "forward.end.fill").frame(width: 44, height: 44) }.buttonStyle(.plain).accessibilityLabel("Следующий трек")
             }.padding(10).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
                 .accessibilityIdentifier("mini-player")
+#if DEBUG && targetEnvironment(simulator)
+                .background(GeometryReader { bounds in
+                    Color.clear.onAppear { NativeSmoke.miniFrame = bounds.frame(in: .global) }
+                        .onChange(of: bounds.frame(in: .global)) { _, rect in NativeSmoke.miniFrame = rect }
+                })
+#endif
                 .overlay(alignment: .bottomLeading) {
                     GeometryReader { bounds in Capsule().fill(FormaTheme.accent).frame(width: bounds.size.width * (player.duration > 0 ? min(1, player.position / player.duration) : 0), height: 2) }.frame(height: 2).padding(.horizontal, 20)
                 }

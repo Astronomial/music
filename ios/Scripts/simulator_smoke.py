@@ -50,6 +50,7 @@ with tempfile.TemporaryDirectory(prefix='forma-simulator-') as directory:
                 if result.get('nativeStarts', 0) > 0: break
             time.sleep(.5)
         else: raise RuntimeError('Native audio did not start in foreground')
+        run('xcrun','simctl','io',device,'screenshot',str(root/'ios/native-layout.png'))
         run('xcrun','simctl','openurl',device,'https://127.0.0.1:30377/')
         for _ in range(60):
             if report.exists():

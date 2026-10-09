@@ -32,9 +32,9 @@ final class AppModel: ObservableObject {
     private var persistTask: Task<Void, Never>?
     private var syncTask: Task<Void, Never>?
 
-    init() {
+    init(playbackResolver: (any StreamResolving)? = nil) {
         let streams = YouTubeStreamResolver(); self.streams = streams
-        player = PlaybackController(resolver: streams)
+        player = PlaybackController(resolver: playbackResolver ?? streams)
         if let directory = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) {
             let url = directory.appendingPathComponent("forma-ios-library.json")
             storage = LibraryStorage(url: url)

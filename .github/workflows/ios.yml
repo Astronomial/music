@@ -63,6 +63,7 @@ jobs:
             ios/Forma-iOS-SHA256SUMS.txt
             ios/native-smoke-result.json
             ios/native-smoke-console.txt
+            ios/native-layout.png
           if-no-files-found: error
       - name: Publish iOS download
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'

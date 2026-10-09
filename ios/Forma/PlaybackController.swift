@@ -170,6 +170,9 @@ final class PlaybackController: ObservableObject {
         isPlaying = engine.timeControlStatus == .playing; if isPlaying { markStarted() }; updateNowPlaying()
         if isPlaying { prepareNext() }
     }
+#if DEBUG && targetEnvironment(simulator)
+    var debugPreparedTrackID: String? { prepared?.track.id }
+#endif
     func previous() { seek(to: 0) }
     func seek(to value: Double) {
         guard engine.currentItem != nil else { return }
