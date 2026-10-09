@@ -200,12 +200,16 @@ enum NativeSmoke {
             let coldStartMilliseconds = cold.totalMilliseconds
             guard let exposure = model.library.events.last(where: { $0.trackID == tracks[0].id && $0.kind == .play }),
                   exposure.recommendation?.isValid == true, exposure.surface == "manual" else { throw SyncError.rejected("Native start lost its recommendation context") }
+            let feedbackStart = model.library.events.count
             model.toggleLike(tracks[0]); model.toggleLike(tracks[0])
             model.createPlaylist("Learning fixture")
             guard let learningPlaylist = model.library.playlists.last else { throw SyncError.rejected("Learning playlist missing") }
             model.add(tracks[0], to: learningPlaylist.id)
-            let explicit = model.library.events.filter { $0.trackID == tracks[0].id && ($0.kind == .like || $0.kind == .playlistAdd) && $0.recommendation == exposure.recommendation }
-            guard explicit.count == 2, explicit.allSatisfy({ $0.reward == 1 }) else { throw SyncError.rejected("Like and playlist feedback lost the selected learning snapshot") }
+            // The preceding stability scenarios intentionally generated playlist
+            // feedback too. Check only these two new reactions, and compare every
+            // snapshot instead of filtering away an incorrect one.
+            let explicit = model.library.events.dropFirst(feedbackStart).filter { $0.trackID == tracks[0].id && ($0.kind == .like || $0.kind == .playlistAdd) }
+            guard explicit.count == 2, explicit.allSatisfy({ $0.reward == 1 && $0.recommendation == exposure.recommendation }) else { throw SyncError.rejected("Like/playlist snapshot failed: \(explicit.count) reactions, \(explicit.filter { $0.recommendation == exposure.recommendation }.count) match selection") }
             let callsBefore = await fixtureResolver.calls[tracks[1].id]
             let switchedAt = ProcessInfo.processInfo.systemUptime
             model.play(tracks[1], list: tracks)
