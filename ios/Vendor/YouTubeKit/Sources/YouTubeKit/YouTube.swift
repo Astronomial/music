@@ -294,21 +294,25 @@ public class YouTube {
     public var audioStreams: [Stream] {
         get async throws {
 #if canImport(JavaScriptCore)
-            try await checkAvailability()
-            let html = try await watchHTML
-            let configuration = try await ytcfg
             return try await withThrowingTaskGroup(of: [Stream].self) { group in
                 for client in [InnerTube.ClientType.visionOS, .web] {
                     group.addTask { [videoID, useOAuth, allowOAuthCache, session] in
                         let worker = YouTube(videoID: videoID, useOAuth: useOAuth, allowOAuthCache: allowOAuthCache, methods: [.local], session: session)
-                        worker._watchHTML = html; worker._ytcfg = configuration
                         do {
-                            // Native clients do not need a web timestamp before /player.
+                            // Native audio can arrive without downloading the watch page or player JS.
+                            // WEB retains the full watch configuration as a compatibility fallback.
+                            let configuration: Extraction.YtCfg
+                            if client == .web {
+                                try await worker.checkAvailability()
+                                configuration = try await worker.ytcfg
+                            } else {
+                                configuration = try JSONDecoder().decode(Extraction.YtCfg.self, from: Data("{}".utf8))
+                            }
                             let timestamp = client == .web ? try await worker.signatureTimestamp : nil
                             let tube = InnerTube(client: client, signatureTimestamp: timestamp, ytcfg: configuration, useOAuth: useOAuth, allowCache: allowOAuthCache, session: session)
                             let info = try await tube.player(videoID: videoID)
                             try Task.checkCancellation()
-                            guard info.videoDetails?.videoId == videoID, let data = info.streamingData else { return [] }
+                            guard info.playabilityStatus?.status == "OK", info.videoDetails?.videoId == videoID, let data = info.streamingData else { return [] }
                             var manifest = Extraction.applyDescrambler(streamData: data).filter { $0.mimeType.hasPrefix("audio/mp4;") }
                             manifest = Extraction.filterOutDubbedAudio(streamManifest: manifest)
                             guard !manifest.isEmpty else { return [] }

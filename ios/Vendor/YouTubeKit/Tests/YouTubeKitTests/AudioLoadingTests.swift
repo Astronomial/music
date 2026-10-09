@@ -26,18 +26,28 @@ private final class AudioFixtureProtocol: URLProtocol {
 }
 
 final class AudioLoadingTests: XCTestCase {
-    private func video(native: String = "aac", nativeDelay: Double = 0.01, scriptDelay: Double = 0.01) -> YouTube {
+    // Tiny deterministic player with the same structural signature entry as yt-ejs expects.
+    private static let playerFixture = """
+    (function(){function State(){this.values={};} State.prototype.set=function(k,v){this.values[k]=v;}; State.prototype.get=function(k){return this.values[k];}; State.prototype.transform=function(){if(this.values.s)this.values.s=encodeURIComponent(decodeURIComponent(this.values.s).split('').reverse().join(''));if(this.values.n)this.values.n=this.values.n.split('').reverse().join('');}; function build(url,key,s){var state=new State(); if(s)state.set(key,s); state.set('alr','yes'); return state;}}).call(this);
+    """
+
+    private func video(native: String = "aac", nativeDelay: Double = 0.01, scriptDelay: Double = 0.01, watchDelay: Double = 0.01) -> YouTube {
         let fixture = UUID().uuidString.replacingOccurrences(of: "-", with: "")
         let html = #"ytplayer.config = {"assets":{"js":"/s/player/FIXTURE/base.js"}}; ytcfg.set({}); var ytInitialPlayerResponse = {"playabilityStatus":{"status":"OK"}};"#.replacingOccurrences(of: "FIXTURE", with: fixture)
         AudioFixtureProtocol.lock.lock(); AudioFixtureProtocol.clients = []
         AudioFixtureProtocol.handler = { request in
             let path = request.url!.path
-            if path == "/watch" { return (Data(html.utf8), 0.01, 200) }
-            if path.hasSuffix("base.js") { return (Data("signatureTimestamp:12345".utf8), scriptDelay, 200) }
+            if path == "/watch" { return (Data(html.utf8), watchDelay, 200) }
+            if path.hasSuffix("base.js") { return (Data((native == "cipher" ? Self.playerFixture : "signatureTimestamp:12345").utf8), scriptDelay, 200) }
             let isNative = request.value(forHTTPHeaderField: "X-Youtube-Client-Name") == "101"
             if isNative, native == "error" { return (Data(), nativeDelay, 500) }
             let webm = isNative && native == "webm"
-            let object: [String: Any] = ["videoDetails": ["videoId": "abcdefghijk", "thumbnail": ["thumbnails": []]], "streamingData": ["adaptiveFormats": [["itag": webm ? 251 : 140, "mimeType": webm ? "audio/webm; codecs=\"opus\"" : "audio/mp4; codecs=\"mp4a.40.2\"", "url": "https://r1.googlevideo.com/audio?sig=ready", "bitrate": 128000]]]]
+            var format: [String: Any] = ["itag": webm ? 251 : 140, "mimeType": webm ? "audio/webm; codecs=\"opus\"" : "audio/mp4; codecs=\"mp4a.40.2\"", "url": "https://r1.googlevideo.com/audio?sig=ready", "bitrate": 128000]
+            if native == "cipher" {
+                var cipher = URLComponents(); cipher.queryItems = [URLQueryItem(name: "url", value: "https://r1.googlevideo.com/audio?n=xyz"), URLQueryItem(name: "s", value: "abc123"), URLQueryItem(name: "sp", value: "signature")]
+                format["url"] = nil; format["signatureCipher"] = cipher.percentEncodedQuery
+            }
+            let object: [String: Any] = ["playabilityStatus": ["status": "OK"], "videoDetails": ["videoId": "abcdefghijk", "thumbnail": ["thumbnails": []]], "streamingData": ["adaptiveFormats": [format]]]
             return (try! JSONSerialization.data(withJSONObject: object), isNative ? nativeDelay : 0.01, 200)
         }
         AudioFixtureProtocol.lock.unlock()
@@ -54,6 +64,12 @@ final class AudioLoadingTests: XCTestCase {
         AudioFixtureProtocol.lock.lock(); let clients = AudioFixtureProtocol.clients; AudioFixtureProtocol.lock.unlock()
         XCTAssertFalse(clients.contains("0"), "Audio must not request MEDIA_CONNECT_FRONTEND progressive video")
     }
+    func testNativeAudioDoesNotWaitForSlowWatchPage() async throws {
+        let video = video(watchDelay: 3), start = Date()
+        let streams = try await video.audioStreams
+        XCTAssertLessThan(Date().timeIntervalSince(start), 1)
+        XCTAssertEqual(streams.first?.fileExtension, .m4a)
+    }
     func testWebAudioFallbackWhenNativeCodecIsUnsupported() async throws {
         let streams = try await video(native: "webm").audioStreams
         XCTAssertEqual(streams.first?.fileExtension, .m4a)
@@ -61,6 +77,19 @@ final class AudioLoadingTests: XCTestCase {
     func testFailingClientDoesNotCancelOtherUsableClient() async throws {
         let streams = try await video(native: "error").audioStreams
         XCTAssertEqual(streams.first?.fileExtension, .m4a)
+    }
+    func testCachedSignatureSolverUsesNewInputs() throws {
+        let solver = try SignatureSolver(js: Self.playerFixture)
+        let first = try solver.batchSolve(request: .init(nInputs: ["xyz"], sigInputs: ["abc123"]))
+        XCTAssertEqual(first.nMap["xyz"], "zyx"); XCTAssertEqual(first.sigMap["abc123"], "321cba")
+        let second = try solver.batchSolve(request: .init(nInputs: ["new"], sigInputs: ["second"]))
+        XCTAssertEqual(second.nMap["new"], "wen"); XCTAssertEqual(second.sigMap["second"], "dnoces")
+    }
+    func testAudioPathDeciphersSignatureAndThrottlingParameter() async throws {
+        let streams = try await video(native: "cipher").audioStreams
+        let parameters = URLComponents(url: try XCTUnwrap(streams.first?.url), resolvingAgainstBaseURL: false)?.queryItems
+        XCTAssertEqual(parameters?.first { $0.name == "signature" }?.value, "321cba")
+        XCTAssertEqual(parameters?.first { $0.name == "n" }?.value, "zyx")
     }
     func testCancellationStopsSlowExtraction() async throws {
         let video = video(nativeDelay: 3, scriptDelay: 3), start = Date()
