@@ -7,7 +7,7 @@ import VolumeControl from './components/VolumeControl.jsx';
 import TrackTable from './components/TrackTable.jsx';
 import RequestedPlaylistBanner,{useRequestedPlaylistImport} from './components/RequestedPlaylistImport.jsx';
 import {ensureRequestedPlaylist} from './core/starter-library.mjs';
-import {waveSettings} from './core/wave-settings.mjs';
+import {waveSettings,upgradeWaveSettings} from './core/wave-settings.mjs';
 import YouTubePlayer from './components/YouTubePlayer.jsx';
 import {collectYouTubeCandidates} from './core/catalog.mjs';
 import SearchPage from './components/SearchPage.jsx';
@@ -69,7 +69,7 @@ export default function App() {
     Promise.all([bridge.load(),bridge.downloads()]).then(([saved,files])=> {
       if(!alive)return;
       let initial=initialState();
-      if(saved?.version===1) initial={...initial,...saved,settings:{...initial.settings,...saved.settings,...waveSettings(saved.settings)}};
+      if(saved?.version===1) initial={...initial,...saved,settings:{...initial.settings,...saved.settings,...upgradeWaveSettings(saved.settings)}};
       for(const [id,file] of Object.entries(files)) initial.tracks[id]=file.track;
       if(bridge.desktop){initial=ensureRequestedPlaylist(initial);initial.importRequests=initial.importRequests.map(r=>r.status==='loading'?{...r,status:'pending'}:r);}
       stateRef.current=initial;setState(initial);setDownloads(files);setReady(true);
@@ -115,7 +115,7 @@ export default function App() {
   useEffect(()=>{ if(ready&&state.onboarded&&online&&!state.settings.offlineOnly)refresh(); },[ready,state.onboarded,online,state.settings.offlineOnly,provider]);
   const lastFeedback=state.events.findLast(e=>e.type==='listen'||e.type==='skip');
   const tasteSeed=JSON.stringify([state.likes,state.playlists.map(p=>p.trackIds),lastFeedback&&[lastFeedback.at,lastFeedback.trackId,lastFeedback.type]]);
-  const retrievalKey=JSON.stringify(['genres','excludedGenres','genreMode','mood','energy','vocals','preferredArtists','blockedArtists','playlistSource','seedPlaylistIds'].map(k=>state.settings[k]));
+  const retrievalKey=JSON.stringify(['genres','excludedGenres','genreMode','mood','energy','vocals','preferredArtists','blockedArtists','playlistSource','seedPlaylistIds','languagePreference','explorationStyle'].map(k=>state.settings[k]));
   useEffect(()=>{if(!ready||!state.onboarded||!online||state.settings.offlineOnly)return;const timer=setTimeout(()=>refresh(),1500);return()=>clearTimeout(timer);},[tasteSeed,retrievalKey]);
   useEffect(()=>{if(audio.current)audio.current.volume=state.settings.volume;},[state.settings.volume]);
   function measureListening(seeking=false){
@@ -143,7 +143,7 @@ export default function App() {
 
   async function refresh() {
     if(!navigator.onLine||stateRef.current.settings.offlineOnly)return;
-    const snapshot=stateRef.current;const signature=JSON.stringify([snapshot.settings.provider,['genres','excludedGenres','genreMode','mood','energy','vocals','preferredArtists','blockedArtists','playlistSource','seedPlaylistIds'].map(k=>snapshot.settings[k]),snapshot.likes,snapshot.playlists.map(p=>p.trackIds),snapshot.events.findLast(e=>e.type==='listen'||e.type==='skip'),catalogContext.current]);
+    const snapshot=stateRef.current;const signature=JSON.stringify([snapshot.settings.provider,['genres','excludedGenres','genreMode','mood','energy','vocals','preferredArtists','blockedArtists','playlistSource','seedPlaylistIds','languagePreference','explorationStyle'].map(k=>snapshot.settings[k]),snapshot.likes,snapshot.playlists.map(p=>p.trackIds),snapshot.events.findLast(e=>e.type==='listen'||e.type==='skip'),catalogContext.current]);
     if(refreshBusy.current){refreshPending.current=refreshPending.current||signature!==refreshSignature.current;return;}
     refreshSignature.current=signature;refreshBusy.current=true;setLoading(true);setNetworkError('');
     try {const s=stateRef.current;const candidates=s.settings.provider==='audius'?await collectCandidates(playlistSeedState(s,catalogContext.current),bridge.request):await collectYouTubeCandidates(s,(route,params)=>bridge.catalogRequest(route,params,'youtube'),{context:catalogContext.current,round:refreshCount.current,onBatch:batch=>change(s=>mergeTracks(s,batch))});change(s=>mergeTracks(s,candidates));refreshCount.current++;}
@@ -173,11 +173,17 @@ export default function App() {
     const t=currentRef.current,seconds=measureListening();
     if(!t||!session.current.recorded||seconds<1)return;
     const ratio=Math.min(1,seconds/((t.source==='youtube'?youtube.current?.getDuration?.():audio.current?.duration)||t.duration||Infinity));
-    change(s=>recordEvent(s,t.id,reason==='skip'?'skip':'listen',{seconds,ratio,surface:session.current.surface||'manual',mood:session.current.context?.mood||''}));
+    change(s=>recordEvent(s,t.id,reason==='skip'?'skip':'listen',{seconds,ratio,surface:session.current.surface||'manual',mood:session.current.context?.mood||'',...(session.current.recommendation?{recommendation:session.current.recommendation}:{})}));
     session.current.recorded=false;
   }
   function setPlaybackQueue(items) {queueRef.current=items;setQueue(items);}
   function setWaveMode(value){waveRef.current=value;setWave(value);}
+  function recommendationFor(track){
+    if(currentRef.current?.id===track.id&&session.current.recommendation)return session.current.recommendation;
+    const mood=contextRef.current?.mood;
+    const items=mood?(mixes.find(m=>m.context.mood===mood)?.items||[]):recommendations;
+    return items.find(r=>r.track.id===track.id)?.exposure||null;
+  }
   function sourcesFor(id){
     const hit=sourcesCache.current.get(id);if(hit&&Date.now()-hit.at<60000)return hit.promise;
     const promise=bridge.sources(id).catch(error=>{sourcesCache.current.delete(id);throw error;});
@@ -196,7 +202,8 @@ export default function App() {
     const token=++playToken.current;
     youtube.current?.pauseVideo?.();
     const el=audio.current;el.onerror=null;el.pause();el.removeAttribute('src');el.load();
-    currentRef.current=track;setCurrent(track);setPlaybackId(token);setPlaying(false);setPosition(0);setDuration(track.duration);setBuffering(true);session.current={clock:new ListeningClock(),recorded:false,context:contextRef.current,surface:contextRef.current?.mood?'mood':waveRef.current?'pulse':list?'playlist':'manual',newArtist:recommendation?.newArtist===true};
+    const exposure=recommendation?.exposure||recommendationFor(track);
+    currentRef.current=track;setCurrent(track);setPlaybackId(token);setPlaying(false);setPosition(0);setDuration(track.duration);setBuffering(true);session.current={clock:new ListeningClock(),recorded:false,context:contextRef.current,surface:contextRef.current?.mood?'mood':waveRef.current?'pulse':list?'playlist':'manual',newArtist:recommendation?.newArtist===true||exposure?.features?.[5]===1,recommendation:exposure?structuredClone(exposure):null};
     if(track.source==='youtube'){setYoutubeMounted(true);return;}
     try{
       const sources=await sourcesFor(track.id);if(token!==playToken.current)return;
@@ -262,8 +269,8 @@ export default function App() {
   actions.current={nextTrack,previousTrack,togglePlayback,pausePlayback,resumePlayback,playTrack,toggleLike,downloadTrack,cancelDownload:id=>bridge.cancelDownload?.(id),showTrackMenu:(track,table)=>{setPlaylistTarget(track);setModal({type:'track',playlist:table.playlist,downloaded:table.downloaded});}};
 
   async function importLocal(kind){setImportingLocal(true);try{const result=await bridge.importLocal(kind);setDownloads(result.files);change(s=>mergeTracks(s,Object.values(result.files).map(f=>f.track)));notify(`Добавлено файлов: ${result.added}.${result.errors.length?' Не удалось прочитать: '+result.errors.length+'. '+result.errors[0].file+': '+result.errors[0].error:''}`);}catch(e){notify(e.message);}finally{setImportingLocal(false);}}
-  function onPlaying(){measureListening();setPlaying(true);setBuffering(false);if(!session.current.recorded&&currentRef.current){session.current.recorded=true;change(s=>recordEvent(s,currentRef.current.id,'play',{surface:session.current.surface,mood:session.current.context?.mood||'',newArtist:session.current.newArtist===true}));}}
-  function toggleLike(t){change(s=>({...s,likes:s.likes.includes(t.id)?s.likes.filter(id=>id!==t.id):[...s.likes,t.id]}));}
+  function onPlaying(){measureListening();setPlaying(true);setBuffering(false);if(!session.current.recorded&&currentRef.current){session.current.recorded=true;change(s=>recordEvent(s,currentRef.current.id,'play',{surface:session.current.surface,mood:session.current.context?.mood||'',newArtist:session.current.newArtist===true,...(session.current.recommendation?{recommendation:session.current.recommendation}:{})}));}}
+  function toggleLike(t){const exposure=recommendationFor(t);change(s=>{const liked=s.likes.includes(t.id),next={...s,likes:liked?s.likes.filter(id=>id!==t.id):[...s.likes,t.id]};return liked?next:recordEvent(next,t.id,'like',{...(exposure?{recommendation:exposure}:{}),surface:currentRef.current?.id===t.id?session.current.surface:'library'});});}
   function hideTrack(t){change(s=>recordEvent({...s,hidden:[...new Set([...s.hidden,t.id])]},t.id,'hide'));notify('Больше не будем рекомендовать этот трек.');if(currentRef.current?.id===t.id)nextTrack('skip');}
   async function downloadTrack(t){
     if(!t.downloadable){notify('Автор не разрешил свободное скачивание этого трека.');return;}
@@ -275,8 +282,8 @@ export default function App() {
   async function removeDownload(t){try{setDownloads(await bridge.removeDownload(t.id));notify('Файл удалён с диска.');}catch(e){notify(e.message);}}
   function searchTracks(event){event.preventDefault();if(page!=='search'){navHistory.current.push('search');setPage('search');}}
   function typeSearch(value){setQuery(value);if(page!=='search'){navHistory.current.push('search');setPage('search');}}
-  function createPlaylist(e){e.preventDefault();const name=playlistName.trim();if(!name)return;const id=crypto.randomUUID();change(s=>({...s,playlists:[...s.playlists,{id,name,trackIds:playlistTarget?[playlistTarget.id]:[],createdAt:Date.now()}]}));setPlaylistName('');setModal(null);setPlaylistTarget(null);navigate(`playlist:${id}`);notify('Плейлист создан.');}
-  function addToPlaylist(id){change(s=>({...s,playlists:s.playlists.map(p=>p.id===id?{...p,trackIds:[...new Set([...p.trackIds,playlistTarget.id])]}:p)}));setModal(null);notify('Трек добавлен. Пульс учтёт твой выбор.');}
+  function createPlaylist(e){e.preventDefault();const name=playlistName.trim();if(!name)return;const id=crypto.randomUUID(),exposure=playlistTarget?recommendationFor(playlistTarget):null;change(s=>{const next={...s,playlists:[...s.playlists,{id,name,trackIds:playlistTarget?[playlistTarget.id]:[],createdAt:Date.now()}]};return playlistTarget?recordEvent(next,playlistTarget.id,'playlist-add',{...(exposure?{recommendation:exposure}:{}),surface:'playlist'}):next;});setPlaylistName('');setModal(null);setPlaylistTarget(null);navigate(`playlist:${id}`);notify('Плейлист создан.');}
+  function addToPlaylist(id){const exposure=recommendationFor(playlistTarget);change(s=>{const exists=s.playlists.find(p=>p.id===id)?.trackIds.includes(playlistTarget.id),next={...s,playlists:s.playlists.map(p=>p.id===id?{...p,trackIds:[...new Set([...p.trackIds,playlistTarget.id])]}:p)};return exists?next:recordEvent(next,playlistTarget.id,'playlist-add',{...(exposure?{recommendation:exposure}:{}),surface:'playlist'});});setModal(null);notify('Трек добавлен. Пульс учтёт твой выбор.');}
   function openAdd(t){setPlaylistTarget(t);setPlaylistName('');setModal('add');}
   function playList(tracks){const playable=tracks.filter(t=>t.streamable);if(!playable.length)return;playTrack(playable[0],playable);}
 

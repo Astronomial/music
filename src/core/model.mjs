@@ -5,7 +5,7 @@ export function normalizeTrack(t) {
   const artwork = t.artwork || {};
   const download = t.download || {};
   return {
-    source:t.source||'audius',videoId:t.videoId||'',relatedTo:t.relatedTo||[],retrievalSources:t.retrievalSources||[],discoveryGenres:t.discoveryGenres||[],discoveryMoods:t.discoveryMoods||[],discoveryEnergy:t.discoveryEnergy||[],discoveryVocals:t.discoveryVocals||[],album:t.album||'',
+    source:t.source||'audius',videoId:t.videoId||'',relatedTo:t.relatedTo||[],directRelatedTo:t.directRelatedTo||[],retrievalSources:t.retrievalSources||[],discoveryGenres:t.discoveryGenres||[],discoveryMoods:t.discoveryMoods||[],discoveryEnergy:t.discoveryEnergy||[],discoveryVocals:t.discoveryVocals||[],discoveryLanguages:t.discoveryLanguages||[],language:typeof t.language==='string'?t.language.slice(0,20):'',discoveredAt:Number.isFinite(t.discoveredAt)?t.discoveredAt:0,album:t.album||'',
     id: String(t.id), title: t.title || 'Без названия', artist: t.user?.name || t.artist || 'Неизвестный исполнитель',
     artistId: String(t.user?.id || t.artistId || ''), genre: t.genre || '', mood: t.mood || '',
     tags: (Array.isArray(t.tags) ? t.tags : String(t.tags || '').split(',')).map(x => x.trim().toLowerCase()).filter(Boolean).slice(0, 30),
@@ -18,11 +18,11 @@ export function normalizeTrack(t) {
     permalink: t.permalink || ''
   };
 }
-export function mergeTracks(state, tracks) {
+export function mergeTracks(state, tracks, now=Date.now()) {
   const next = { ...state.tracks };
   for (const t of tracks) if (t?.id) {
-    const merged={...t};
-    for(const key of ['relatedTo','discoveryGenres','discoveryMoods','discoveryEnergy','discoveryVocals','retrievalSources'])merged[key]=[...new Set([...(next[t.id]?.[key]||[]),...(t[key]||[])])].slice(-15);
+    const merged={...t,discoveredAt:next[t.id]?.discoveredAt||t.discoveredAt||now};
+    for(const key of ['relatedTo','directRelatedTo','discoveryGenres','discoveryMoods','discoveryEnergy','discoveryVocals','discoveryLanguages','retrievalSources'])merged[key]=[...new Set([...(next[t.id]?.[key]||[]),...(t[key]||[])])].slice(-15);
     next[t.id]=merged;
   }
   // Preserve library/history metadata while bounding the discovery cache.

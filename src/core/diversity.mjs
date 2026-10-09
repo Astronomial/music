@@ -31,7 +31,7 @@ export function diversityHistory(state,now,keys,currentTrackId){
   return history.slice(-12).map(({track:t,newArtist})=>({keys:keys(t),recording:recordingKey(t,keys),id:t.id,newArtist}));
 }
 export function familiarArtists(state,now,keys){
-  const ids=new Set([...state.likes,...state.playlists.flatMap(p=>p.trackIds),...state.events.filter(e=>['play','listen','skip'].includes(e.type)&&now-e.at<=30*86400000).map(e=>e.trackId)]);
+  const ids=new Set([...state.likes,...state.playlists.flatMap(p=>p.trackIds),...state.events.filter(e=>['play','listen','skip'].includes(e.type)&&e.at<=now&&now-e.at<=30*86400000).map(e=>e.trackId)]);
   return new Set([...ids].flatMap(id=>state.tracks[id]?keys(state.tracks[id]):[]));
 }
 export function artistSpacing(diversity){

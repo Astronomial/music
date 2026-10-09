@@ -64,7 +64,9 @@ try{
   await page.waitForFunction(()=>document.querySelector('audio').currentTime>3.2);
   await page.getByRole('button',{name:'Следующий трек',exact:true}).click();
   await page.waitForTimeout(350);
-  assert.ok((await page.evaluate(()=>JSON.parse(localStorage.getItem('forma-library')))).events.some(e=>e.type==='skip'&&e.surface==='mood'&&e.mood==='calm'&&e.seconds>=3));
+  const logged=(await page.evaluate(()=>JSON.parse(localStorage.getItem('forma-library')))).events;
+  assert.ok(logged.some(e=>e.type==='skip'&&e.surface==='mood'&&e.mood==='calm'&&e.seconds>=3&&e.recommendation?.features?.length===10));
+  assert.ok(logged.some(e=>e.type==='like'));assert.ok(logged.some(e=>e.type==='playlist-add'));
   await page.getByRole('button',{name:'Пауза',exact:true}).click();
   const volume=page.getByRole('slider',{name:'Громкость',exact:true});
   assert.equal(await volume.getAttribute('step'),'0.001');
@@ -88,6 +90,13 @@ try{
   await page.waitForFunction(old=>document.querySelector('.now-playing strong').textContent!==old,old);
   await page.getByRole('button',{name:'Настройка Пульса',exact:true}).click();
   await page.getByRole('heading',{name:'Твой Пульс. Твой выбор.'}).waitFor();
+  await page.getByRole('button',{name:'Постепенно шире',exact:true}).click();
+  await page.getByRole('button',{name:'Больше английской',exact:true}).click();
+  await page.getByRole('button',{name:'Скорее не подходит сейчас',exact:true}).click();
+  await page.getByRole('slider',{name:'Влияние текущей сессии',exact:true}).fill('0.4');
+  await page.waitForTimeout(350);
+  const learningPrefs=(await page.evaluate(()=>JSON.parse(localStorage.getItem('forma-library')))).settings;
+  assert.equal(learningPrefs.explorationStyle,'balanced');assert.equal(learningPrefs.languagePreference,'en');assert.equal(learningPrefs.skipSensitivity,'soft');assert.equal(learningPrefs.sessionInfluence,.4);
   await page.getByRole('button',{name:'Предпочитать Ambient',exact:true}).click();
   await page.getByRole('switch',{name:'Только выбранные жанры',exact:true}).click();
   await page.getByRole('textbox',{name:'Исключённые артисты',exact:true}).fill('Test Artist One');

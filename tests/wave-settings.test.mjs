@@ -14,7 +14,7 @@ test('old profiles gain wave defaults and malformed preferences are bounded',()=
   assert.equal(waveSettings({genreMode:'strict',genres:[]}).genreMode,'prefer');
   const s=waveSettings({genres:['House','Rock','House','bogus'],excludedGenres:['Rock'],discovery:NaN,artistDiversity:4,repeatCooldown:-5,mood:'invalid',energy:'invalid',vocals:'invalid',blockedArtists:['Björk','bjork',5],includeLibrary:false});
   assert.deepEqual(s.genres,['House']);assert.deepEqual(s.blockedArtists,['bjork']);
-  assert.equal(s.discovery,.3);assert.equal(s.artistDiversity,1);assert.equal(s.repeatCooldown,0);assert.equal(s.mood,'any');assert.equal(s.energy,'any');assert.equal(s.vocals,'any');assert.equal(s.includeLibrary,false);
+  assert.equal(s.discovery,.7);assert.equal(s.artistDiversity,1);assert.equal(s.repeatCooldown,0);assert.equal(s.mood,'any');assert.equal(s.energy,'any');assert.equal(s.vocals,'any');assert.equal(s.includeLibrary,false);
 });
 test('strict genres accept query evidence while real metadata takes precedence',()=>{
   const s=initialState();s.settings.genres=['House'];s.settings.genreMode='strict';

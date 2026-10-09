@@ -1,7 +1,7 @@
 {
   "name": "forma-music",
   "productName": "Forma",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Personal music discovery with YouTube, local files and Audius",
   "author": "Forma",
   "private": true,
@@ -15,7 +15,8 @@
     "test:ui": "node tests/ui-smoke.mjs && node tests/youtube-ui-smoke.mjs && node tests/playback-switching-smoke.mjs && node tests/diversity-ui-smoke.mjs",
     "test:desktop": "npm run build && node tests/desktop-smoke.mjs",
     "dist:win": "npm run build && electron-builder --win portable --x64",
-    "dist:installer": "npm run build && electron-builder --win nsis --x64"
+    "dist:installer": "npm run build && electron-builder --win nsis --x64",
+    "evaluate:recommendations": "node scripts/evaluate-recommendations.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
