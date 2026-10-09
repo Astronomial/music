@@ -57,7 +57,21 @@ with tempfile.TemporaryDirectory(prefix='forma-simulator-') as directory:
             time.sleep(.5)
         else: raise RuntimeError('Native app did not reach background transition handshake')
         run('xcrun','simctl','io',device,'screenshot',str(root/'ios/native-layout.png'))
-        run('xcrun','simctl','openurl',device,'https://127.0.0.1:30377/')
+        # Moving to Safari is the assertion's only purpose: opening our pinned
+        # self-signed HTTPS server additionally invokes unrelated browser/TLS UI.
+        # A cold Simulator may time out its launch RPC after Safari actually opens;
+        # confirm the app's background handshake before retrying or failing.
+        for attempt in range(3):
+            try:
+                subprocess.check_output(['xcrun', 'simctl', 'launch', device, 'com.apple.mobilesafari'], text=True, timeout=30)
+                break
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                if report.exists():
+                    state = json.loads(report.read_text())
+                    if state.get('stage') == 'playing' or state.get('status') == 'passed': break
+                if attempt == 2: raise
+                print('Retrying cold Safari launch', flush=True)
+                time.sleep(2)
         for _ in range(60):
             if report.exists():
                 result = json.loads(report.read_text())
