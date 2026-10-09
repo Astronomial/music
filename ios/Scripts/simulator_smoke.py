@@ -47,9 +47,9 @@ with tempfile.TemporaryDirectory(prefix='forma-simulator-') as directory:
                     print(json.dumps(result, indent=2), flush=True)
                     (root/'ios/native-smoke-result.json').write_text(json.dumps(result, indent=2))
                     raise RuntimeError(result.get('error', 'Native startup failed'))
-                if result.get('nativeStarts', 0) > 0: break
+                if result.get('stage') == 'awaiting-background': break
             time.sleep(.5)
-        else: raise RuntimeError('Native audio did not start in foreground')
+        else: raise RuntimeError('Native app did not reach background transition handshake')
         run('xcrun','simctl','io',device,'screenshot',str(root/'ios/native-layout.png'))
         run('xcrun','simctl','openurl',device,'https://127.0.0.1:30377/')
         for _ in range(60):

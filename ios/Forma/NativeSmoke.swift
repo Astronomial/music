@@ -93,10 +93,27 @@ enum NativeSmoke {
             let barFrame = bar.convert(bar.bounds, to: nil)
             guard miniFrame.maxY <= barFrame.minY + 1 else { throw SyncError.rejected("Mini-player covers navigation: \(miniFrame), tab bar \(barFrame)") }
             write(["status": "running", "stage": "layout-verified", "miniPlayerBottom": miniFrame.maxY, "tabBarTop": barFrame.minY])
+            // Simulator screenshots can take longer than our short audio fixtures.
+            // Explicitly coordinate the move to Safari before measuring background transitions.
+            var transitionTask = UIApplication.shared.beginBackgroundTask(withName: "Forma smoke transition")
+            defer { if transitionTask != .invalid { UIApplication.shared.endBackgroundTask(transitionTask) } }
+            write(["status": "running", "stage": "awaiting-background"])
+            for _ in 0..<240 {
+                if UIApplication.shared.applicationState == .background { break }
+                try await Task.sleep(nanoseconds: 500_000_000)
+            }
+            guard UIApplication.shared.applicationState == .background else { throw SyncError.rejected("Simulator did not move app to background") }
             var starts: [String] = [], feedback: [ListeningEvent] = []
             player.onStarted = { starts.append($0.id); write(["status": "running", "stage": "playing", "nativeStarts": starts.count]) }; player.onFeedback = { feedback.append($0) }
             player.pulseNext = { exclude, _ in tracks.first { !exclude.contains($0.id) } }
             player.startPulse(tracks[0])
+            for _ in 0..<100 {
+                if player.isPlaying { break }
+                try await Task.sleep(nanoseconds: 30_000_000)
+            }
+            guard player.isPlaying else { throw SyncError.rejected("Native background audio did not start") }
+            // Only AVAudioSession keeps the app playing during the measured transitions.
+            UIApplication.shared.endBackgroundTask(transitionTask); transitionTask = .invalid
             for _ in 0..<100 {
                 try await Task.sleep(nanoseconds: 300_000_000)
                 if starts.count >= 4 && player.isPlaying { break }
