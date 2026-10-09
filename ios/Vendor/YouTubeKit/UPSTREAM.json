@@ -3,5 +3,5 @@
   "revision": "e5b7d0396ce12bf3444f0d209e8436c83373b7af",
   "license": "MIT",
   "author": "Alexander Eichhorn",
-  "changes": "Forma audio-only first-usable-client extraction, bounded cookie-free injectable URLSession, actor-isolated player JS cache and serialized signature solver reuse with preprocessed player caching; fixture tests. Package.swift declares iOS 17/macOS 14. Upstream authorship and bundled licenses retained. Configured native compatibility fallback, localized/default audio track selection, optional audio track fields, alternate player script paths and sanitized stage diagnostics."
+  "changes": "Forma audio-only first-usable-client extraction, bounded cookie-free injectable URLSession, actor-isolated player JS cache and serialized signature solver reuse with preprocessed player caching; fixture tests. Package.swift declares iOS 17/macOS 14. Upstream authorship and bundled licenses retained. Configured native compatibility fallback, localized/default audio track selection, optional audio track fields, alternate player script paths and sanitized stage diagnostics. Per-session anonymous audio context reuse with rejection recovery; warm context latency/request-count regression tests."
 }

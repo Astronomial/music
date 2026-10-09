@@ -151,7 +151,7 @@ final class PlaybackController: ObservableObject {
         }
     }
     func toggle() { requestedPlayback ? pause() : resume() }
-    func pause() { requestedPlayback = false; engine.pause(); isPlaying = false; updateNowPlaying() }
+    func pause() { startTiming = nil; requestedPlayback = false; engine.pause(); isPlaying = false; updateNowPlaying() }
     func resume() {
         guard let current else { return }
         if engine.currentItem == nil || engine.currentItem?.status == .failed { start(current, at: position, refreshing: true); return }
@@ -309,6 +309,7 @@ final class PlaybackController: ObservableObject {
         try session.setActive(true)
     }
     private func fail(_ failure: Error) {
+        startTiming = nil
         engine.pause(); isPlaying = false; isLoading = false; requestedPlayback = false
         clock.reset() // An unavailable stream is not a negative taste signal.
         error = failure.localizedDescription

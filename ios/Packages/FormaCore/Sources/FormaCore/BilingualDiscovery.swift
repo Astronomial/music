@@ -24,6 +24,16 @@ public enum BilingualDiscovery {
         }
         return result
     }
+    public static func rankHome(_ candidates: [Track], library: Library, limit: Int, mood: String? = nil, allowRecent: Bool = false, index: PulseEngine.RankingIndex? = nil) -> [Recommendation] {
+        let main = PulseEngine.rank(candidates, library: library, limit: limit, mood: mood, allowRecent: allowRecent, index: index)
+        let regionalPool = candidates.filter(regional)
+        var expanded = main
+        if !regionalPool.isEmpty, main.filter({ regional($0.track) }).count < max(4, limit / 3) {
+            let regionalRank = PulseEngine.rank(regionalPool, library: library, limit: max(4, limit / 3), mood: mood, allowRecent: allowRecent, index: index)
+            let existing = Set(main.map(\.id)); expanded += regionalRank.filter { !existing.contains($0.id) }
+        }
+        return Array(balanced(expanded, artistDiversity: library.settings.artistDiversity).prefix(limit))
+    }
     public static func regional(_ track: Track) -> Bool {
         (track.title + " " + track.artist).unicodeScalars.contains { (0x0400...0x052F).contains(Int($0.value)) }
     }

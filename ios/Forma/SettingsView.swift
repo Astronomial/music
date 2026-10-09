@@ -37,7 +37,7 @@ struct SettingsView: View {
                 }
                 GlassPanel { DisclosureGroup("Скорость воспроизведения") { PlaybackPerformanceView(player: model.player) } }
                 NavigationLink { PulseSettingsView(model: model) } label: { Label("Настроить Пульс", systemImage: "slider.horizontal.3").font(.headline) }
-                Text("Forma 1.0.2 · iOS 17+\nВоспроизведение работает через нативный плеер. YouTube должен быть доступен в твоей сети.").font(.footnote).foregroundStyle(.secondary)
+                Text("Forma 1.0.3 · iOS 17+\nВоспроизведение работает через нативный плеер. YouTube должен быть доступен в твоей сети.").font(.footnote).foregroundStyle(.secondary)
             }.padding(20)
         }.background(FormaTheme.background).navigationTitle("Настройки")
     }

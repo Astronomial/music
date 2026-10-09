@@ -172,6 +172,7 @@ final class AppModel: ObservableObject {
                 if index < requests.count { submit(requests[index]); index += 1 }
             }
         }
+        if successes > 0, !Task.isCancelled { UserDefaults.standard.set(3, forKey: "forma.discoveryRevision") }
         if successes == 0, !Task.isCancelled { message = failure ?? "Каталог пока недоступен. Попробуй ссылку на конкретный трек." }
     }
     func search(_ query: String) async {
@@ -213,9 +214,9 @@ final class AppModel: ObservableObject {
             let work = Task.detached(priority: .utility) {
                 let candidates = Array(snapshot.tracks.values)
                 let index = PulseEngine.makeIndex(candidates, library: snapshot)
-                let home = BilingualDiscovery.balanced(PulseEngine.rank(candidates, library: snapshot, limit: 40, index: index))
+                let home = BilingualDiscovery.rankHome(candidates, library: snapshot, limit: 40, index: index)
                 let next = PulseEngine.rank(candidates, library: pulse, limit: 60, index: index).map(\.track)
-                let moods = Dictionary(uniqueKeysWithValues: MoodMix.all.map { ($0.id, BilingualDiscovery.balanced(PulseEngine.rank(candidates, library: snapshot, limit: 30, mood: $0.id, allowRecent: true, index: index)).map(\.track)) })
+                let moods = Dictionary(uniqueKeysWithValues: MoodMix.all.map { ($0.id, BilingualDiscovery.rankHome(candidates, library: snapshot, limit: 30, mood: $0.id, allowRecent: true, index: index).map(\.track)) })
                 return (home, next, moods)
             }
             rankingWork = work

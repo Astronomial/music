@@ -21,6 +21,14 @@ final class DiscoveryPerformanceTests: XCTestCase {
         XCTAssertEqual(Set(result.map(\.id)), Set(ranked.map(\.id)))
         XCTAssertEqual(result.prefix(12).filter { BilingualDiscovery.regional($0.track) }.count, 4)
     }
+    func testRegionalDiscoverySurvivesAStrongEnglishLibraryAndHonorsHiddenTracks() {
+        let tracks = (0..<90).map { i in Track(videoID: String(format: "%011d", i), title: i >= 70 ? "Песня \(i)" : "Song \(i)", artist: "Artist \(i)", genres: [i >= 70 ? "Rock" : "Pop"], moodHints: ["calm"]) }
+        var library = Library(); library.merge(tracks); library.likedIDs = Array(tracks.prefix(70).map(\.id)); library.settings.artistDiversity = 0
+        library.hiddenIDs = [tracks[70].id]
+        let result = BilingualDiscovery.rankHome(tracks, library: library, limit: 30, mood: "calm")
+        XCTAssertGreaterThanOrEqual(result.prefix(12).filter { BilingualDiscovery.regional($0.track) }.count, 3)
+        XCTAssertFalse(result.contains { library.hiddenIDs.contains($0.id) })
+    }
     func testCachedIndexPreservesRankingAndFeedbackChangesTaste() {
         let tracks = (0..<120).map { i in Track(videoID: String(format: "%011d", i), title: "Song \(i)", artist: "Artist \(i % 20)", genres: [i % 2 == 0 ? "Rock" : "Pop"], moodHints: ["calm"]) }
         var library = Library(); library.merge(tracks); library.likedIDs = [tracks[0].id]
@@ -36,8 +44,8 @@ final class DiscoveryPerformanceTests: XCTestCase {
         let tracks = (0..<3000).map { i in Track(videoID: String(format: "%011d", i), title: "Song \(i)", artist: "Artist \(i % 500)", genres: ["Pop"], moodHints: [MoodMix.all[i % 6].id]) }
         var library = Library(); library.merge(tracks); library.likedIDs = Array(tracks.prefix(10).map(\.id))
         let start = Date(), index = PulseEngine.makeIndex(tracks, library: library)
-        XCTAssertEqual(PulseEngine.rank(tracks, library: library, limit: 40, index: index).count, 40)
-        for mood in MoodMix.all { XCTAssertEqual(PulseEngine.rank(tracks, library: library, limit: 30, mood: mood.id, index: index).count, 30) }
+        XCTAssertEqual(BilingualDiscovery.rankHome(tracks, library: library, limit: 40, index: index).count, 40)
+        for mood in MoodMix.all { XCTAssertEqual(BilingualDiscovery.rankHome(tracks, library: library, limit: 30, mood: mood.id, index: index).count, 30) }
         let elapsed = Date().timeIntervalSince(start)
         print("FORMA_RANK_BENCHMARK: 3000 tracks + six mood lists = \(elapsed) seconds; metadata index shared")
         XCTAssertLessThan(elapsed, 10, "Large libraries must not cause runaway ranking work")

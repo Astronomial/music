@@ -39,10 +39,10 @@ public enum PulseEngine {
         return result
     }
     private static func similarity(_ a: Vector, _ b: Vector) -> Double {
-        return a.reduce(0) { $0 + $1.value * (b[$1.key] ?? 0) }
+        return a.keys.sorted().reduce(0) { $0 + (a[$1] ?? 0) * (b[$1] ?? 0) }
     }
     private static func unit(_ vector: Vector) -> Vector {
-        let norm = sqrt(vector.values.reduce(0) { $0 + $1 * $1 })
+        let norm = sqrt(vector.keys.sorted().reduce(0) { $0 + pow(vector[$1] ?? 0, 2) })
         return norm > 0 ? vector.mapValues { $0 / norm } : [:]
     }
     private static func add(_ source: Vector, weight: Double, to target: inout Vector) {
@@ -100,7 +100,7 @@ public enum PulseEngine {
         let hidden = Set(library.hiddenIDs), saved = Set(library.likedIDs + library.playlists.flatMap(\.trackIDs))
         let trackWeights = weights(library, now: now)
         var positive: Vector = [:], negative: Vector = [:], session: Vector = [:]
-        for (id, weight) in trackWeights {
+        for (id, weight) in trackWeights.sorted(by: { $0.key < $1.key }) {
             guard let track = library.tracks[id] else { continue }
             if weight >= 0 { add(features(track), weight: weight, to: &positive) }
             else { add(features(track), weight: -weight, to: &negative) }
