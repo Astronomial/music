@@ -178,13 +178,20 @@ enum NativeSmoke {
             guard callsAfter == callsBefore else { throw SyncError.rejected("Prepared track was extracted twice: \(callsBefore ?? 0) -> \(callsAfter ?? 0); \(player.error ?? "no error"), playing \(player.isPlaying)") }
             // Rebuild the queued asset on a new network even if its URL has not
             // expired; continuing buffered current audio must remain uninterrupted.
+            for _ in 0..<100 {
+                if player.debugPreparedTrackID == tracks[2].id { break }
+                try await Task.sleep(nanoseconds: 30_000_000)
+            }
+            guard player.debugPreparedTrackID == tracks[2].id else { throw SyncError.rejected("Handoff fixture never prepared the old-network item") }
+            let preparedCallsBefore = await fixtureResolver.calls[tracks[2].id] ?? 0
             player.debugNetworkChanged(NetworkPolicy(reachable: true, cellular: true, expensive: true), signature: "prepared-cellular-vpn")
             guard player.debugPreparedTrackID == nil else { throw SyncError.rejected("Prepared old-network URL survived handoff") }
             for _ in 0..<100 {
                 if player.debugPreparedTrackID == tracks[2].id { break }
                 try await Task.sleep(nanoseconds: 30_000_000)
             }
-            guard player.isPlaying, player.debugPreparedTrackID == tracks[2].id else { throw SyncError.rejected("Next audio was not prepared on the new network") }
+            let preparedCallsAfter = await fixtureResolver.calls[tracks[2].id] ?? 0
+            guard player.isPlaying, player.debugPreparedTrackID == tracks[2].id, preparedCallsAfter > preparedCallsBefore else { throw SyncError.rejected("Next audio was not prepared on the new network") }
             try await Task.sleep(nanoseconds: 200_000_000)
             func tabBar(in view: UIView) -> UITabBar? {
                 if let bar = view as? UITabBar { return bar }
