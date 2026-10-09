@@ -115,4 +115,15 @@ final class ContextualLearningTests: XCTestCase {
         XCTAssertTrue(PulseEngine.rank([pop, rock], library: library, now: now, playlistID: "deleted").isEmpty)
     }
 
+    func testEarlySkipChangesImmediateCachedChoiceBeforeBackgroundRanking() throws {
+        var library = Library(); library.settings.genres = []; library.settings.artistDiversity = 0
+        let a = track(1, genre: "Rock"), b = track(2, genre: "Pop"), rock = track(3, genre: "Rock"), pop = track(4, genre: "Pop")
+        library.merge([a, b, rock, pop]); library.likedIDs = [a.id, b.id]
+        let index = PulseEngine.makeIndex([rock, pop], library: library)
+        let cached = PulseEngine.rank([rock, pop], library: library, limit: 2, now: now, index: index)
+        XCTAssertEqual(PulseEngine.selectCached(cached, library: library, exclude: [], now: now, index: index)?.id, rock.id)
+        library.record(.init(trackID: a.id, kind: .skip, at: now.addingTimeInterval(1), seconds: 8, ratio: 0.04, surface: "pulse"))
+        XCTAssertEqual(PulseEngine.selectCached(cached, library: library, exclude: [], now: now.addingTimeInterval(2), index: index)?.id, pop.id)
+    }
+
 }

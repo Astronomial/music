@@ -3,7 +3,7 @@ import Foundation
 public struct Recommendation: Identifiable, Sendable {
     public var id: String { track.id }
     public let track: Track
-    public let score: Double
+    public var score: Double
     public let reason: String
     public var newArtist = false
     public var known = false
@@ -11,6 +11,7 @@ public struct Recommendation: Identifiable, Sendable {
     public var languageFit = 0.0
     public var taste = 0.0
     public var exposure: RecommendationContext? = nil
+    public var scoredAt: Date = .distantPast
 }
 public struct MoodMix: Identifiable, Sendable {
     public let id: String
@@ -185,7 +186,7 @@ public enum PulseEngine {
             let lane = known ? "familiar" : nearby ? "nearby" : "stretch"
             var reason = known ? "Из твоей библиотеки" : newArtist && neighbour >= 0.24 ? "Новый исполнитель · рядом с \(matched?.artist ?? "твоим вкусом")" : lane == "stretch" && !seedTracks.isEmpty ? "Небольшой шаг в новое направление" : affinity > 0.1 ? "В твоём вкусе" : "Новое из YouTube"
             if context != nil { reason = "Под настроение · " + reason.lowercased() }
-            ranked.append(Recommendation(track: track, score: score, reason: reason, newArtist: newArtist, known: known, nearby: nearby, languageFit: language, taste: max(affinity, neighbour * 0.65), exposure: RecommendationContext(features: snapshot, lane: lane)))
+            ranked.append(Recommendation(track: track, score: score, reason: reason, newArtist: newArtist, known: known, nearby: nearby, languageFit: language, taste: max(affinity, neighbour * 0.65), exposure: RecommendationContext(features: snapshot, lane: lane), scoredAt: now))
         }
         ranked.sort { $0.score == $1.score ? $0.id < $1.id : $0.score > $1.score }
         var recordings = Set<String>()
@@ -212,7 +213,25 @@ public enum PulseEngine {
         let heardRecordings = Set(recent.compactMap { id in index?.recordings[id] ?? library.tracks[id].map(PulseDiversity.recording) })
         let pool = cached.filter { !exclude.contains($0.id) && !recent.contains($0.id) && !heardRecordings.contains(index?.recordings[$0.id] ?? PulseDiversity.recording($0.track)) && !library.hiddenIDs.contains($0.id) && !PulseDiversity.blocked($0.track, settings: library.settings) && (library.settings.includeLibrary || !saved.contains($0.id)) }
         let prepared = index ?? makeIndex(pool.map(\.track), library: Library())
-        return select(pool, library: library, limit: 1, now: now, currentID: currentID, index: prepared).first
+        // A just-recorded skip must affect the immediate button press, before the
+        // detached full-catalogue learner finishes. Only apply events newer than
+        // this cached score; later full rankings already contain their influence.
+        let feedback = library.events.suffix(8).filter { $0.kind == .skip && $0.reward != nil && $0.at <= now }
+        let live = pool.map { item -> Recommendation in
+            var choice = item
+            for event in feedback where event.at > item.scoredAt {
+                guard let skipped = library.tracks[event.trackID] else { continue }
+                let sameArtist = !(prepared.artists[item.id] ?? []).isDisjoint(with: prepared.artists[skipped.id] ?? PulseDiversity.artists(skipped))
+                let semantic = (prepared.semantic[item.id] ?? [:]).sorted { $0.key < $1.key }.map { ($0.key, $0.value) }
+                let content = similarity(semantic, prepared.semantic[skipped.id] ?? [:])
+                let reliability = !item.track.genre.isEmpty && !skipped.genre.isEmpty ? 1.0 : 0.35
+                let linked = !(Set(item.track.relatedTo)).isDisjoint(with: Set(skipped.relatedTo)) || item.track.relatedTo.contains(skipped.id)
+                let match = max(sameArtist ? 1 : 0, max(content * reliability * 0.65, linked ? 0.45 : 0))
+                choice.score -= match * (library.settings.skipSensitivity == "soft" ? 0.35 : 1) * (event.reward == 0 ? 0.8 : 0.25)
+            }
+            return choice
+        }
+        return select(live, library: library, limit: 1, now: now, currentID: currentID, index: prepared).first
     }
     private static func select(_ initial: [Recommendation], library: Library, limit: Int, now: Date, currentID: String?, index: RankingIndex) -> [Recommendation] {
         var ranked = initial, result: [Recommendation] = [], artistCounts: [String: Int] = [:]
