@@ -171,14 +171,14 @@ final class PlaybackController: ObservableObject {
     }
     private func start(_ track: Track, at seconds: Double = 0, refreshing: Bool = false) {
         if !refreshing || startTiming == nil { beginTiming(source: "network") }
-        task?.cancel(); prefetch?.cancel(); artworkTask?.cancel(); stallTask?.cancel()
+        task?.cancel(); prefetch?.cancel(); artworkTask?.cancel(); artworkTask = nil; stallTask?.cancel()
         prefetchedCurrent = nil; failedCandidates = []
         let token = UUID(); generation = token
         engine.pause(); engine.removeAllItems(); prepared = nil; preparing = false
         if !refreshing { onSelected?(track) }
         current = track; if !refreshing { startedID = nil }; position = seconds; duration = track.duration
         if !refreshing { clock.reset() }; seeking = false; error = nil; isLoading = true; isPlaying = false; requestedPlayback = true
-        if !refreshing { retryCount = 0; artwork = nil; loadArtwork(for: track) }
+        if !refreshing { retryCount = 0; artwork = nil }
         updateNowPlaying()
         if networkPolicy.known && !networkPolicy.reachable { return }
         armStartWatchdog(seconds: networkPolicy.extractionDeadline(base: extractionTimeout), token: token)
@@ -240,9 +240,9 @@ final class PlaybackController: ObservableObject {
         if !pulseMode { queue.removeAll { $0.id == ready.track.id } }
         onSelected?(ready.track)
         current = ready.track; startedID = nil; prepared = nil; position = 0; duration = ready.track.duration
-        clock.reset(); retryCount = 0; artwork = nil; error = nil; isLoading = false
+        clock.reset(); retryCount = 0; artworkTask?.cancel(); artworkTask = nil; artwork = nil; error = nil; isLoading = false
         generation = UUID(); prefetchedCurrent = nil; failedCandidates = []
-        observe(ready.item, token: generation); loadArtwork(for: ready.track)
+        observe(ready.item, token: generation)
         isPlaying = engine.timeControlStatus == .playing; if isPlaying { markStarted() }; updateNowPlaying()
         if isPlaying { prepareNext() }
     }
@@ -284,6 +284,7 @@ final class PlaybackController: ObservableObject {
             measurements = Array((measurements + [sample]).suffix(30)); startTiming = nil
         }
         if startedID != current.id { startedID = current.id; onStarted?(current) }
+        if artwork == nil && artworkTask == nil { loadArtwork(for: current) }
         // Begin next-track extraction as soon as the current track is audible.
         prepareNext()
     }

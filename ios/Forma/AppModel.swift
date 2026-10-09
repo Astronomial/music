@@ -18,6 +18,7 @@ final class AppModel: ObservableObject {
     var canSynchronizePC: Bool { player.networkPolicy.canSyncPC(localWiFi: localWiFiAvailable) }
     private let localWiFiMonitor = NWPathMonitor(requiredInterfaceType: .wifi)
     private var syncBackoff = SyncBackoff()
+    private var syncRouteAllowed = false
     private var lastAutomaticRefresh = Date.distantPast
     let player: PlaybackController
     private let streams: YouTubeStreamResolver
@@ -63,7 +64,7 @@ final class AppModel: ObservableObject {
         localWiFiMonitor.start(queue: DispatchQueue(label: "music.forma.local-wifi"))
         player.onConnectivityChange = { [weak self] policy in
             guard let self else { return }
-            if !canSynchronizePC { stopSyncForNetwork() }
+            updateSyncRoute()
             if !policy.canPrewarmExtraTracks { Task { await self.audioResolver.prewarm(videoIDs: []) } }
         }
         player.onSelected = { [weak self] track in
@@ -99,8 +100,13 @@ final class AppModel: ObservableObject {
     deinit { localWiFiMonitor.cancel() }
     private func localWiFiChanged(_ available: Bool) {
         guard available != localWiFiAvailable else { return }
-        localWiFiAvailable = available; syncBackoff.reset()
-        if canSynchronizePC { scheduleSync() } else { stopSyncForNetwork() }
+        localWiFiAvailable = available; updateSyncRoute()
+    }
+    private func updateSyncRoute() {
+        let allowed = canSynchronizePC
+        guard allowed != syncRouteAllowed else { return }
+        syncRouteAllowed = allowed; syncBackoff.reset()
+        if allowed { scheduleSync() } else { stopSyncForNetwork() }
     }
     private func stopSyncForNetwork() {
         syncTask?.cancel(); syncEpoch = UUID(); isSyncing = false
@@ -193,6 +199,10 @@ final class AppModel: ObservableObject {
         }
     }
     func refresh(automatic: Bool = false) async {
+#if DEBUG && targetEnvironment(simulator)
+        // The native smoke uses controlled audio/catalogue data, never live discovery.
+        if automatic && ProcessInfo.processInfo.arguments.contains("--forma-smoke") { return }
+#endif
         guard !isRefreshing else { return }
         let networkPolicy = player.networkPolicy
         if automatic {
@@ -254,7 +264,7 @@ final class AppModel: ObservableObject {
             }
             UserDefaults.standard.set(4, forKey: "forma.discoveryRevision")
         }
-        if successes == 0, !Task.isCancelled { message = failure ?? "Каталог пока недоступен. Попробуй ссылку на конкретный трек." }
+        if successes == 0, !Task.isCancelled, !automatic { message = failure ?? "Каталог пока недоступен. Попробуй ссылку на конкретный трек." }
     }
     func search(_ query: String) async {
         let token = UUID(); searchGeneration = token
