@@ -495,15 +495,15 @@ class Extraction {
     
     /// Prefer original/default audio without relying on an English-only label.
     class func filterOutDubbedAudio(streamManifest: [InnerTube.StreamingData.Format]) -> [InnerTube.StreamingData.Format] {
-        let original = streamManifest.filter {
-            $0.audioTrack?.displayName?.lowercased().hasSuffix("original") == true
+        if streamManifest.contains(where: { $0.audioTrack?.displayName?.lowercased().hasSuffix("original") == true }) {
+            return streamManifest.filter { $0.audioTrack == nil || $0.audioTrack?.displayName?.lowercased().hasSuffix("original") == true }
         }
-        if !original.isEmpty { return original }
-        let defaults = streamManifest.filter { $0.audioTrack == nil || $0.audioTrack?.audioIsDefault == true }
-        if !defaults.isEmpty { return defaults }
+        if streamManifest.contains(where: { $0.audioTrack?.audioIsDefault == true }) {
+            return streamManifest.filter { $0.audioTrack == nil || $0.audioTrack?.audioIsDefault == true }
+        }
         // Metadata can be absent/localized. Keep one track's formats rather than silence.
-        guard let firstID = streamManifest.first?.audioTrack?.id else { return streamManifest }
-        return streamManifest.filter { $0.audioTrack?.id == firstID }
+        guard let firstID = streamManifest.first(where: { $0.audioTrack != nil })?.audioTrack?.id else { return streamManifest }
+        return streamManifest.filter { $0.audioTrack == nil || $0.audioTrack?.id == firstID }
     }
     
     /// Breaks up the data in the ``type`` key of the manifest, which contains the

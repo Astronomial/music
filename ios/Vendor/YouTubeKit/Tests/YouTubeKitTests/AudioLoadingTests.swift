@@ -26,6 +26,18 @@ private final class AudioFixtureProtocol: URLProtocol {
 }
 
 final class AudioLoadingTests: XCTestCase {
+    private static func requestBody(_ request: URLRequest) -> Data? {
+        if let data = request.httpBody { return data }
+        guard let stream = request.httpBodyStream else { return nil }
+        stream.open(); defer { stream.close() }
+        var data = Data(), buffer = [UInt8](repeating: 0, count: 4096)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            guard count > 0 else { break }
+            data.append(contentsOf: buffer.prefix(count))
+        }
+        return data
+    }
     // Tiny deterministic player with the same structural signature entry as yt-ejs expects.
     private static let playerFixture = """
     (function(){function State(){this.values={};} State.prototype.set=function(k,v){this.values[k]=v;}; State.prototype.get=function(k){return this.values[k];}; State.prototype.transform=function(){if(this.values.s)this.values.s=encodeURIComponent(decodeURIComponent(this.values.s).split('').reverse().join(''));if(this.values.n)this.values.n=this.values.n.split('').reverse().join('');}; function build(url,key,s){var state=new State(); if(s)state.set(key,s); state.set('alr','yes'); return state;}}).call(this);
@@ -40,7 +52,7 @@ final class AudioLoadingTests: XCTestCase {
             if path == "/watch" { return (Data(html.utf8), watchDelay, 200) }
             if path.hasSuffix("base.js") { return (Data((native == "cipher" ? Self.playerFixture : "signatureTimestamp:12345").utf8), scriptDelay, 200) }
             let isNative = request.value(forHTTPHeaderField: "X-Youtube-Client-Name") == "101"
-            let body = request.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            let body = Self.requestBody(request).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
             let client = (body?["context"] as? [String: Any])?["client"] as? [String: Any]
             let hasVisitor = request.value(forHTTPHeaderField: "X-Goog-Visitor-Id") == "fixture-visitor" && client?["visitorData"] as? String == "fixture-visitor"
             if isNative, native == "error" { return (Data(), nativeDelay, 500) }
@@ -132,6 +144,12 @@ final class AudioLoadingTests: XCTestCase {
     func testPlayerJSWithHyphenatedVariantPath() throws {
         let path = "/s/player/abcdef12/tv-player-ias.vflset/tv-player-ias.js"
         XCTAssertEqual(try Extraction.getYTPlayerJS(html: "<script src='\(path)'></script>"), path)
+    }
+    func testOriginalAudioSelectionPreservesVideoAndExcludesDubs() throws {
+        let data = Data(#"{"adaptiveFormats":[{"itag":137,"mimeType":"video/mp4; codecs=\"avc1.640028\"","url":"https://example.com/video"},{"itag":140,"mimeType":"audio/mp4; codecs=\"mp4a.40.2\"","url":"https://example.com/original","audioTrack":{"id":"ru.0","displayName":"Russian original","audioIsDefault":false}},{"itag":140,"mimeType":"audio/mp4; codecs=\"mp4a.40.2\"","url":"https://example.com/dub","audioTrack":{"id":"en.1","displayName":"English","audioIsDefault":true}}]}"#.utf8)
+        let formats = try JSONDecoder().decode(InnerTube.StreamingData.self, from: data)
+        let selected = Extraction.filterOutDubbedAudio(streamManifest: Extraction.applyDescrambler(streamData: formats))
+        XCTAssertEqual(selected.compactMap { $0.url }, ["https://example.com/video", "https://example.com/original"])
     }
     func testCachedSignatureSolverUsesNewInputs() throws {
         let solver = try SignatureSolver(js: Self.playerFixture)
