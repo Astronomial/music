@@ -30,7 +30,7 @@ public enum CatalogParser {
             let inner = outer?["musicThumbnailRenderer"] as? [String: Any]
             thumbs = (inner?["thumbnail"] as? [String: Any])?["thumbnails"] as? [[String: Any]]
         }
-        func area(_ image: [String: Any]) -> Double { max(0, (image["width"] as? Double) ?? 0) * max(0, (image["height"] as? Double) ?? 0) }
+        func area(_ image: [String: Any]) -> Double { max(0, (image["width"] as? NSNumber)?.doubleValue ?? 0) * max(0, (image["height"] as? NSNumber)?.doubleValue ?? 0) }
         let best = thumbs?.max { area($0) < area($1) }
         guard let value = best?["url"] as? String, let url = URL(string: value), url.scheme == "https" else { return nil }
         return url

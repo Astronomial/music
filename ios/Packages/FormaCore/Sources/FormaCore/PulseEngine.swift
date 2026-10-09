@@ -113,7 +113,7 @@ public enum PulseEngine {
             profileSource.events = library.events.filter { seeds.contains($0.trackID) || !(Set(library.tracks[$0.trackID]?.relatedTo ?? [])).isDisjoint(with: seeds) }
         }
         let prepared = index ?? makeIndex(candidates, library: library)
-        let vectors = prepared.vectors, orderedVectors = prepared.orderedVectors, artistNames = prepared.artists, artistKeys = prepared.artistKeys
+        let vectors = prepared.vectors, orderedVectors = prepared.orderedVectors, artistNames = prepared.artists
         let familiarIDs = Set(library.likedIDs + library.playlists.flatMap(\.trackIDs) + library.events.filter { [FeedbackKind.play, .listen, .skip].contains($0.kind) && $0.at <= now && now.timeIntervalSince($0.at) < 30 * 86400 }.map(\.trackID))
         let familiarArtists = Set(familiarIDs.flatMap { artistNames[$0] ?? [] })
         let hidden = Set(library.hiddenIDs), saved = Set(library.likedIDs + library.playlists.flatMap(\.trackIDs))
@@ -212,7 +212,7 @@ public enum PulseEngine {
         let saved = Set(library.likedIDs + library.playlists.flatMap(\.trackIDs))
         let heardRecordings = Set(recent.compactMap { id in index?.recordings[id] ?? library.tracks[id].map(PulseDiversity.recording) })
         let context = mood ?? (library.settings.mood == "any" ? nil : library.settings.mood)
-        let pool = cached.filter { !exclude.contains($0.id) && !recent.contains($0.id) && !heardRecordings.contains(index?.recordings[$0.id] ?? PulseDiversity.recording($0.track)) && !library.hiddenIDs.contains($0.id) && !PulseDiversity.blocked($0.track, settings: library.settings) && (library.settings.includeLibrary || !saved.contains($0.id)) && (context == nil || $0.track.mood == context || $0.track.moodHints.contains(context!)) }
+        let pool = cached.filter { !exclude.contains($0.id) && !recent.contains($0.id) && !heardRecordings.contains(index?.recordings[$0.id] ?? PulseDiversity.recording($0.track)) && !library.hiddenIDs.contains($0.id) && !PulseDiversity.blocked($0.track, settings: library.settings) && (library.settings.includeLibrary || !saved.contains($0.id)) && (context.map { mood in $0.track.mood == mood || $0.track.moodHints.contains(mood) } ?? true) }
         let prepared = index ?? makeIndex(pool.map(\.track), library: Library())
         // A just-recorded skip must affect the immediate button press, before the
         // detached full-catalogue learner finishes. Only apply events newer than
