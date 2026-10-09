@@ -35,6 +35,8 @@ final class PlaybackController: ObservableObject {
     private let network = NWPathMonitor()
     private var task: Task<Void, Never>?
     private var startWatchdog: Task<Void, Never>?
+    private var startConfirmation: Task<Void, Never>?
+    private var confirmationID = UUID()
     private let extractionTimeout: TimeInterval
     private let bufferTimeout: TimeInterval
     private var prefetch: Task<Void, Never>?
@@ -93,8 +95,11 @@ final class PlaybackController: ObservableObject {
                 let now = ProcessInfo.processInfo.systemUptime
                 self.clock.tick(at: now, playing: self.isPlaying, seeking: self.seeking)
                 self.clock.tick(at: now, playing: false)
-                self.isPlaying = self.requestedPlayback && !self.interrupted && !self.mediaServicesLost && self.engine.timeControlStatus == .playing
-                if self.isPlaying { self.isLoading = false; self.markStarted() }
+                if self.requestedPlayback, !self.interrupted, !self.mediaServicesLost, self.engine.timeControlStatus == .playing {
+                    if !self.isPlaying { self.isLoading = true; self.confirmStart() }
+                } else {
+                    self.isPlaying = false; self.cancelStartConfirmation()
+                }
                 self.updateNowPlaying()
             }
         }
@@ -104,7 +109,7 @@ final class PlaybackController: ObservableObject {
         }
     }
     deinit {
-        task?.cancel(); startWatchdog?.cancel(); prefetch?.cancel(); artworkTask?.cancel(); networkRecoveryTask?.cancel(); stallTask?.cancel(); network.cancel()
+        task?.cancel(); startWatchdog?.cancel(); startConfirmation?.cancel(); prefetch?.cancel(); artworkTask?.cancel(); networkRecoveryTask?.cancel(); stallTask?.cancel(); network.cancel()
         if let periodic { engine.removeTimeObserver(periodic) }
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         if let stallObserver { NotificationCenter.default.removeObserver(stallObserver) }
@@ -128,7 +133,7 @@ final class PlaybackController: ObservableObject {
         // URLs are tied to the connection that resolved them. Keep audible buffered
         // audio, but cancel an unfinished old-route start and replace it after settling.
         if isLoading {
-            generation = UUID(); task?.cancel(); startWatchdog?.cancel(); engine.removeAllItems()
+            generation = UUID(); task?.cancel(); startWatchdog?.cancel(); cancelStartConfirmation(); engine.removeAllItems()
         }
         networkRecoveryTask = Task { [weak self] in
             do { try await Task.sleep(nanoseconds: 350_000_000) } catch { return }
@@ -147,12 +152,17 @@ final class PlaybackController: ObservableObject {
 #endif
     private func recoverStall(token: UUID) {
         stallTask?.cancel()
+        let initial = engine.currentTime().seconds
+        isPlaying = false; isLoading = requestedPlayback && !interrupted && !mediaServicesLost
+        cancelStartConfirmation(); confirmStart()
         stallTask = Task { [weak self] in
             do { try await Task.sleep(nanoseconds: 2_000_000_000) } catch { return }
             guard let self, generation == token, requestedPlayback, !networkRecovering,
                   !interrupted, !mediaServicesLost,
-                  networkPolicy.reachable, engine.timeControlStatus != .playing,
+                  networkPolicy.reachable, !isPlaying,
                   retryCount < 2, let current else { return }
+            let cursor = engine.currentTime().seconds
+            if initial.isFinite, cursor.isFinite, cursor > initial + 0.01 { return }
             retryCount += 1
             start(current, at: position, refreshing: true)
         }
@@ -179,7 +189,7 @@ final class PlaybackController: ObservableObject {
     }
     private func start(_ track: Track, at seconds: Double = 0, refreshing: Bool = false) {
         if !refreshing || startTiming == nil { beginTiming(source: "network") }
-        task?.cancel(); prefetch?.cancel(); startWatchdog?.cancel(); artworkTask?.cancel(); artworkTask = nil; stallTask?.cancel()
+        task?.cancel(); prefetch?.cancel(); startWatchdog?.cancel(); cancelStartConfirmation(); artworkTask?.cancel(); artworkTask = nil; stallTask?.cancel()
         prefetchedCurrent = nil; failedCandidates = []
         let token = UUID(); generation = token
         engine.pause(); engine.removeAllItems(); prepared = nil; preparing = false
@@ -208,7 +218,7 @@ final class PlaybackController: ObservableObject {
                 engine.insert(item, after: nil)
                 if seconds > 0 { await engine.seek(to: CMTime(seconds: seconds, preferredTimescale: 600)) }
                 guard generation == token, !Task.isCancelled else { return }
-                if requestedPlayback, !interrupted { try activateAudio(); engine.play() }
+                if requestedPlayback, !interrupted, !mediaServicesLost { try activateAudio(); confirmStart(); engine.play() }
                 updateNowPlaying()
             } catch is CancellationError { }
             catch {
@@ -219,9 +229,9 @@ final class PlaybackController: ObservableObject {
     }
     func toggle() { requestedPlayback ? pause() : resume() }
     func pause() {
-        clock.tick(at: ProcessInfo.processInfo.systemUptime, playing: engine.timeControlStatus == .playing, seeking: seeking)
+        clock.tick(at: ProcessInfo.processInfo.systemUptime, playing: isPlaying, seeking: seeking)
         if isLoading, engine.currentItem == nil { generation = UUID(); task?.cancel() }
-        stallTask?.cancel(); startWatchdog?.cancel(); startTiming = nil; requestedPlayback = false
+        stallTask?.cancel(); startWatchdog?.cancel(); cancelStartConfirmation(); startTiming = nil; requestedPlayback = false
         engine.pause(); isPlaying = false; isLoading = false
         clock.tick(at: ProcessInfo.processInfo.systemUptime, playing: false)
         updateNowPlaying()
@@ -234,9 +244,9 @@ final class PlaybackController: ObservableObject {
         do {
             try activateAudio(); error = nil
             clock.tick(at: ProcessInfo.processInfo.systemUptime, playing: false)
-            isLoading = engine.timeControlStatus != .playing
-            if isLoading { armStartWatchdog(seconds: networkPolicy.bufferDeadline(base: bufferTimeout), token: generation) }
-            engine.play(); updateNowPlaying()
+            isLoading = true; isPlaying = false
+            armStartWatchdog(seconds: networkPolicy.bufferDeadline(base: bufferTimeout), token: generation)
+            confirmStart(); engine.play(); updateNowPlaying()
         }
         catch { fail(error) }
     }
@@ -267,12 +277,10 @@ final class PlaybackController: ObservableObject {
         clock.reset(); retryCount = 0; artworkTask?.cancel(); artworkTask = nil; artwork = nil; error = nil
         generation = UUID(); prefetchedCurrent = nil; failedCandidates = []
         observe(ready.item, token: generation)
-        isPlaying = requestedPlayback && !interrupted && engine.timeControlStatus == .playing
-        isLoading = requestedPlayback && !interrupted && !isPlaying
-        if isPlaying { markStarted() }
-        else if isLoading { armStartWatchdog(seconds: networkPolicy.bufferDeadline(base: bufferTimeout), token: generation) }
+        cancelStartConfirmation(); isPlaying = false
+        isLoading = requestedPlayback && !interrupted && !mediaServicesLost
+        if isLoading { armStartWatchdog(seconds: networkPolicy.bufferDeadline(base: bufferTimeout), token: generation); confirmStart() }
         updateNowPlaying()
-        if isPlaying { prepareNext() }
     }
 #if DEBUG && targetEnvironment(simulator)
     var debugPreparedTrackID: String? { prepared?.item.status == .readyToPlay ? prepared?.track.id : nil }
@@ -299,8 +307,36 @@ final class PlaybackController: ObservableObject {
         let now = ProcessInfo.processInfo.systemUptime
         startTiming = (now, Date(), source == "prepared" ? now : nil, source)
     }
+    private func cancelStartConfirmation() {
+        startConfirmation?.cancel(); startConfirmation = nil; confirmationID = UUID()
+    }
+    private func confirmStart() {
+        guard startConfirmation == nil, requestedPlayback, !interrupted, !mediaServicesLost, let item = engine.currentItem else { return }
+        let token = generation, id = UUID(); confirmationID = id
+        let initial = engine.currentTime().seconds
+        startConfirmation = Task { [weak self, weak item] in
+            var baseline: Double? = initial.isFinite ? initial : nil
+            while !Task.isCancelled {
+                guard let self, let item, generation == token, confirmationID == id, requestedPlayback,
+                      !interrupted, !mediaServicesLost, engine.currentItem === item else { break }
+                let cursor = engine.currentTime().seconds
+                if item.status == .readyToPlay, engine.timeControlStatus == .playing, cursor.isFinite {
+                    if let baseline, cursor > baseline + 0.005 {
+                        // `playing` alone can arrive before an HTTP asset supplies
+                        // audio. Confirm an advancing item before cancelling its deadline.
+                        isPlaying = true; isLoading = false; startConfirmation = nil
+                        clock.tick(at: ProcessInfo.processInfo.systemUptime, playing: false)
+                        markStarted(); updateNowPlaying(); return
+                    }
+                    if baseline == nil { baseline = cursor }
+                }
+                do { try await Task.sleep(nanoseconds: 15_000_000) } catch { break }
+            }
+            if let self, confirmationID == id { startConfirmation = nil }
+        }
+    }
     var performanceReport: String {
-        let header = "Forma · iOS · замер от выбора трека до AVPlayer playing\n"
+        let header = "Forma · iOS · замер от выбора трека до движения позиции готового потока\n"
         return header + measurements.map { "\($0.title) | \($0.source) | всего \(Int($0.totalMilliseconds)) мс | поток \(Int($0.resolutionMilliseconds)) мс | буфер \(Int($0.bufferMilliseconds)) мс" }.joined(separator: "\n")
     }
     private func markStarted() {
@@ -319,7 +355,7 @@ final class PlaybackController: ObservableObject {
         prepareNext()
     }
     private func finish(_ kind: FeedbackKind) {
-        clock.tick(at: ProcessInfo.processInfo.systemUptime, playing: engine.timeControlStatus == .playing, seeking: seeking)
+        clock.tick(at: ProcessInfo.processInfo.systemUptime, playing: isPlaying, seeking: seeking)
         guard let current, clock.seconds >= 3 else { clock.reset(); return }
         let ratio = duration > 0 ? min(1, clock.seconds / duration) : 0
         onFeedback?(ListeningEvent(trackID: current.id, kind: kind, seconds: clock.seconds, ratio: ratio, mood: mood))
@@ -327,7 +363,7 @@ final class PlaybackController: ObservableObject {
     }
     private func tick() {
         adoptPreparedItem()
-        clock.tick(at: ProcessInfo.processInfo.systemUptime, playing: engine.timeControlStatus == .playing, seeking: seeking)
+        clock.tick(at: ProcessInfo.processInfo.systemUptime, playing: isPlaying && engine.timeControlStatus == .playing, seeking: seeking)
         let time = engine.currentTime().seconds
         if time.isFinite { position = max(0, time) }
         if let total = engine.currentItem?.duration.seconds, total.isFinite, total > 0 { duration = min(86400, total) }
@@ -405,7 +441,7 @@ final class PlaybackController: ObservableObject {
         startWatchdog?.cancel()
         startWatchdog = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(max(0.1, seconds) * 1_000_000_000))
-            guard !Task.isCancelled, let self, generation == token, requestedPlayback, !interrupted, !mediaServicesLost, isLoading, engine.timeControlStatus != .playing, let track = current else { return }
+            guard !Task.isCancelled, let self, generation == token, requestedPlayback, !interrupted, !mediaServicesLost, isLoading, !isPlaying, let track = current else { return }
             generation = UUID(); task?.cancel(); engine.removeAllItems()
             fail(PlayerError.startTimedOut)
             await resolver.cancel(videoID: track.id)
@@ -417,7 +453,7 @@ final class PlaybackController: ObservableObject {
         try session.setActive(true)
     }
     private func fail(_ failure: Error) {
-        startWatchdog?.cancel(); prefetch?.cancel(); preparationToken = UUID(); preparing = false
+        startWatchdog?.cancel(); cancelStartConfirmation(); prefetch?.cancel(); preparationToken = UUID(); preparing = false
         if let ready = prepared, engine.currentItem !== ready.item { engine.remove(ready.item) }
         prepared = nil
         startTiming = nil
@@ -469,9 +505,9 @@ final class PlaybackController: ObservableObject {
     }
     private func handleInterruption(began: Bool, shouldResume: Bool) {
         if began {
-            clock.tick(at: ProcessInfo.processInfo.systemUptime, playing: engine.timeControlStatus == .playing, seeking: seeking)
+            clock.tick(at: ProcessInfo.processInfo.systemUptime, playing: isPlaying, seeking: seeking)
             if isLoading, engine.currentItem == nil { generation = UUID(); task?.cancel() }
-            interrupted = true; startWatchdog?.cancel(); stallTask?.cancel()
+            interrupted = true; startWatchdog?.cancel(); cancelStartConfirmation(); stallTask?.cancel()
             engine.pause(); isPlaying = false; isLoading = false; updateNowPlaying()
         } else {
             interrupted = false
@@ -487,13 +523,13 @@ final class PlaybackController: ObservableObject {
     private func suspendForMediaServicesLoss() {
         clock.tick(at: ProcessInfo.processInfo.systemUptime, playing: isPlaying, seeking: seeking)
         mediaServicesLost = true; generation = UUID(); preparationToken = UUID()
-        task?.cancel(); prefetch?.cancel(); startWatchdog?.cancel(); stallTask?.cancel()
+        task?.cancel(); prefetch?.cancel(); startWatchdog?.cancel(); cancelStartConfirmation(); stallTask?.cancel()
         preparing = false; prepared = nil; engine.pause()
         isPlaying = false; isLoading = false; updateNowPlaying()
     }
     private func resetMediaServices() {
         mediaServicesLost = false
-        task?.cancel(); prefetch?.cancel(); startWatchdog?.cancel(); stallTask?.cancel()
+        task?.cancel(); prefetch?.cancel(); startWatchdog?.cancel(); cancelStartConfirmation(); stallTask?.cancel()
         generation = UUID(); preparationToken = UUID(); prepared = nil; preparing = false
         engine.pause(); engine.removeAllItems()
         if let periodic { engine.removeTimeObserver(periodic); self.periodic = nil }

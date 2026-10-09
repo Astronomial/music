@@ -26,6 +26,13 @@ struct PCConnection: Codable, Sendable {
         return (PCConnection(host: parts.map(String.init).joined(separator: "."), port: port, pin: pin, token: ""), secret)
     }
     func url(_ path: String) -> URL { URL(string: "https://\(host):\(port)\(path)")! }
+    func validated() -> PCConnection? {
+        guard !token.isEmpty, token.count <= 512 else { return nil }
+        var code = URLComponents(); code.scheme = "forma"; code.host = "pair"
+        code.queryItems = [URLQueryItem(name: "host", value: host), URLQueryItem(name: "port", value: String(port)), URLQueryItem(name: "pin", value: pin), URLQueryItem(name: "code", value: "000000")]
+        guard let text = code.string, var checked = try? Self.parse(text).0 else { return nil }
+        checked.token = token; checked.baselineVersion = baselineVersion; return checked
+    }
 }
 enum SyncError: LocalizedError {
     case invalidCode, rejected(String), tooLarge
@@ -67,26 +74,34 @@ private final class PinnedPCSession: NSObject, URLSessionDelegate, URLSessionTas
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }
 }
 actor SyncClient {
+    struct ConnectionRead: Sendable { let connection: PCConnection?; let retry: Bool }
     private struct Failure: Decodable { let error: String }
     private(set) var connection: PCConnection?
     private let account = "music.forma.pc-connection"
-    private let restoration: Task<PCConnection?, Never>
+    private let readConnection: @Sendable () -> ConnectionRead
+    private var restoration: (id: UUID, task: Task<ConnectionRead, Never>)?
     private var restored = false
     private var pendingSessions: [UUID: URLSession] = [:]
     private var pairingGeneration = UUID()
-    init() {
+    init(readConnection: @escaping @Sendable () -> ConnectionRead = SyncClient.readSavedConnection) {
+        self.readConnection = readConnection
+    }
+    nonisolated static func readSavedConnection() -> ConnectionRead {
         // Security services can take time to start; never block the first UI frame.
-        restoration = Task.detached(priority: .utility) {
-            let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrAccount as String: "music.forma.pc-connection", kSecReturnData as String: true]
-            var result: CFTypeRef?
-            if SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess, let data = result as? Data { return try? JSONDecoder().decode(PCConnection.self, from: data) }
-            return nil
-        }
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrAccount as String: "music.forma.pc-connection", kSecReturnData as String: true]
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecSuccess, let data = result as? Data { return ConnectionRead(connection: try? JSONDecoder().decode(PCConnection.self, from: data), retry: false) }
+        return ConnectionRead(connection: nil, retry: status != errSecItemNotFound)
     }
     func restore() async -> PCConnection? {
         if restored { return connection }
-        let saved = await restoration.value
-        if !restored { connection = saved; restored = true }
+        let read = readConnection
+        let work = restoration ?? (id: UUID(), task: Task.detached(priority: .utility) { read() })
+        restoration = work
+        let saved = await work.task.value
+        if restoration?.id == work.id { restoration = nil }
+        if !restored, !saved.retry { connection = saved.connection?.validated(); restored = true }
         return connection
     }
     func pair(_ code: String) async throws {

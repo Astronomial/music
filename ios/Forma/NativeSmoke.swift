@@ -73,6 +73,16 @@ private actor FixtureCatalog: MusicCatalogProviding {
         return Track(videoID: videoID, title: "Delayed metadata", artist: "Fixture")
     }
 }
+private final class TransientKeychainProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls = 0
+    var count: Int { lock.lock(); defer { lock.unlock() }; return calls }
+    func read() -> SyncClient.ConnectionRead {
+        lock.lock(); defer { lock.unlock() }; calls += 1
+        if calls == 1 { return .init(connection: nil, retry: true) }
+        return .init(connection: PCConnection(host: "10.0.0.2", port: 30377, pin: String(repeating: "0", count: 64), token: "fixture-token"), retry: false)
+    }
+}
 @MainActor
 enum NativeSmoke {
     private static var started = false
@@ -369,11 +379,14 @@ enum NativeSmoke {
         try JSONEncoder().encode(older).write(to: storageURL.appendingPathExtension("sync-base"), options: .atomic)
         let legacy = await storage.syncBase(peerID: "peer-A", allowLegacy: true), rePaired = await storage.syncBase(peerID: "peer-B")
         guard legacy?.likedIDs == older.likedIDs, rePaired == nil else { throw SyncError.rejected("Legacy baseline attached to a newly paired PC") }
+        let keychain = TransientKeychainProbe(), client = SyncClient(readConnection: { keychain.read() })
+        let unavailable = await client.restore(), restored = await client.restore(), cached = await client.restore()
+        guard unavailable == nil, restored?.host == "10.0.0.2", cached?.host == restored?.host, keychain.count == 2 else { throw SyncError.rejected("Temporary Keychain failure permanently lost the paired PC") }
         return ["resumeBufferDeadlineRearmed": true, "pausedLoadingNoSpinner": true, "interruptionRecovered": true,
                 "interruptionRespectsPause": true, "mediaServicesResetRecovered": true, "mediaServicesLossRecovered": true, "recoveryNoDuplicateFeedback": true,
                 "rapidSelectionCancelsOldLoad": true, "staleSearchIgnored": true, "staleLinkIgnored": true, "stalePulseIgnored": true,
                 "oldSaveCannotOverwriteNewerLibrary": true, "syncBaselineBoundToPairedPC": true, "legacyBaselineMigratedSafely": true,
-                "advancedQueueMatchesNewList": true]
+                "advancedQueueMatchesNewList": true, "keychainRestoreRetriesTransientFailure": true]
     }
 }
 #endif

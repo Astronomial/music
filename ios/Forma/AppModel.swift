@@ -45,6 +45,7 @@ final class AppModel: ObservableObject {
     private var pulseWork: Task<[Recommendation], Never>?
     private var linkTask: Task<Track?, Never>?
     private var syncEpoch = UUID()
+    private var connectionEpoch = UUID()
     private var recommendationTask: Task<Void, Never>?
     private var rankingWork: Task<([Recommendation], [Recommendation], [String: [Recommendation]], PulseEngine.RankingIndex), Never>?
     private var settingsTask: Task<Void, Never>?
@@ -96,14 +97,10 @@ final class AppModel: ObservableObject {
             if let exposure = choice.exposure { self.selectedContexts[choice.id] = exposure }
             return choice.track
         }
-        let startupEpoch = syncEpoch
+        let startupEpoch = connectionEpoch
         Task {
             await restoreLibrary()
-            let connection = await sync.restore()
-            let base = await storage?.syncBase(peerID: connection?.pin, allowLegacy: connection?.baselineVersion == nil)
-            guard syncEpoch == startupEpoch else { return }
-            pcHost = connection?.host; pcIdentity = connection?.pin; syncBase = base
-            if pcHost != nil { syncStatus = canSynchronizePC ? "ПК подключён. Синхронизируем в общей Wi-Fi сети" : "Синхронизация продолжится по Wi-Fi. Изменения сохранены"; scheduleSync() }
+            await restorePCConnection(epoch: startupEpoch)
         }
     }
     deinit {
@@ -131,7 +128,16 @@ final class AppModel: ObservableObject {
     }
     func becameActive() async {
         if !isRestoringLibrary, !didLoadLibrary { await restoreLibrary() }
+        if pcHost == nil, !isSyncing { await restorePCConnection(epoch: connectionEpoch) }
         await synchronize()
+    }
+    private func restorePCConnection(epoch: UUID) async {
+        guard let connection = await sync.restore() else { return }
+        let base = await storage?.syncBase(peerID: connection.pin, allowLegacy: connection.baselineVersion == nil)
+        guard connectionEpoch == epoch, pcHost == nil else { return }
+        pcHost = connection.host; pcIdentity = connection.pin; syncBase = base
+        syncStatus = canSynchronizePC ? "ПК подключён. Синхронизируем в общей Wi-Fi сети" : "Синхронизация продолжится по Wi-Fi. Изменения сохранены"
+        scheduleSync()
     }
     private func localWiFiChanged(_ available: Bool) {
         guard available != localWiFiAvailable else { return }
@@ -386,7 +392,8 @@ final class AppModel: ObservableObject {
             defer { lease?.finish() }
             if !immediately { try? await Task.sleep(nanoseconds: 250_000_000) }
             guard !Task.isCancelled, let storage else { return }
-            do { try await storage.save(snapshot, revision: revision) } catch { message = "Не удалось сохранить библиотеку: \(error.localizedDescription)" }
+            do { try await storage.save(snapshot, revision: revision) }
+            catch { if !Task.isCancelled, saveRevision == revision { message = "Не удалось сохранить библиотеку: \(error.localizedDescription)" } }
         }
         scheduleSync()
     }
@@ -401,25 +408,25 @@ final class AppModel: ObservableObject {
         guard !isRestoringLibrary else { return }
         guard canSynchronizePC else { message = "Для подключения ПК нужна общая Wi-Fi сеть."; return }
         guard !isSyncing else { return }
-        syncEpoch = UUID(); let epoch = syncEpoch; syncTask?.cancel()
+        connectionEpoch = UUID(); let epoch = connectionEpoch; syncEpoch = UUID(); syncTask?.cancel()
         isSyncing = true
         do {
             try await sync.pair(code)
-            guard syncEpoch == epoch else { return }
+            guard connectionEpoch == epoch else { return }
             let connection = await sync.connection
-            guard syncEpoch == epoch else { return }
+            guard connectionEpoch == epoch else { return }
             pcHost = connection?.host; pcIdentity = connection?.pin; syncBase = nil
             try await storage?.saveSyncBase(nil)
-            guard syncEpoch == epoch else { return }
+            guard connectionEpoch == epoch else { return }
             isSyncing = false; await synchronize(showErrors: true)
-        } catch { guard syncEpoch == epoch else { return }; isSyncing = false; syncStatus = error.localizedDescription; message = error.localizedDescription }
+        } catch { guard connectionEpoch == epoch else { return }; isSyncing = false; syncStatus = error.localizedDescription; message = error.localizedDescription }
     }
     func disconnectPC() async {
-        syncEpoch = UUID(); let epoch = syncEpoch; isSyncing = false; syncTask?.cancel(); await sync.disconnect()
-        guard syncEpoch == epoch else { return }
+        connectionEpoch = UUID(); let epoch = connectionEpoch; syncEpoch = UUID(); isSyncing = false; syncTask?.cancel(); await sync.disconnect()
+        guard connectionEpoch == epoch else { return }
         pcHost = nil; pcIdentity = nil; syncBase = nil
         try? await storage?.saveSyncBase(nil)
-        if syncEpoch == epoch { syncStatus = "ПК отключён" }
+        if connectionEpoch == epoch { syncStatus = "ПК отключён" }
     }
     func synchronize(showErrors: Bool = false) async {
         guard didLoadLibrary, !isSyncing, pcHost != nil, let pcIdentity else { return }
