@@ -41,7 +41,7 @@ final class DiscoveryPerformanceTests: XCTestCase {
         XCTAssertFalse(changed.contains { library.hiddenIDs.contains($0.id) })
     }
     func testThreeThousandTracksAndSixMoodsHaveBoundedRankingCost() {
-        let tracks = (0..<3000).map { i in Track(videoID: String(format: "%011d", i), title: "Song \(i)", artist: "Artist \(i % 500)", genres: ["Pop"], moodHints: [MoodMix.all[i % 6].id]) }
+        let tracks = (0..<3000).map { i in Track(videoID: String(format: "%011d", i), title: i % 3 == 2 ? "Песня \(i)" : "Song \(i)", artist: "Artist \(i % 500)", genres: ["Pop"], moodHints: [MoodMix.all[i % 6].id]) }
         var library = Library(); library.merge(tracks); library.likedIDs = Array(tracks.prefix(10).map(\.id))
         let start = Date(), index = PulseEngine.makeIndex(tracks, library: library)
         XCTAssertEqual(BilingualDiscovery.rankHome(tracks, library: library, limit: 40, index: index).count, 40)

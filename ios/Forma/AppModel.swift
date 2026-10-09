@@ -15,6 +15,7 @@ final class AppModel: ObservableObject {
     @Published var message: String?
     let player: PlaybackController
     private let streams: YouTubeStreamResolver
+    private let audioResolver: any StreamResolving
     private let catalog = YouTubeCatalog()
     private let sync = SyncClient()
     private var storage: LibraryStorage?
@@ -34,7 +35,8 @@ final class AppModel: ObservableObject {
 
     init(playbackResolver: (any StreamResolving)? = nil) {
         let streams = YouTubeStreamResolver(); self.streams = streams
-        player = PlaybackController(resolver: playbackResolver ?? streams)
+        let audioResolver = playbackResolver ?? streams; self.audioResolver = audioResolver
+        player = PlaybackController(resolver: audioResolver)
         if let directory = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) {
             let url = directory.appendingPathComponent("forma-ios-library.json")
             storage = LibraryStorage(url: url)
@@ -65,7 +67,7 @@ final class AppModel: ObservableObject {
             if pcHost != nil { syncStatus = "ПК подключён. Синхронизируем в общей Wi-Fi сети" }
         }
     }
-    func prepareTracks(_ tracks: [Track]) async { await streams.prewarm(videoIDs: Array(tracks.prefix(3).map(\.id))) }
+    func prepareTracks(_ tracks: [Track]) async { await audioResolver.prewarm(videoIDs: Array(tracks.prefix(3).map(\.id))) }
     var liked: [Track] { library.likedIDs.compactMap { library.tracks[$0] } }
     func isLiked(_ track: Track) -> Bool { library.likedIDs.contains(track.id) }
     func toggleLike(_ track: Track) {
@@ -183,7 +185,7 @@ final class AppModel: ObservableObject {
             let tracks = try await catalog.search(query)
             guard searchGeneration == token, !Task.isCancelled else { return }
             searchResults = tracks; merge(tracks)
-            await streams.prewarm(videoIDs: Array(tracks.prefix(3).map(\.id)))
+            await audioResolver.prewarm(videoIDs: Array(tracks.prefix(3).map(\.id)))
         } catch is CancellationError { }
         catch { if searchGeneration == token, !Task.isCancelled { message = error.localizedDescription; searchResults = [] } }
         if searchGeneration == token { isSearching = false }
@@ -224,7 +226,7 @@ final class AppModel: ObservableObject {
             guard recommendationGeneration == token, !Task.isCancelled else { return }
             recommendations = result.0; pulseCache = result.1; moodCache = result.2
             player.refreshPreparedSelection()
-            if player.current == nil { await streams.prewarm(videoIDs: Array(pulseCache.prefix(3).map(\.id))) }
+            if player.current == nil { await audioResolver.prewarm(videoIDs: Array(pulseCache.prefix(3).map(\.id))) }
         }
     }
     func persist(immediately: Bool = false) {
