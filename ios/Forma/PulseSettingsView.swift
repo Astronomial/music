@@ -16,6 +16,24 @@ struct PulseSettingsView: View {
                 Text("Твой Пульс. Твой выбор.").font(.largeTitle.bold())
                 Text("Сохраняй любимое. Прослушивания и пропуски уточняют направление.").foregroundStyle(.secondary)
                 Button("Больше новых имён") { model.configure { $0.discovery = 0.85; $0.artistDiversity = 1; $0.repeatHours = 24 } }.buttonStyle(.bordered)
+                Button("На каждый день · 70/30") { model.configure({ $0.discovery = 0.7; $0.explorationStyle = "nearby"; $0.languagePreference = "ru"; $0.skipSensitivity = "strict"; $0.artistDiversity = 0.6 }, refreshCatalog: true) }.buttonStyle(.bordered)
+                GlassPanel {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Новые имена, близкие тебе").font(.headline)
+                        Picker("Насколько далеко искать", selection: Binding(get: { model.library.settings.explorationStyle }, set: { value in model.configure({ $0.explorationStyle = value }, refreshCatalog: true) })) {
+                            Text("Рядом со вкусом").tag("nearby"); Text("Постепенно шире").tag("balanced"); Text("Смелее").tag("adventurous")
+                        }
+                        Picker("Язык музыки", selection: Binding(get: { model.library.settings.languagePreference }, set: { value in model.configure({ $0.languagePreference = value }, refreshCatalog: true) })) {
+                            Text("Больше русской").tag("ru"); Text("Любой").tag("any"); Text("Больше английской").tag("en")
+                        }
+                        Picker("Ранние пропуски", selection: Binding(get: { model.library.settings.skipSensitivity }, set: { value in model.configure { $0.skipSensitivity = value } })) {
+                            Text("Предлагать похожее реже").tag("strict"); Text("Не подходит сейчас").tag("soft")
+                        }
+                        Text("Влияние текущей сессии · \(Int(model.library.settings.sessionInfluence * 100))%").font(.subheadline)
+                        Slider(value: Binding(get: { model.library.settings.sessionInfluence }, set: { value in model.configure { $0.sessionInfluence = value } }), in: 0...1, step: 0.05)
+                        Text("Модель учится на дослушиваниях, сохранениях и пропусках. Доля открытий и расстояние от вкуса задаются отдельно; серии пропусков уменьшают эксперименты. Язык по названиям определяется приблизительно.").font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
                 GlassPanel {
                     VStack(alignment: .leading, spacing: 16) {
                         Text("Музыкальные направления").font(.headline)
@@ -49,7 +67,7 @@ struct PulseSettingsView: View {
                 }
                 GlassPanel {
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("Место для открытий").font(.headline)
+                        Text("Доля открытий · \(Int(model.library.settings.discovery * 100))%").font(.headline)
                         Slider(value: Binding(get: { model.library.settings.discovery }, set: { value in model.configure { $0.discovery = value } }), in: 0...1)
                         HStack { Text("Знакомое"); Spacer(); Text("Новое") }.font(.caption).foregroundStyle(.secondary)
                         Text("Разнообразие исполнителей").font(.headline)

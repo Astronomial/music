@@ -10,16 +10,42 @@ public struct Track: Codable, Hashable, Identifiable, Sendable {
     public var genres: [String]
     public var moodHints: [String]
     public var relatedTo: [String]
+    public var directRelatedTo: [String] = []
+    public var discoveryLanguages: [String] = []
+    public var genre: String = ""
+    public var mood: String = ""
+    public var tags: [String] = []
+    public var language: String = ""
 
     public init(videoID: String, title: String, artist: String, duration: Double = 0,
-                artworkURL: URL? = nil, genres: [String] = [], moodHints: [String] = [], relatedTo: [String] = []) {
+                artworkURL: URL? = nil, genres: [String] = [], moodHints: [String] = [], relatedTo: [String] = [], directRelatedTo: [String] = [], discoveryLanguages: [String] = [], genre: String = "", mood: String = "", tags: [String] = [], language: String = "") {
         self.videoID = videoID; self.title = title; self.artist = artist
         self.duration = duration; self.artworkURL = artworkURL
         self.genres = genres; self.moodHints = moodHints; self.relatedTo = relatedTo
+        self.directRelatedTo = directRelatedTo; self.discoveryLanguages = discoveryLanguages
+        self.genre = genre; self.mood = mood; self.tags = tags; self.language = language
     }
+    private enum CodingKeys: String, CodingKey { case videoID, title, artist, duration, artworkURL, genres, moodHints, relatedTo, directRelatedTo, discoveryLanguages, genre, mood, tags, language }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        videoID = try c.decode(String.self, forKey: .videoID)
+        title = try c.decode(String.self, forKey: .title); artist = try c.decode(String.self, forKey: .artist)
+        duration = try c.decodeIfPresent(Double.self, forKey: .duration) ?? 0
+        artworkURL = try c.decodeIfPresent(URL.self, forKey: .artworkURL)
+        genres = try c.decodeIfPresent([String].self, forKey: .genres) ?? []
+        moodHints = try c.decodeIfPresent([String].self, forKey: .moodHints) ?? []
+        relatedTo = try c.decodeIfPresent([String].self, forKey: .relatedTo) ?? []
+        directRelatedTo = try c.decodeIfPresent([String].self, forKey: .directRelatedTo) ?? []
+        discoveryLanguages = try c.decodeIfPresent([String].self, forKey: .discoveryLanguages) ?? []
+        genre = try c.decodeIfPresent(String.self, forKey: .genre) ?? ""
+        mood = try c.decodeIfPresent(String.self, forKey: .mood) ?? ""
+        tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
+        language = try c.decodeIfPresent(String.self, forKey: .language) ?? ""
+    }
+
 }
 
-public enum FeedbackKind: String, Codable, Sendable { case play, listen, skip, error }
+public enum FeedbackKind: String, Codable, Sendable { case play, listen, skip, error, like; case playlistAdd = "playlist-add" }
 public struct ListeningEvent: Codable, Sendable {
     public let trackID: String
     public let kind: FeedbackKind
@@ -28,12 +54,16 @@ public struct ListeningEvent: Codable, Sendable {
     public let ratio: Double
     public let mood: String?
     public let newArtist: Bool?
-    public init(trackID: String, kind: FeedbackKind, at: Date = Date(), seconds: Double, ratio: Double, mood: String? = nil, newArtist: Bool? = nil) {
+    public let recommendation: RecommendationContext?
+    public let surface: String?
+    public init(trackID: String, kind: FeedbackKind, at: Date = Date(), seconds: Double, ratio: Double, mood: String? = nil, newArtist: Bool? = nil, recommendation: RecommendationContext? = nil, surface: String? = nil) {
+        self.recommendation = recommendation; self.surface = surface
         self.newArtist = newArtist
         self.trackID = trackID; self.kind = kind; self.at = at
         self.seconds = seconds; self.ratio = min(1, max(0, ratio)); self.mood = mood
     }
     public var reward: Double? {
+        if kind == .like || kind == .playlistAdd { return 1 }
         guard seconds >= 3 else { return nil }
         if kind == .listen { return ratio >= 0.8 ? 1 : ratio >= 0.5 ? 0.7 : nil }
         if kind == .skip { return seconds < 30 && ratio < 0.25 ? 0 : ratio < 0.65 ? 0.25 : nil }
@@ -55,7 +85,7 @@ public struct PulseSettings: Codable, Sendable {
     public var excludedGenres: [String] = []
     public var preferredArtists: [String] = []
     public var seedPlaylistIDs: [String] = []
-    public var discovery: Double = 0.35
+    public var discovery: Double = 0.7
     public var repeatHours: Double = 2
     public var artistDiversity: Double = 0.6
     public var mood: String = "any"
@@ -64,8 +94,13 @@ public struct PulseSettings: Codable, Sendable {
     public var vocals: String = "any"
     public var playlistSource: String = "all"
     public var includeLibrary: Bool = true
+    public var explorationStyle: String = "nearby"
+    public var languagePreference: String = "ru"
+    public var skipSensitivity: String = "strict"
+    public var sessionInfluence: Double = 0.65
+    public var recommendationVersion: Int = 2
     public init() {}
-    private enum CodingKeys: String, CodingKey { case genres, excludedArtists, excludedGenres, preferredArtists, seedPlaylistIDs, discovery, repeatHours, artistDiversity, mood, genreMode, energy, vocals, playlistSource, includeLibrary }
+    private enum CodingKeys: String, CodingKey { case genres, excludedArtists, excludedGenres, preferredArtists, seedPlaylistIDs, discovery, repeatHours, artistDiversity, mood, genreMode, energy, vocals, playlistSource, includeLibrary, explorationStyle, languagePreference, skipSensitivity, sessionInfluence, recommendationVersion }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         genres = try c.decodeIfPresent([String].self, forKey: .genres) ?? ["Electronic", "Rock", "Hip-Hop/Rap"]
@@ -73,7 +108,7 @@ public struct PulseSettings: Codable, Sendable {
         excludedGenres = try c.decodeIfPresent([String].self, forKey: .excludedGenres) ?? []
         preferredArtists = try c.decodeIfPresent([String].self, forKey: .preferredArtists) ?? []
         seedPlaylistIDs = try c.decodeIfPresent([String].self, forKey: .seedPlaylistIDs) ?? []
-        discovery = try c.decodeIfPresent(Double.self, forKey: .discovery) ?? 0.35
+        discovery = try c.decodeIfPresent(Double.self, forKey: .discovery) ?? 0.7
         repeatHours = try c.decodeIfPresent(Double.self, forKey: .repeatHours) ?? 2
         artistDiversity = try c.decodeIfPresent(Double.self, forKey: .artistDiversity) ?? 0.6
         mood = try c.decodeIfPresent(String.self, forKey: .mood) ?? "any"
@@ -82,6 +117,11 @@ public struct PulseSettings: Codable, Sendable {
         vocals = try c.decodeIfPresent(String.self, forKey: .vocals) ?? "any"
         playlistSource = try c.decodeIfPresent(String.self, forKey: .playlistSource) ?? "all"
         includeLibrary = try c.decodeIfPresent(Bool.self, forKey: .includeLibrary) ?? true
+        explorationStyle = try c.decodeIfPresent(String.self, forKey: .explorationStyle) ?? "nearby"
+        languagePreference = try c.decodeIfPresent(String.self, forKey: .languagePreference) ?? "ru"
+        skipSensitivity = try c.decodeIfPresent(String.self, forKey: .skipSensitivity) ?? "strict"
+        sessionInfluence = try c.decodeIfPresent(Double.self, forKey: .sessionInfluence) ?? 0.65
+        recommendationVersion = try c.decodeIfPresent(Int.self, forKey: .recommendationVersion) ?? 1
     }
 }
 public struct Library: Codable, Sendable {
@@ -110,6 +150,10 @@ public struct Library: Codable, Sendable {
                 track.genres = Array(Set(old.genres + track.genres)).sorted()
                 track.moodHints = Array(Set(old.moodHints + track.moodHints)).sorted()
                 track.relatedTo = Array(Set(old.relatedTo + track.relatedTo)).sorted()
+                track.directRelatedTo = Array(Set(old.directRelatedTo + track.directRelatedTo)).sorted()
+                track.discoveryLanguages = Array(Set(old.discoveryLanguages + track.discoveryLanguages)).sorted()
+                if track.genre.isEmpty { track.genre = old.genre }; if track.mood.isEmpty { track.mood = old.mood }
+                if track.tags.isEmpty { track.tags = old.tags }; if track.language.isEmpty { track.language = old.language }
             }
             tracks[track.id] = track
         }

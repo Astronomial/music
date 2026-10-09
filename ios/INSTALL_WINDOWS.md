@@ -4,8 +4,8 @@
 
 ## Скачать
 
-- [Forma iOS 1.0.3 — IPA для подписи](https://github.com/Astronomial/music/releases/download/ios-v1.0.3/Forma-iOS-1.0.3-unsigned.ipa).
-- [Контрольная сумма IPA](https://github.com/Astronomial/music/releases/download/ios-v1.0.3/Forma-iOS-SHA256SUMS.txt).
+- [Forma iOS 1.1.0 — IPA для подписи](https://github.com/Astronomial/music/releases/download/ios-v1.1.0/Forma-iOS-1.1.0-unsigned.ipa).
+- [Контрольная сумма IPA](https://github.com/Astronomial/music/releases/download/ios-v1.1.0/Forma-iOS-SHA256SUMS.txt).
 - [Forma 1.6.0 для Windows — нужна для синхронизации](https://github.com/Astronomial/music/raw/refs/heads/main/downloads/Forma-1.6.0-Windows-x64.exe).
 - [Sideloadly для Windows — официальный сайт](https://sideloadly.io/).
 
@@ -15,7 +15,7 @@ IPA собрана для настоящего устройства, но не �
 
 1. Установи Sideloadly с его официального сайта. Установи необходимые компоненты Apple/iTunes/iCloud по инструкции на этом же сайте; Sideloadly рекомендует настольные версии Apple, если компоненты из Microsoft Store вызывают ошибки.
 2. Подключи разблокированный iPhone к Windows по USB. Подтверди **«Доверять этому компьютеру»** на телефоне и убедись, что он появляется в списке устройств Sideloadly.
-3. Перетащи `Forma-iOS-1.0.3-unsigned.ipa` в окно Sideloadly. Выбери iPhone и режим **Apple ID Sideload**. При первой установке можно оставить автоматический выбор Bundle ID. При обновлении используй те же Apple ID и Bundle ID, с которыми уже установлена Forma. Если ранее вводил свой идентификатор, снова укажи его в Advanced Options, сняв галочку Use automatic bundle ID.
+3. Перетащи `Forma-iOS-1.1.0-unsigned.ipa` в окно Sideloadly. Выбери iPhone и режим **Apple ID Sideload**. При первой установке можно оставить автоматический выбор Bundle ID. При обновлении используй те же Apple ID и Bundle ID, с которыми уже установлена Forma. Если ранее вводил свой идентификатор, снова укажи его в Advanced Options, сняв галочку Use automatic bundle ID.
 4. Введи Apple ID непосредственно в Sideloadly и нажми **Start**. Подтверди двухфакторную проверку, если её запросит Apple. Пароль и код вводятся только в установленной программе, их не нужно отправлять в чат или записывать в Forma.
 5. После установки открой на iPhone **Настройки → Конфиденциальность и безопасность → Режим разработчика**, включи его и подтверди перезапуск. Если пункт ещё не появился, закончи первую установку и переподключи телефон.
 6. При запросе доверия открой **Настройки → Основные → VPN и управление устройством**, выбери профиль своей учётной записи и подтверди доверие. Для проверки подписи нужен интернет.

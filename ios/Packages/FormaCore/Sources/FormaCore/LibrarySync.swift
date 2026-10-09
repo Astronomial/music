@@ -49,6 +49,46 @@ public enum LibrarySync {
         if base.settings.vocals != incoming.settings.vocals { result.settings.vocals = incoming.settings.vocals }
         if base.settings.playlistSource != incoming.settings.playlistSource { result.settings.playlistSource = incoming.settings.playlistSource }
         if base.settings.includeLibrary != incoming.settings.includeLibrary { result.settings.includeLibrary = incoming.settings.includeLibrary }
+        if incoming.settings.recommendationVersion >= 2 {
+            if base.settings.explorationStyle != incoming.settings.explorationStyle { result.settings.explorationStyle = incoming.settings.explorationStyle }
+            if base.settings.languagePreference != incoming.settings.languagePreference { result.settings.languagePreference = incoming.settings.languagePreference }
+            if base.settings.skipSensitivity != incoming.settings.skipSensitivity { result.settings.skipSensitivity = incoming.settings.skipSensitivity }
+            if base.settings.sessionInfluence != incoming.settings.sessionInfluence { result.settings.sessionInfluence = incoming.settings.sessionInfluence }
+            result.settings.recommendationVersion = max(result.settings.recommendationVersion, incoming.settings.recommendationVersion)
+        }
+        return result
+    }
+    /// PC 1.7's wire format omits this optional local context. Restore it before
+    /// merging a round trip, while respecting explicit shared-history deletion.
+    public static func preservingLearning(in remote: Library, from local: Library) -> Library {
+        var result = remote
+        if remote.settings.recommendationVersion < 2 {
+            result.settings.explorationStyle = local.settings.explorationStyle
+            result.settings.languagePreference = local.settings.languagePreference
+            result.settings.skipSensitivity = local.settings.skipSensitivity
+            result.settings.sessionInfluence = local.settings.sessionInfluence
+            result.settings.recommendationVersion = local.settings.recommendationVersion
+        }
+        for (id, old) in local.tracks where result.tracks[id] != nil {
+            if result.tracks[id]?.directRelatedTo.isEmpty == true { result.tracks[id]?.directRelatedTo = old.directRelatedTo }
+            if result.tracks[id]?.discoveryLanguages.isEmpty == true { result.tracks[id]?.discoveryLanguages = old.discoveryLanguages }
+            if result.tracks[id]?.genre.isEmpty == true { result.tracks[id]?.genre = old.genre }
+            if result.tracks[id]?.mood.isEmpty == true { result.tracks[id]?.mood = old.mood }
+            if result.tracks[id]?.tags.isEmpty == true { result.tracks[id]?.tags = old.tags }
+            if result.tracks[id]?.language.isEmpty == true { result.tracks[id]?.language = old.language }
+        }
+        func key(_ e: ListeningEvent) -> String { "\(e.trackID)|\(e.kind.rawValue)|\(Int64((e.at.timeIntervalSince1970 * 1000).rounded()))|\(e.seconds)|\(e.ratio)|\(e.mood ?? "")" }
+        let metadata = Dictionary(local.events.map { (key($0), $0) }, uniquingKeysWith: { a, _ in a })
+        result.events = remote.events.map { event in
+            let old = metadata[key(event)]
+            return ListeningEvent(trackID: event.trackID, kind: event.kind, at: event.at, seconds: event.seconds, ratio: event.ratio, mood: event.mood, newArtist: event.newArtist ?? old?.newArtist, recommendation: event.recommendation ?? old?.recommendation, surface: event.surface ?? old?.surface)
+        }
+        let shared = local.events.filter { [.play, .listen, .skip, .error].contains($0.kind) }
+        if !remote.events.isEmpty || shared.isEmpty {
+            let ids = Set(result.events.map(key))
+            result.events += local.events.filter { [.like, .playlistAdd].contains($0.kind) && !ids.contains(key($0)) }
+            result.events = Array(result.events.sorted { $0.at < $1.at }.suffix(3000))
+        }
         return result
     }
 }

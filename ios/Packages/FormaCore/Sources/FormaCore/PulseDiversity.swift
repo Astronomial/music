@@ -17,7 +17,7 @@ public enum PulseDiversity {
         return Array(tracks.suffix(12))
     }
     public static func newArtist(_ track: Track, library: Library, now: Date = Date()) -> Bool {
-        let ids = Set(library.likedIDs + library.playlists.flatMap(\.trackIDs) + library.events.filter { $0.kind != .error && now.timeIntervalSince($0.at) < 30 * 86400 }.map(\.trackID))
+        let ids = Set(library.likedIDs + library.playlists.flatMap(\.trackIDs) + library.events.filter { [FeedbackKind.play, .listen, .skip].contains($0.kind) && $0.at <= now && now.timeIntervalSince($0.at) < 30 * 86400 }.map(\.trackID))
         let known = Set(ids.compactMap { library.tracks[$0] }.flatMap { artists($0) })
         let names = artists(track)
         return !names.contains(where: { $0.hasPrefix("unknown:") }) && names.isDisjoint(with: known)
@@ -39,8 +39,8 @@ public enum PulseDiversity {
     public static func blocked(_ track: Track, settings: PulseSettings) -> Bool {
         let name = PulseEngine.fold(track.artist)
         if settings.excludedArtists.map(PulseEngine.fold).contains(where: { !$0.isEmpty && name.contains($0) }) { return true }
-        if !Set(track.genres.map(PulseEngine.fold)).isDisjoint(with: Set(settings.excludedGenres.map(PulseEngine.fold))) { return true }
-        if settings.genreMode == "strict", !settings.genres.isEmpty, Set(track.genres.map(PulseEngine.fold)).isDisjoint(with: Set(settings.genres.map(PulseEngine.fold))) { return true }
+        if !Set((track.genre.isEmpty ? track.genres : [track.genre]).map(PulseEngine.fold)).isDisjoint(with: Set(settings.excludedGenres.map(PulseEngine.fold))) { return true }
+        if settings.genreMode == "strict", !settings.genres.isEmpty, Set((track.genre.isEmpty ? track.genres : [track.genre]).map(PulseEngine.fold)).isDisjoint(with: Set(settings.genres.map(PulseEngine.fold))) { return true }
         return false
     }
 }

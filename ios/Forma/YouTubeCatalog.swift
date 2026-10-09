@@ -27,6 +27,7 @@ actor YouTubeCatalog {
             // Search context is weak evidence, not an analysed genre or emotion.
             tracks[index].genres = genre.map { [$0] } ?? []
             tracks[index].moodHints = (mood.map { [$0] } ?? []) + hints
+            tracks[index].discoveryLanguages = hints.contains("discovery:ru") ? ["ru"] : hints.contains("discovery:en") ? ["en"] : []
         }
         if cache.count >= 40 { cache.removeAll() }
         cache[key] = (Date(), tracks)
@@ -36,7 +37,7 @@ actor YouTubeCatalog {
         guard VideoID.isValid(track.id) else { return [] }
         let data = try await request("next", body: ["videoId": track.id, "playlistId": "RDAMVM\(track.id)", "isAudioOnly": true, "enablePersistentPlaylistPanel": true])
         return try CatalogParser.tracks(from: data).filter { $0.id != track.id }.map { t in
-            var related = t; related.relatedTo = [track.id]; return related
+            var related = t; related.relatedTo = [track.id]; related.directRelatedTo = [track.id]; return related
         }
     }
     private func clientVersion() async throws -> String {

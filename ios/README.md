@@ -1,8 +1,8 @@
-# Forma iOS 1.0.3
+# Forma iOS 1.1.0
 
 Нативное приложение **SwiftUI + AVQueuePlayer** для iPhone и iPad с **iOS 17+**, включая iOS 18. Онлайн-каталог YouTube/YouTube Music, персональный Пульс, плейлисты, подборки по настроению и синхронизация с Windows. Музыкальная подписка, аккаунт YouTube и обязательный сервер не требуются.
 
-**[Скачать IPA для подписи](https://github.com/Astronomial/music/releases/download/ios-v1.0.3/Forma-iOS-1.0.3-unsigned.ipa)** · **[Установка с Windows](INSTALL_WINDOWS.md)** · [Лицензии](THIRD_PARTY.md)
+**[Скачать IPA для подписи](https://github.com/Astronomial/music/releases/download/ios-v1.1.0/Forma-iOS-1.1.0-unsigned.ipa)** · **[Установка с Windows](INSTALL_WINDOWS.md)** · [Лицензии](THIRD_PARTY.md)
 
 IPA предназначена для устройства и подписывается своим Apple ID через Sideloadly. Бесплатная личная подпись обычно действует 7 дней; инструкцией предусмотрено обновление поверх приложения с сохранением данных. Это самостоятельная установка, не публикация в App Store.
 
@@ -19,7 +19,7 @@ IPA предназначена для устройства и подписыва
 
 Неофициальное получение YouTube-потоков через [YouTubeKit](https://github.com/alexeichhorn/YouTubeKit) выполняется на телефоне, без чужого fallback-сервера, OAuth и сохранённых cookie. YouTube может менять протокол и отклонять запросы. Настроение, жанры и характер поиска — слабый контекст, а не анализ аудио. Мобильное ядро использует собственную модель сходства, сессии и разнообразия; оно не является закрытым алгоритмом Spotify и не полностью совпадает с более крупной настольной моделью.
 
-## Обновление 1.0.3
+## Обновление 1.1.0
 
 Контекст YouTube переиспользуется между треками: прогретый запрос не загружает watch-страницу и player JS повторно. Следующие треки и первые результаты поиска/плейлиста подготавливаются заранее; Пульс стартует из готового ранжирования. Индекс признаков, исполнителей и записей общий для главной, Пульса и шести настроений.
 
@@ -67,7 +67,7 @@ xcodebuild -project ios/Forma.xcodeproj -scheme Forma \
   -derivedDataPath ios/.derived-data CODE_SIGNING_ALLOWED=NO build
 ```
 
-После добавления Swift-файлов/ресурсов обнови проект командой `python3 ios/Scripts/generate_project.py`. GitHub Actions упаковывает `Release-iphoneos/Forma.app` в Payload и IPA; при публикации main размещает IPA и SHA-256 в релизе `ios-v1.0.3`.
+После добавления Swift-файлов/ресурсов обнови проект командой `python3 ios/Scripts/generate_project.py`. GitHub Actions упаковывает `Release-iphoneos/Forma.app` в Payload и IPA; при публикации main размещает IPA и SHA-256 в релизе `ios-v1.1.0`.
 
 | Модуль | Назначение |
 | --- | --- |

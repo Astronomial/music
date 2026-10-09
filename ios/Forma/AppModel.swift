@@ -20,15 +20,17 @@ final class AppModel: ObservableObject {
     private let sync = SyncClient()
     private var storage: LibraryStorage?
     private var syncBase: Library?
-    private var moodCache: [String: [Track]] = [:]
-    private var pulseCache: [Track] = []
+    private var moodCache: [String: [Recommendation]] = [:]
+    private var pulseCache: [Recommendation] = []
+    private var selectedContexts: [String: RecommendationContext] = [:]
+    private var activeContext: RecommendationContext?
     private var pulsePlaylistID: String?
     private var searchGeneration = UUID()
     private var recommendationGeneration = UUID()
     private var pulseGeneration = UUID()
     private var syncEpoch = UUID()
     private var recommendationTask: Task<Void, Never>?
-    private var rankingWork: Task<([Recommendation], [Track], [String: [Track]]), Never>?
+    private var rankingWork: Task<([Recommendation], [Recommendation], [String: [Recommendation]]), Never>?
     private var settingsTask: Task<Void, Never>?
     private var persistTask: Task<Void, Never>?
     private var syncTask: Task<Void, Never>?
@@ -43,23 +45,32 @@ final class AppModel: ObservableObject {
             do { let loaded = try LibraryDiskStore(url: url).load(); library = loaded.library; message = loaded.notice }
             catch { message = "Не удалось прочитать библиотеку: \(error.localizedDescription)" }
         }
+        if library.settings.recommendationVersion < 2 {
+            library.settings.discovery = 0.7; library.settings.recommendationVersion = 2
+        }
         updateRecommendations()
+        player.onSelected = { [weak self] track in
+            guard let self else { return }
+            self.activeContext = self.selectedContexts.removeValue(forKey: track.id) ?? self.context(for: track)
+        }
         player.onStarted = { [weak self] track in
             guard let self else { return }
-            self.library.record(ListeningEvent(trackID: track.id, kind: .play, seconds: 0, ratio: 0, newArtist: PulseDiversity.newArtist(track, library: self.library)))
+            self.library.record(ListeningEvent(trackID: track.id, kind: .play, seconds: 0, ratio: 0, newArtist: PulseDiversity.newArtist(track, library: self.library), recommendation: self.activeContext, surface: self.player.selectionSurface))
             self.persist(); self.updateRecommendations()
         }
         player.onFeedback = { [weak self] event in
             guard let self else { return }
             let exposure = self.library.events.last { $0.trackID == event.trackID && $0.kind == .play }
-            self.library.record(ListeningEvent(trackID: event.trackID, kind: event.kind, at: event.at, seconds: event.seconds, ratio: event.ratio, mood: event.mood, newArtist: exposure?.newArtist))
+            self.library.record(ListeningEvent(trackID: event.trackID, kind: event.kind, at: event.at, seconds: event.seconds, ratio: event.ratio, mood: event.mood, newArtist: exposure?.newArtist, recommendation: exposure?.recommendation, surface: exposure?.surface))
             self.persist(); self.updateRecommendations()
             if self.library.events.count % 4 == 0 { Task { await self.refresh() } }
         }
         player.pulseNext = { [weak self] excluded, mood in
             guard let self else { return nil }
             let source = mood.flatMap { self.moodCache[$0] } ?? self.pulseCache
-            return PulseDiversity.next(source, library: self.library, exclude: excluded, currentID: self.player.current?.id)
+            guard let choice = PulseEngine.selectCached(source, library: self.library, exclude: excluded, currentID: self.player.current?.id) else { return nil }
+            if let exposure = choice.exposure { self.selectedContexts[choice.id] = exposure }
+            return choice.track
         }
         Task {
             let connection = await sync.restore(); pcHost = connection?.host
@@ -73,7 +84,7 @@ final class AppModel: ObservableObject {
     func toggleLike(_ track: Track) {
         library.merge([track])
         if isLiked(track) { library.likedIDs.removeAll { $0 == track.id } }
-        else { library.likedIDs.append(track.id) }
+        else { library.likedIDs.append(track.id); library.record(.init(trackID: track.id, kind: .like, seconds: 0, ratio: 0, recommendation: context(for: track), surface: player.current?.id == track.id ? player.selectionSurface : "library")) }
         changed()
     }
     func createPlaylist(_ name: String) {
@@ -83,7 +94,7 @@ final class AppModel: ObservableObject {
     }
     func add(_ track: Track, to playlistID: String) {
         guard let index = library.playlists.firstIndex(where: { $0.id == playlistID }) else { return }
-        library.merge([track]); if !library.playlists[index].trackIDs.contains(track.id) { library.playlists[index].trackIDs.append(track.id) }; changed()
+        library.merge([track]); if !library.playlists[index].trackIDs.contains(track.id) { library.playlists[index].trackIDs.append(track.id); library.record(.init(trackID: track.id, kind: .playlistAdd, seconds: 0, ratio: 0, recommendation: context(for: track), surface: "playlist")) }; changed()
     }
     func remove(_ track: Track, from playlistID: String) {
         guard let index = library.playlists.firstIndex(where: { $0.id == playlistID }) else { return }
@@ -97,7 +108,7 @@ final class AppModel: ObservableObject {
     }
     func playlistTracks(_ id: String) -> [Track] { library.playlists.first { $0.id == id }?.trackIDs.compactMap { library.tracks[$0] } ?? [] }
     func configure(_ mutation: (inout PulseSettings) -> Void, refreshCatalog: Bool = false) {
-        mutation(&library.settings); changed()
+        mutation(&library.settings); changed(); player.refreshPreparedSelection()
         if refreshCatalog {
             settingsTask?.cancel()
             settingsTask = Task { [weak self] in
@@ -107,12 +118,17 @@ final class AppModel: ObservableObject {
         }
     }
     private func changed() { persist(); updateRecommendations() }
-    func moodTracks(_ mix: MoodMix) -> [Track] { moodCache[mix.id] ?? [] }
+    func moodTracks(_ mix: MoodMix) -> [Track] { (moodCache[mix.id] ?? []).map(\.track) }
+    private func context(for track: Track) -> RecommendationContext? {
+        if player.current?.id == track.id, let activeContext { return activeContext }
+        let source = player.selectionMood.flatMap { moodCache[$0] } ?? recommendations
+        return source.first { $0.id == track.id }?.exposure ?? pulseCache.first { $0.id == track.id }?.exposure
+    }
     private func contextualLibrary() -> Library {
         var snapshot = library
         if let id = pulsePlaylistID, let source = snapshot.playlists.first(where: { $0.id == id }) {
-            snapshot.likedIDs = Array(Set(snapshot.likedIDs + source.trackIDs))
-            snapshot.playlists.append(Playlist(id: "pulse-context", name: source.name, trackIDs: source.trackIDs))
+            snapshot.likedIDs = []; snapshot.playlists = [source]
+            snapshot.settings.genres = []; snapshot.settings.playlistSource = "all"; snapshot.settings.discovery = 0.75
         }
         return snapshot
     }
@@ -121,15 +137,17 @@ final class AppModel: ObservableObject {
         let snapshot = contextualLibrary(), excluded = player.current.map { Set([$0.id]) } ?? []
         let token = UUID(); pulseGeneration = token
         let cached = mood.flatMap { moodCache[$0] } ?? pulseCache
-        if playlistID == nil, let first = PulseDiversity.next(cached, library: snapshot, exclude: excluded, currentID: player.current?.id) {
-            player.startPulse(first, mood: mood); return
+        if playlistID == nil, let first = PulseEngine.selectCached(cached, library: snapshot, exclude: excluded, currentID: player.current?.id) {
+            if let exposure = first.exposure { selectedContexts[first.id] = exposure }
+            player.startPulse(first.track, mood: mood); return
         }
         Task {
             let result = await Task.detached(priority: .userInitiated) { PulseEngine.rank(Array(snapshot.tracks.values), library: snapshot, limit: 60, mood: mood, exclude: excluded) }.value
             guard pulseGeneration == token else { return }
             guard let first = result.first else { message = "Пока нет подходящих треков. Обнови подборки или найди музыку в поиске."; return }
-            pulseCache = result.map(\.track)
-            if let mood { moodCache[mood] = result.map(\.track) }
+            pulseCache = result
+            if let mood { moodCache[mood] = result }
+            if let exposure = first.exposure { selectedContexts[first.id] = exposure }
             player.startPulse(first.track, mood: mood)
             if let playlistID { await refreshFromPlaylist(playlistID) }
         }
@@ -149,7 +167,7 @@ final class AppModel: ObservableObject {
         let anchors = PulseEngine.anchors(in: contextualLibrary(), limit: 6)
         let catalog = self.catalog
         enum Request: Sendable { case search(BilingualDiscovery.Search), related(Track), artist(String) }
-        let requests: [Request] = BilingualDiscovery.searches(genres: genres, suffix: suffix, hints: hints).map { .search($0) } + anchors.map { .related($0) } + settings.preferredArtists.prefix(3).map { .artist($0) }
+        let requests: [Request] = BilingualDiscovery.searches(genres: genres, suffix: suffix, hints: hints, language: settings.languagePreference).map { .search($0) } + anchors.map { .related($0) } + settings.preferredArtists.prefix(3).map { .artist($0) }
         let parallelism = player.current == nil ? 3 : 2
         var index = 0, successes = 0, failure: String?
         // Bound parallelism to three network requests; show completed batches immediately.
@@ -217,8 +235,8 @@ final class AppModel: ObservableObject {
                 let candidates = Array(snapshot.tracks.values)
                 let index = PulseEngine.makeIndex(candidates, library: snapshot)
                 let home = BilingualDiscovery.rankHome(candidates, library: snapshot, limit: 40, index: index)
-                let next = PulseEngine.rank(candidates, library: pulse, limit: 60, index: index).map(\.track)
-                let moods = Dictionary(uniqueKeysWithValues: MoodMix.all.map { ($0.id, BilingualDiscovery.rankHome(candidates, library: snapshot, limit: 30, mood: $0.id, allowRecent: true, index: index).map(\.track)) })
+                let next = PulseEngine.rank(candidates, library: pulse, limit: 60, index: index)
+                let moods = Dictionary(uniqueKeysWithValues: MoodMix.all.map { ($0.id, BilingualDiscovery.rankHome(candidates, library: snapshot, limit: 30, mood: $0.id, allowRecent: true, index: index)) })
                 return (home, next, moods)
             }
             rankingWork = work
@@ -267,7 +285,7 @@ final class AppModel: ObservableObject {
             let remote = try await sync.synchronize(library: sent, base: syncBase)
             guard epoch == syncEpoch else { return }
             persistTask?.cancel()
-            library = LibrarySync.merge(current: remote, base: sent, incoming: library)
+            library = LibrarySync.merge(current: LibrarySync.preservingLearning(in: remote, from: sent), base: sent, incoming: library)
             syncBase = remote; try await storage?.saveSyncBase(remote); try await storage?.save(library)
             updateRecommendations(); syncStatus = "Синхронизировано · \(Date().formatted(date: .omitted, time: .shortened))"
         } catch {

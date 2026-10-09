@@ -8,7 +8,7 @@ public enum BilingualDiscovery {
         public let mood: String?
         public let hints: [String]
     }
-    public static func searches(genres: [String], suffix: String, hints: [String]) -> [Search] {
+    public static func searches(genres: [String], suffix: String, hints: [String], language: String = "ru") -> [Search] {
         let ruGenres = ["Pop": "поп", "Rock": "рок", "Hip-Hop": "хип-хоп", "Electronic": "электронная", "Indie": "инди", "Jazz": "джаз", "Classical": "классическая"]
         let ruMoods = ["calm": "спокойная", "bright": "радостная", "melancholic": "грустная", "energetic": "энергичная", "focus": "инструментальная для работы", "night": "ночная"]
         var result: [Search] = []
@@ -22,17 +22,12 @@ public enum BilingualDiscovery {
             result.append(Search(query: "\(ruGenres[genre] ?? genre) русская музыка \(suffix)", genre: genre, mood: nil, hints: hints + ["discovery:ru"]))
             result.append(Search(query: "\(genre) music \(suffix)", genre: genre, mood: nil, hints: hints))
         }
+        if language == "en" { return result.filter { !$0.hints.contains("discovery:ru") }.map { Search(query: $0.query + " english songs", genre: $0.genre, mood: $0.mood, hints: $0.hints + ["discovery:en"]) } }
         return result
     }
     public static func rankHome(_ candidates: [Track], library: Library, limit: Int, mood: String? = nil, allowRecent: Bool = false, index: PulseEngine.RankingIndex? = nil) -> [Recommendation] {
-        let main = PulseEngine.rank(candidates, library: library, limit: limit, mood: mood, allowRecent: allowRecent, index: index)
-        let regionalPool = candidates.filter(regional)
-        var expanded = main
-        if !regionalPool.isEmpty, main.filter({ regional($0.track) }).count < max(4, limit / 3) {
-            let regionalRank = PulseEngine.rank(regionalPool, library: library, limit: max(4, limit / 3), mood: mood, allowRecent: allowRecent, index: index)
-            let existing = Set(main.map(\.id)); expanded += regionalRank.filter { !existing.contains($0.id) }
-        }
-        return Array(balanced(expanded, artistDiversity: library.settings.artistDiversity).prefix(limit))
+        // One shared sequence policy; a separate language reorder would undo its balance.
+        PulseEngine.rank(candidates, library: library, limit: limit, mood: mood, allowRecent: allowRecent, index: index)
     }
     public static func regional(_ track: Track) -> Bool {
         (track.title + " " + track.artist).unicodeScalars.contains { (0x0400...0x052F).contains(Int($0.value)) }

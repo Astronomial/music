@@ -18,6 +18,9 @@ final class PlaybackController: ObservableObject {
     private var startTiming: (at: TimeInterval, wall: Date, resolved: TimeInterval?, source: String)?
     @Published var volume: Float = 0.7 { didSet { engine.volume = volume } }
     var onStarted: ((Track) -> Void)?
+    var onSelected: ((Track) -> Void)?
+    var selectionMood: String? { mood }
+    var selectionSurface: String { mood != nil ? "mood" : pulseMode ? "pulse" : "manual" }
     private var startedID: String?
     private var interrupted = false
     private var preparationToken = UUID()
@@ -123,6 +126,7 @@ final class PlaybackController: ObservableObject {
         prefetchedCurrent = nil; failedCandidates = []
         let token = UUID(); generation = token
         engine.pause(); engine.removeAllItems(); prepared = nil; preparing = false
+        if !refreshing { onSelected?(track) }
         current = track; if !refreshing { startedID = nil }; position = seconds; duration = track.duration
         if !refreshing { clock.reset() }; seeking = false; error = nil; isLoading = true; isPlaying = false; requestedPlayback = true
         if !refreshing { retryCount = 0; artwork = nil; loadArtwork(for: track) }
@@ -166,6 +170,7 @@ final class PlaybackController: ObservableObject {
     func next(ended: Bool = false) {
         finish(ended ? .listen : .skip)
         if let current { playedInRun.insert(current.id) }
+        if pulseMode { refreshPreparedSelection() }
         if let ready = prepared, ready.audio.isFresh(margin: 15), ready.item.status != .failed, engine.items().contains(ready.item) {
             beginTiming(source: "prepared")
             requestedPlayback = true; engine.advanceToNextItem(); adoptPreparedItem(); if !interrupted { engine.play() }; return
@@ -183,6 +188,7 @@ final class PlaybackController: ObservableObject {
         finish(.listen)
         if let current { playedInRun.insert(current.id) }
         if !pulseMode { queue.removeAll { $0.id == ready.track.id } }
+        onSelected?(ready.track)
         current = ready.track; startedID = nil; prepared = nil; position = 0; duration = ready.track.duration
         clock.reset(); retryCount = 0; artwork = nil; error = nil; isLoading = false
         generation = UUID(); prefetchedCurrent = nil; failedCandidates = []
@@ -233,6 +239,7 @@ final class PlaybackController: ObservableObject {
         prepareNext()
     }
     private func finish(_ kind: FeedbackKind) {
+        clock.tick(at: ProcessInfo.processInfo.systemUptime, playing: engine.timeControlStatus == .playing, seeking: seeking)
         guard let current, clock.seconds >= 3 else { clock.reset(); return }
         let ratio = duration > 0 ? min(1, clock.seconds / duration) : 0
         onFeedback?(ListeningEvent(trackID: current.id, kind: kind, seconds: clock.seconds, ratio: ratio, mood: mood))
