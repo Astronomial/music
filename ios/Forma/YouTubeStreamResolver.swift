@@ -53,8 +53,11 @@ actor YouTubeStreamResolver: StreamResolving {
                 guard !Task.isCancelled, let self else { return }
                 _ = try? await self.resolve(videoID: id, forceRefresh: false)
             }
-            if let self, self.warmingGeneration == token { self.warmingIDs = [] }
+            await self?.finishWarming(token: token)
         }
+    }
+    private func finishWarming(token: UUID) {
+        if warmingGeneration == token { warmingIDs = [] }
     }
     func cancel(videoID: String) {
         inflight[videoID]?.task.cancel(); inflight[videoID] = nil; cache[videoID] = nil

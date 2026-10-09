@@ -25,6 +25,7 @@ public struct MoodMix: Identifiable, Sendable {
 /// Query genre/mood labels are weaker than explicit artist/seed connections.
 public enum PulseEngine {
     fileprivate typealias Vector = [String: Double]
+    fileprivate typealias OrderedVector = [(String, Double)]
     private static let separators = try! NSRegularExpression(pattern: "[^\\p{L}\\p{N}]+")
     public static func fold(_ text: String) -> String {
         let value = text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX")).replacingOccurrences(of: "ё", with: "е")
@@ -38,8 +39,8 @@ public enum PulseEngine {
         for id in track.relatedTo { result["seed:\(id)"] = 1.1 }
         return result
     }
-    private static func similarity(_ a: Vector, _ b: Vector) -> Double {
-        return a.keys.sorted().reduce(0) { $0 + (a[$1] ?? 0) * (b[$1] ?? 0) }
+    private static func similarity(_ a: OrderedVector, _ b: Vector) -> Double {
+        return a.reduce(0) { $0 + $1.1 * (b[$1.0] ?? 0) }
     }
     private static func unit(_ vector: Vector) -> Vector {
         let norm = sqrt(vector.keys.sorted().reduce(0) { $0 + pow(vector[$1] ?? 0, 2) })
@@ -82,19 +83,22 @@ public enum PulseEngine {
     }
     public struct RankingIndex: Sendable {
         fileprivate let vectors: [String: Vector]
+        fileprivate let orderedVectors: [String: OrderedVector]
         fileprivate let artists: [String: Set<String>]
         fileprivate let artistKeys: [String: String]
         fileprivate let recordings: [String: String]
     }
     public static func makeIndex(_ candidates: [Track], library: Library) -> RankingIndex {
         let tracks = library.tracks.merging(Dictionary(candidates.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }), uniquingKeysWith: { a, _ in a })
-        return RankingIndex(vectors: tracks.mapValues { unit(features($0)) }, artists: tracks.mapValues(PulseDiversity.artists), artistKeys: tracks.mapValues { fold($0.artist) }, recordings: tracks.mapValues(PulseDiversity.recording))
+        let vectors = tracks.mapValues { unit(features($0)) }
+        let ordered = vectors.mapValues { vector in vector.keys.sorted().map { ($0, vector[$0] ?? 0) } }
+        return RankingIndex(vectors: vectors, orderedVectors: ordered, artists: tracks.mapValues(PulseDiversity.artists), artistKeys: tracks.mapValues { fold($0.artist) }, recordings: tracks.mapValues(PulseDiversity.recording))
     }
     public static func rank(_ candidates: [Track], library: Library, limit: Int = 30,
                             mood: String? = nil, exclude: Set<String> = [], allowRecent: Bool = false,
                             now: Date = Date(), currentID: String? = nil, index: RankingIndex? = nil) -> [Recommendation] {
         let prepared = index ?? makeIndex(candidates, library: library)
-        let vectors = prepared.vectors, artistNames = prepared.artists, artistKeys = prepared.artistKeys
+        let vectors = prepared.vectors, orderedVectors = prepared.orderedVectors, artistNames = prepared.artists, artistKeys = prepared.artistKeys
         let familiarIDs = Set(library.likedIDs + library.playlists.flatMap(\.trackIDs) + library.events.filter { $0.kind != .error && now.timeIntervalSince($0.at) < 30 * 86400 }.map(\.trackID))
         let familiarArtists = Set(familiarIDs.flatMap { artistNames[$0] ?? [] })
         let hidden = Set(library.hiddenIDs), saved = Set(library.likedIDs + library.playlists.flatMap(\.trackIDs))
@@ -123,7 +127,7 @@ public enum PulseEngine {
             guard VideoID.isValid(track.id), seen.insert(track.id).inserted, !exclude.contains(track.id),
                   !excludedArtists.contains(fold(track.artist)), !hidden.contains(track.id), !PulseDiversity.blocked(track, settings: library.settings), library.settings.includeLibrary || !saved.contains(track.id), allowRecent || !recent.contains(track.id) else { continue }
             if let context, !track.moodHints.contains(context) { continue }
-            let vector = vectors[track.id] ?? [:]
+            let vector = orderedVectors[track.id] ?? []
             let affinity = 0.65 * similarity(vector, positive) + 0.35 * (seedTracks.map { similarity(vector, vectors[$0.id] ?? [:]) }.max() ?? 0)
             let known = (trackWeights[track.id] ?? 0) > 0
             let preferred = library.settings.preferredArtists.contains { fold(track.artist).contains(fold($0)) } ? 1.3 : 0
@@ -165,7 +169,7 @@ public enum PulseEngine {
                     let fresh = indices.filter { ranked[$0].newArtist && ranked[$0].score >= floor }; if !fresh.isEmpty { indices = fresh }
                 }
             }
-            let best = indices.max { a, b in adjusted(ranked[a], result: result, counts: artistCounts, vectors: vectors, artistKeys: artistKeys) < adjusted(ranked[b], result: result, counts: artistCounts, vectors: vectors, artistKeys: artistKeys) }!
+            let best = indices.max { a, b in adjusted(ranked[a], result: result, counts: artistCounts, vectors: vectors, orderedVectors: orderedVectors, artistKeys: artistKeys) < adjusted(ranked[b], result: result, counts: artistCounts, vectors: vectors, orderedVectors: orderedVectors, artistKeys: artistKeys) }!
             let item = ranked.remove(at: best); result.append(item)
             if item.newArtist { discoveries += 1 }
             artistCounts[artistKeys[item.id] ?? "", default: 0] += 1
@@ -173,8 +177,8 @@ public enum PulseEngine {
         }
         return result
     }
-    private static func adjusted(_ item: Recommendation, result: [Recommendation], counts: [String: Int], vectors: [String: Vector], artistKeys: [String: String]) -> Double {
-        let near = result.suffix(4).map { similarity(vectors[item.id] ?? [:], vectors[$0.id] ?? [:]) }.max() ?? 0
+    private static func adjusted(_ item: Recommendation, result: [Recommendation], counts: [String: Int], vectors: [String: Vector], orderedVectors: [String: OrderedVector], artistKeys: [String: String]) -> Double {
+        let near = result.suffix(4).map { similarity(orderedVectors[item.id] ?? [], vectors[$0.id] ?? [:]) }.max() ?? 0
         return item.score - Double(counts[artistKeys[item.id] ?? ""] ?? 0) * 0.7 - near * 0.25
     }
 }
