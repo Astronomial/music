@@ -56,6 +56,9 @@ actor YouTubeStreamResolver: StreamResolving {
             if let self, self.warmingGeneration == token { self.warmingIDs = [] }
         }
     }
+    func cancel(videoID: String) {
+        inflight[videoID]?.task.cancel(); inflight[videoID] = nil; cache[videoID] = nil
+    }
     func invalidate() { warming?.cancel(); warmingIDs = []; cache.removeAll(); inflight.values.forEach { $0.task.cancel() }; inflight.removeAll() }
     enum ResolverError: LocalizedError {
         case invalidID, noAudio, expired

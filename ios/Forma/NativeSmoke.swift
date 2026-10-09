@@ -20,6 +20,20 @@ private actor FixtureResolver: StreamResolving {
     }
     func invalidate() async {}
 }
+private actor RecoveringFixtureResolver: StreamResolving {
+    let audio: ResolvedAudio
+    var calls = 0
+    private(set) var cancellations = 0
+    init(audio: ResolvedAudio) { self.audio = audio }
+    func resolve(videoID: String, forceRefresh: Bool) async throws -> ResolvedAudio {
+        calls += 1
+        if calls == 1 { try await Task.sleep(nanoseconds: 5_000_000_000) }
+        guard forceRefresh else { throw SyncError.rejected("Retry did not request a fresh stream") }
+        return audio
+    }
+    func cancel(videoID: String) async { cancellations += 1 }
+    func invalidate() async {}
+}
 @MainActor
 enum NativeSmoke {
     private static var started = false
@@ -64,6 +78,24 @@ enum NativeSmoke {
             guard merged.likedIDs.isEmpty, merged.playlists.contains(where: { $0.id == "phone-playlist" }), merged.settings.artistDiversity == 1 else { throw SyncError.rejected("Bidirectional PC sync failed") }
             stage = "native-playback"
             let tracks = merged.tracks.values.sorted { $0.id < $1.id }.map { track -> Track in var next = track; next.duration = 5; return next }
+            let recoveryAudio = try await fixtureResolver.resolve(videoID: tracks[0].id, forceRefresh: false)
+            let recoveryResolver = RecoveringFixtureResolver(audio: recoveryAudio)
+            let recoveryPlayer = PlaybackController(resolver: recoveryResolver, extractionTimeout: 0.1, bufferTimeout: 4)
+            recoveryPlayer.play(tracks[0], list: [tracks[0]])
+            for _ in 0..<100 {
+                if recoveryPlayer.error != nil { break }
+                try await Task.sleep(nanoseconds: 10_000_000)
+            }
+            guard recoveryPlayer.error != nil, !recoveryPlayer.isLoading else { throw SyncError.rejected("Unresponsive extraction never timed out") }
+            let cancellations = await recoveryResolver.cancellations
+            guard cancellations > 0 else { throw SyncError.rejected("Timed-out stream request was not cancelled") }
+            recoveryPlayer.resume()
+            for _ in 0..<80 {
+                if recoveryPlayer.isPlaying { break }
+                try await Task.sleep(nanoseconds: 50_000_000)
+            }
+            guard recoveryPlayer.isPlaying else { throw SyncError.rejected("Retry failed to recover after timeout") }
+            recoveryPlayer.pause()
             let player = model.player
             model.toggleLike(tracks[0])
             guard model.isLiked(tracks[0]) else { throw SyncError.rejected("Mini-player favourite state failed") }
@@ -129,7 +161,7 @@ enum NativeSmoke {
             guard !player.isPlaying else { throw SyncError.rejected("Explicit pause failed") }
             player.resume(); try await Task.sleep(nanoseconds: 500_000_000)
             guard player.isPlaying else { throw SyncError.rejected("Resume failed") }
-            write(["status": "passed", "nativeStarts": starts.count, "automaticTransitions": feedback.count, "background": background, "pinnedTLS": true, "wrongPinRejected": rejectedWrongPin, "bidirectionalSync": true, "pauseResume": true, "miniPlayerAboveTabs": true, "miniPlayerBottom": miniFrame.maxY, "tabBarTop": barFrame.minY, "preparedManualSwitchMilliseconds": switchDelay * 1000, "preparedStreamReused": true, "controlledColdStartMilliseconds": coldStartMilliseconds, "preparedPlayingMilliseconds": preparedPlayingMilliseconds])
+            write(["status": "passed", "nativeStarts": starts.count, "automaticTransitions": feedback.count, "background": background, "pinnedTLS": true, "wrongPinRejected": rejectedWrongPin, "bidirectionalSync": true, "pauseResume": true, "miniPlayerAboveTabs": true, "miniPlayerBottom": miniFrame.maxY, "tabBarTop": barFrame.minY, "preparedManualSwitchMilliseconds": switchDelay * 1000, "preparedStreamReused": true, "controlledColdStartMilliseconds": coldStartMilliseconds, "preparedPlayingMilliseconds": preparedPlayingMilliseconds, "startupTimeoutRecovered": true])
             player.pause()
         } catch { let failure = error as NSError; write(["status": "failed", "stage": stage, "error": error.localizedDescription, "domain": failure.domain, "code": failure.code, "taskCancelled": Task.isCancelled]) }
     }

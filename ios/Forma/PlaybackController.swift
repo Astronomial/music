@@ -28,6 +28,9 @@ final class PlaybackController: ObservableObject {
     private let resolver: any StreamResolving
     private let network = NWPathMonitor()
     private var task: Task<Void, Never>?
+    private var startWatchdog: Task<Void, Never>?
+    private let extractionTimeout: TimeInterval
+    private let bufferTimeout: TimeInterval
     private var prefetch: Task<Void, Never>?
     private var prefetchedCurrent: String?
     private var prepared: (track: Track, item: AVPlayerItem, audio: ResolvedAudio)?
@@ -53,8 +56,8 @@ final class PlaybackController: ObservableObject {
     private var artworkTask: Task<Void, Never>?
     private var networkSignature: String?
 
-    init(resolver: any StreamResolving = YouTubeStreamResolver()) {
-        self.resolver = resolver
+    init(resolver: any StreamResolving = YouTubeStreamResolver(), extractionTimeout: TimeInterval = 12, bufferTimeout: TimeInterval = 8) {
+        self.resolver = resolver; self.extractionTimeout = extractionTimeout; self.bufferTimeout = bufferTimeout
         engine.volume = volume
         // AAC can start with a small buffer; AVPlayer's conservative wait can take seconds.
         engine.automaticallyWaitsToMinimizeStalling = false
@@ -88,7 +91,7 @@ final class PlaybackController: ObservableObject {
         network.start(queue: DispatchQueue(label: "music.forma.network"))
     }
     deinit {
-        task?.cancel(); prefetch?.cancel(); artworkTask?.cancel(); network.cancel()
+        task?.cancel(); startWatchdog?.cancel(); prefetch?.cancel(); artworkTask?.cancel(); network.cancel()
         if let periodic { engine.removeTimeObserver(periodic) }
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         for observer in systemObservers { NotificationCenter.default.removeObserver(observer) }
@@ -124,6 +127,7 @@ final class PlaybackController: ObservableObject {
         if !refreshing { clock.reset() }; seeking = false; error = nil; isLoading = true; isPlaying = false; requestedPlayback = true
         if !refreshing { retryCount = 0; artwork = nil; loadArtwork(for: track) }
         updateNowPlaying()
+        armStartWatchdog(seconds: extractionTimeout, token: token)
         task = Task { [weak self] in
             guard let self else { return }
             do {
@@ -135,6 +139,7 @@ final class PlaybackController: ObservableObject {
                     if resolved.resolvedAt < timing.wall { timing.source = "cached" }
                     startTiming = timing
                 }
+                if requestedPlayback { armStartWatchdog(seconds: bufferTimeout, token: token) }
                 let item = AVPlayerItem(url: resolved.url)
                 item.preferredForwardBufferDuration = 3
                 observe(item, token: token)
@@ -151,7 +156,7 @@ final class PlaybackController: ObservableObject {
         }
     }
     func toggle() { requestedPlayback ? pause() : resume() }
-    func pause() { startTiming = nil; requestedPlayback = false; engine.pause(); isPlaying = false; updateNowPlaying() }
+    func pause() { startWatchdog?.cancel(); startTiming = nil; requestedPlayback = false; engine.pause(); isPlaying = false; updateNowPlaying() }
     func resume() {
         guard let current else { return }
         if engine.currentItem == nil || engine.currentItem?.status == .failed { start(current, at: position, refreshing: true); return }
@@ -214,6 +219,7 @@ final class PlaybackController: ObservableObject {
     }
     private func markStarted() {
         guard let current, startedID != current.id else { return }
+        startWatchdog?.cancel()
         startedID = current.id
         if let timing = startTiming {
             let now = ProcessInfo.processInfo.systemUptime
@@ -303,12 +309,23 @@ final class PlaybackController: ObservableObject {
         preparationToken = UUID(); prefetch?.cancel(); preparing = false
         if isPlaying { prepareNext() }
     }
+    private func armStartWatchdog(seconds: TimeInterval, token: UUID) {
+        startWatchdog?.cancel()
+        startWatchdog = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(max(0.1, seconds) * 1_000_000_000))
+            guard !Task.isCancelled, let self, generation == token, requestedPlayback, isLoading, engine.timeControlStatus != .playing, let track = current else { return }
+            generation = UUID(); task?.cancel(); engine.removeAllItems()
+            fail(PlayerError.startTimedOut)
+            await resolver.cancel(videoID: track.id)
+        }
+    }
     private func activateAudio() throws {
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playback, mode: .default)
         try session.setActive(true)
     }
     private func fail(_ failure: Error) {
+        startWatchdog?.cancel()
         startTiming = nil
         engine.pause(); isPlaying = false; isLoading = false; requestedPlayback = false
         clock.reset() // An unavailable stream is not a negative taste signal.
@@ -357,6 +374,11 @@ final class PlaybackController: ObservableObject {
             Task { @MainActor in guard let self, let track = self.current, self.requestedPlayback else { return }; self.start(track, at: self.position, refreshing: true) }
         })
     }
+    func refreshArtworkPreference() {
+        artworkTask?.cancel(); artwork = nil
+        if let current { loadArtwork(for: current) }
+        updateNowPlaying()
+    }
     private func loadArtwork(for track: Track) {
         artworkTask = Task { [weak self] in
             guard let image = await ArtworkStore.shared.image(for: track, pixels: 960), !Task.isCancelled, let self, self.current?.id == track.id else { return }
@@ -376,7 +398,12 @@ final class PlaybackController: ObservableObject {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
     enum PlayerError: LocalizedError {
-        case unavailable
-        var errorDescription: String? { "Поток YouTube недоступен. Попробуй другой трек или повтори позже." }
+        case unavailable, startTimedOut
+        var errorDescription: String? {
+            switch self {
+            case .unavailable: return "Поток YouTube недоступен. Попробуй другой трек или повтори позже."
+            case .startTimedOut: return "YouTube слишком долго отвечает. Нажми «Повторить» или выбери другой трек."
+            }
+        }
     }
 }

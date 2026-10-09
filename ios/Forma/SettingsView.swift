@@ -34,6 +34,7 @@ struct SettingsView: View {
                 }
                 GlassPanel {
                     Toggle("Показывать обложки", isOn: $showArtwork)
+                        .onChange(of: showArtwork) { _, _ in model.player.refreshArtworkPreference() }
                 }
                 GlassPanel { DisclosureGroup("Скорость воспроизведения") { PlaybackPerformanceView(player: model.player) } }
                 NavigationLink { PulseSettingsView(model: model) } label: { Label("Настроить Пульс", systemImage: "slider.horizontal.3").font(.headline) }

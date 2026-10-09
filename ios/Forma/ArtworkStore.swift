@@ -20,6 +20,7 @@ final class ArtworkStore {
         session = URLSession(configuration: config)
     }
     func image(for track: Track, pixels: Int) async -> UIImage? {
+        guard UserDefaults.standard.object(forKey: "forma.showArtwork") as? Bool != false else { return nil }
         // Two shared sizes keep UI and lock-screen requests from decoding duplicates.
         let pixels = pixels > 480 ? 1024 : 320
         let urls = ArtworkPolicy.candidates(for: track, pixels: pixels)
