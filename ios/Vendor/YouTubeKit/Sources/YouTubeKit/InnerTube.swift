@@ -45,6 +45,9 @@ class InnerTube {
         var thirdParty: ThirdParty?
 
         struct ContextClient: Encodable {
+            let hl = "en"
+            let timeZone = "UTC"
+            let utcOffsetMinutes = 0
             let clientName: String
             let clientVersion: String
             let clientScreen: String?
@@ -181,7 +184,8 @@ class InnerTube {
         request.httpShouldHandleCookies = false
         let (responseData, response) = try await session.data(for: request)
         try Task.checkCancellation()
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw YouTubeKitError.extractError }
+        guard let http = response as? HTTPURLResponse else { throw AudioStreamFailure.invalidResponse }
+        guard (200..<300).contains(http.statusCode) else { throw AudioStreamFailure.http(http.statusCode) }
         
         return try JSONDecoder().decode(T.self, from: responseData)
     }
@@ -245,9 +249,9 @@ class InnerTube {
         }
         
         struct AudioTrack: Decodable {
-            let displayName: String
-            let id: String
-            let audioIsDefault: Bool
+            let displayName: String?
+            let id: String?
+            let audioIsDefault: Bool?
         }
     }
     

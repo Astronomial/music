@@ -7,6 +7,24 @@
 
 import Foundation
 
+/// Safe diagnostics: client/stage and error category only; never signed URLs or cookies.
+public struct AudioStreamExtractionError: LocalizedError, Sendable {
+    public let attempts: [String]
+    public var errorDescription: String? { "YouTube audio extraction failed (\(attempts.joined(separator: "; ")))." }
+}
+
+enum AudioStreamFailure: Error {
+    case http(Int), invalidResponse, playability(String), noAudio
+    var diagnostic: String {
+        switch self {
+        case .http(let status): return "HTTP_\(status)"
+        case .invalidResponse: return "RESPONSE"
+        case .playability(let status): return "PLAYABILITY_\(status.filter { $0.isASCII && ($0.isLetter || $0 == "_") }.prefix(40))"
+        case .noAudio: return "NO_AAC"
+        }
+    }
+}
+
 public enum YouTubeKitError: String, Error {
     case maxRetriesExceeded
     case htmlParseError

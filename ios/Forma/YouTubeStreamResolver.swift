@@ -15,7 +15,10 @@ actor YouTubeStreamResolver: StreamResolving {
         let requestID = UUID()
         let job = Task<ResolvedAudio, Error> {
             let video = YouTube(videoID: videoID, useOAuth: false, allowOAuthCache: false, methods: [.local])
-            let streams = try await video.audioStreams
+            let streams: [Stream]
+            do { streams = try await video.audioStreams }
+            catch let extraction as AudioStreamExtractionError { throw ResolverError.extraction(extraction.attempts.joined(separator: "; ")) }
+            catch let error as YouTubeKitError { throw ResolverError.extraction(error.rawValue) }
             try Task.checkCancellation()
             guard let stream = streams.filterAudioOnly().filter({ $0.isNativelyPlayable && $0.fileExtension == .m4a }).highestAudioBitrateStream() else { throw ResolverError.noAudio }
             let result = try ResolvedAudio(url: stream.url)
@@ -39,10 +42,12 @@ actor YouTubeStreamResolver: StreamResolving {
     func invalidate() { cache.removeAll(); inflight.values.forEach { $0.task.cancel() }; inflight.removeAll() }
     enum ResolverError: LocalizedError {
         case invalidID, noAudio, expired
+        case extraction(String)
         var errorDescription: String? {
             switch self {
             case .invalidID: return "Нужна ссылка на видео YouTube."
             case .noAudio: return "YouTube не предоставил поддерживаемый аудиопоток. Возможно, получение потоков требует обновления."
+            case .extraction(let diagnostic): return "Не удалось получить аудио от YouTube. Нажми «Повторить». Если ошибка сохраняется, передай этот код: \(diagnostic)"
             case .expired: return "Адрес потока уже истёк. Повтори воспроизведение."
             }
         }

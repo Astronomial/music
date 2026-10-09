@@ -57,7 +57,7 @@ class Extraction {
     /// Get the YouTube player base JavaScript path.
     class func getYTPlayerJS(html: String) throws -> String {
         let jsURLPatterns = [
-            NSRegularExpression(#"(/s/player/[\w\d]+/[\w\d_/.]+/base\.js)"#)
+            NSRegularExpression(#"(/s/player/[\w-]+/[\w\-/.]+\.js)"#)
         ]
         
         for pattern in jsURLPatterns {
@@ -388,7 +388,7 @@ class Extraction {
         }
         
         os_log("applying descrambler", log: log, type: .debug)
-        return formats
+        return formats.filter { $0.url?.isEmpty == false }
     }
     
 #if canImport(JavaScriptCore)
@@ -493,14 +493,17 @@ class Extraction {
     }
 #endif
     
-    /// Filter out all audio streams that are not original language (i.e. dubbed)
+    /// Prefer original/default audio without relying on an English-only label.
     class func filterOutDubbedAudio(streamManifest: [InnerTube.StreamingData.Format]) -> [InnerTube.StreamingData.Format] {
-        streamManifest.filter { stream in
-            if let audioTrack = stream.audioTrack {
-                return audioTrack.displayName.lowercased().hasSuffix("original")
-            }
-            return true
+        let original = streamManifest.filter {
+            $0.audioTrack?.displayName?.lowercased().hasSuffix("original") == true
         }
+        if !original.isEmpty { return original }
+        let defaults = streamManifest.filter { $0.audioTrack == nil || $0.audioTrack?.audioIsDefault == true }
+        if !defaults.isEmpty { return defaults }
+        // Metadata can be absent/localized. Keep one track's formats rather than silence.
+        guard let firstID = streamManifest.first?.audioTrack?.id else { return streamManifest }
+        return streamManifest.filter { $0.audioTrack?.id == firstID }
     }
     
     /// Breaks up the data in the ``type`` key of the manifest, which contains the

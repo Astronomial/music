@@ -289,54 +289,88 @@ public class YouTube {
         }
     }
     
-    /// Forma audio path: first usable client wins; never requests progressive video.
-    /// Each worker owns its mutable YouTube instance. No shared instance crosses tasks.
+    /// Race the fast native request against the fully configured compatibility path.
+    /// Each worker owns its mutable state. No failure hides another usable response.
     public var audioStreams: [Stream] {
         get async throws {
 #if canImport(JavaScriptCore)
-            return try await withThrowingTaskGroup(of: [Stream].self) { group in
-                for client in [InnerTube.ClientType.visionOS, .web] {
+            return try await withThrowingTaskGroup(of: AudioAttempt.self) { group in
+                for configured in [false, true] {
                     group.addTask { [videoID, useOAuth, allowOAuthCache, session] in
                         let worker = YouTube(videoID: videoID, useOAuth: useOAuth, allowOAuthCache: allowOAuthCache, methods: [.local], session: session)
-                        do {
-                            // Native audio can arrive without downloading the watch page or player JS.
-                            // WEB retains the full watch configuration as a compatibility fallback.
-                            let configuration: Extraction.YtCfg
-                            if client == .web {
-                                try await worker.checkAvailability()
-                                configuration = try await worker.ytcfg
-                            } else {
-                                configuration = try JSONDecoder().decode(Extraction.YtCfg.self, from: Data("{}".utf8))
+                        var failures: [String] = []
+                        let clients: [InnerTube.ClientType] = configured ? [.visionOS, .web] : [.visionOS]
+                        for client in clients {
+                            var stage = "CONFIG"
+                            let label = "\(client.rawValue)/\(configured ? "configured" : "fast")"
+                            do {
+                                try Task.checkCancellation()
+                                let configuration = configured ? try await worker.ytcfg : try JSONDecoder().decode(Extraction.YtCfg.self, from: Data("{}".utf8))
+                                // Native clients do not require player JS; WEB requires a matching STS.
+                                let timestamp = client == .web ? try await worker.signatureTimestamp : nil
+                                stage = "PLAYER"
+                                let tube = InnerTube(client: client, signatureTimestamp: timestamp, ytcfg: configuration, useOAuth: useOAuth, allowCache: allowOAuthCache, session: session)
+                                let info = try await tube.player(videoID: videoID)
+                                try Task.checkCancellation()
+                                if let status = info.playabilityStatus?.status, status != "OK" {
+                                    throw AudioStreamFailure.playability(status)
+                                }
+                                guard info.videoDetails?.videoId == videoID, let data = info.streamingData else { throw AudioStreamFailure.invalidResponse }
+                                var manifest = Extraction.applyDescrambler(streamData: data).filter { $0.mimeType.hasPrefix("audio/mp4;") }
+                                manifest = Extraction.filterOutDubbedAudio(streamManifest: manifest)
+                                guard !manifest.isEmpty else { throw AudioStreamFailure.noAudio }
+                                let needsSignature = manifest.contains { format in
+                                    format.s != nil || format.url.flatMap { URLComponents(string: $0)?.queryItems }?.contains { $0.name == "n" } == true
+                                }
+                                if needsSignature {
+                                    stage = "SIGNATURE"
+                                    let original = manifest
+                                    do {
+                                        try await Extraction.applyAudioSignature(streamManifest: &manifest, js: worker.js)
+                                    } catch {
+                                        try Task.checkCancellation()
+                                        // A stale player script must not poison every subsequent track.
+                                        worker._js = nil; worker._jsURL = nil
+                                        await Self.playerScripts.invalidate()
+                                        manifest = original
+                                        try await Extraction.applyAudioSignature(streamManifest: &manifest, js: worker.js)
+                                    }
+                                }
+                                try Task.checkCancellation()
+                                let streams = manifest.compactMap { try? Stream(format: $0) }.filter { $0.isNativelyPlayable && !$0.includesVideoTrack }
+                                guard !streams.isEmpty else { throw AudioStreamFailure.noAudio }
+                                return AudioAttempt(streams: streams, failures: failures)
+                            } catch {
+                                try Task.checkCancellation()
+                                let detail: String
+                                if let failure = error as? AudioStreamFailure { detail = failure.diagnostic }
+                                else if let network = error as? URLError { detail = "NETWORK_\(network.code.rawValue)" }
+                                else if error is DecodingError { detail = "DECODE" }
+                                else if let extraction = error as? YouTubeKitError { detail = extraction.rawValue }
+                                else { detail = "FAILED" }
+                                failures.append("\(label):\(stage)/\(detail)")
                             }
-                            let timestamp = client == .web ? try await worker.signatureTimestamp : nil
-                            let tube = InnerTube(client: client, signatureTimestamp: timestamp, ytcfg: configuration, useOAuth: useOAuth, allowCache: allowOAuthCache, session: session)
-                            let info = try await tube.player(videoID: videoID)
-                            try Task.checkCancellation()
-                            guard info.playabilityStatus?.status == "OK", info.videoDetails?.videoId == videoID, let data = info.streamingData else { return [] }
-                            var manifest = Extraction.applyDescrambler(streamData: data).filter { $0.mimeType.hasPrefix("audio/mp4;") }
-                            manifest = Extraction.filterOutDubbedAudio(streamManifest: manifest)
-                            guard !manifest.isEmpty else { return [] }
-                            let needsSignature = manifest.contains { format in
-                                format.s != nil || format.url.flatMap { URLComponents(string: $0)?.queryItems }?.contains { $0.name == "n" } == true
-                            }
-                            if needsSignature {
-                                try await Extraction.applyAudioSignature(streamManifest: &manifest, js: worker.js)
-                            }
-                            try Task.checkCancellation()
-                            return manifest.compactMap { try? Stream(format: $0) }.filter { $0.isNativelyPlayable && !$0.includesVideoTrack }
-                        } catch is CancellationError { throw CancellationError() }
-                        catch { return [] } // A second client may still provide valid audio.
+                        }
+                        return AudioAttempt(streams: [], failures: failures)
                     }
                 }
-                while let streams = try await group.next() {
-                    if !streams.isEmpty { group.cancelAll(); return streams }
+                var failures: [String] = []
+                while let attempt = try await group.next() {
+                    try Task.checkCancellation()
+                    if !attempt.streams.isEmpty { group.cancelAll(); return attempt.streams }
+                    failures += attempt.failures
                 }
-                throw YouTubeKitError.extractError
+                throw AudioStreamExtractionError(attempts: failures.sorted())
             }
 #else
-            throw YouTubeKitError.extractError
+            throw AudioStreamExtractionError(attempts: ["JavaScriptCore unavailable"])
 #endif
         }
+    }
+
+    private struct AudioAttempt {
+        let streams: [Stream]
+        let failures: [String]
     }
 
     /// Returns a list of live streams - currently only HLS supported
