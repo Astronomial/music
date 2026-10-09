@@ -185,7 +185,7 @@ public enum PulseEngine {
             let lane = known ? "familiar" : nearby ? "nearby" : "stretch"
             var reason = known ? "Из твоей библиотеки" : newArtist && neighbour >= 0.24 ? "Новый исполнитель · рядом с \(matched?.artist ?? "твоим вкусом")" : lane == "stretch" && !seedTracks.isEmpty ? "Небольшой шаг в новое направление" : affinity > 0.1 ? "В твоём вкусе" : "Новое из YouTube"
             if context != nil { reason = "Под настроение · " + reason.lowercased() }
-            ranked.append(Recommendation(track: track, score: score, reason: reason, newArtist: newArtist, known: known, nearby: nearby, languageFit: language, taste: affinity, exposure: RecommendationContext(features: snapshot, lane: lane)))
+            ranked.append(Recommendation(track: track, score: score, reason: reason, newArtist: newArtist, known: known, nearby: nearby, languageFit: language, taste: max(affinity, neighbour * 0.65), exposure: RecommendationContext(features: snapshot, lane: lane)))
         }
         ranked.sort { $0.score == $1.score ? $0.id < $1.id : $0.score > $1.score }
         var recordings = Set<String>()
@@ -228,7 +228,15 @@ public enum PulseEngine {
             let relevant: (Recommendation) -> Bool = { $0.taste >= floor }
             var pool = Array(ranked.indices)
             let stretchBudget = history.surpriseRate * Double(history.exposureCount + result.count + 1) - Double(surprises)
-            if stretchBudget < 1 { let close = pool.filter { ranked[$0].nearby }; if !close.isEmpty { pool = close } }
+            if stretchBudget < 1 {
+                let close = pool.filter { ranked[$0].nearby }
+                let spacedClose = close.filter { relevant(ranked[$0]) && (index.artists[ranked[$0].id] ?? []).isDisjoint(with: lastArtists) && (index.artists[ranked[$0].id] ?? []).allSatisfy { (counts[$0] ?? 0) < spacing.count } }
+                // Sparse YouTube metadata must not turn familiarity into permission
+                // to repeat one artist. Relax confidence only for supported, relevant
+                // neighbours when the strong neighbourhood has no diverse alternative.
+                let supported = pool.filter { relevant(ranked[$0]) && (ranked[$0].exposure?.features[2] ?? 0) >= 0.15 }
+                if !close.isEmpty { pool = library.settings.artistDiversity > 0 && spacedClose.isEmpty && !supported.isEmpty ? supported : close }
+            }
             if library.settings.artistDiversity > 0 {
                 let spaced = pool.filter { relevant(ranked[$0]) && (index.artists[ranked[$0].id] ?? []).isDisjoint(with: lastArtists) }
                 let diverse = spaced.filter { (index.artists[ranked[$0].id] ?? []).allSatisfy { (counts[$0] ?? 0) < spacing.count } }
