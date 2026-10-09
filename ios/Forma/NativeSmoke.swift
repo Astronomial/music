@@ -99,6 +99,13 @@ enum NativeSmoke {
             let player = model.player
             model.toggleLike(tracks[0])
             guard model.isLiked(tracks[0]) else { throw SyncError.rejected("Mini-player favourite state failed") }
+            // Wait for the real AppModel ranking, then verify selection and explicit
+            // feedback carry its feature snapshot through native playback callbacks.
+            for _ in 0..<100 {
+                if model.recommendations.contains(where: { $0.id == tracks[0].id }) { break }
+                try await Task.sleep(nanoseconds: 20_000_000)
+            }
+            guard model.recommendations.contains(where: { $0.id == tracks[0].id && $0.exposure?.isValid == true }) else { throw SyncError.rejected("AppModel did not prepare a learning snapshot") }
             player.play(tracks[0], list: tracks)
             // Current extraction takes 500ms. Wait for the second track's real AVPlayerItem.
             for _ in 0..<100 {
@@ -108,6 +115,14 @@ enum NativeSmoke {
             guard player.debugPreparedTrackID == tracks[1].id else { throw SyncError.rejected("Next track was not prepared immediately") }
             guard let cold = player.measurements.first, cold.totalMilliseconds < 2500 else { throw SyncError.rejected("Controlled cold playback exceeded 2.5 seconds") }
             let coldStartMilliseconds = cold.totalMilliseconds
+            guard let exposure = model.library.events.last(where: { $0.trackID == tracks[0].id && $0.kind == .play }),
+                  exposure.recommendation?.isValid == true, exposure.surface == "manual" else { throw SyncError.rejected("Native start lost its recommendation context") }
+            model.toggleLike(tracks[0]); model.toggleLike(tracks[0])
+            model.createPlaylist("Learning fixture")
+            guard let learningPlaylist = model.library.playlists.last else { throw SyncError.rejected("Learning playlist missing") }
+            model.add(tracks[0], to: learningPlaylist.id)
+            let explicit = model.library.events.filter { $0.trackID == tracks[0].id && ($0.kind == .like || $0.kind == .playlistAdd) && $0.recommendation == exposure.recommendation }
+            guard explicit.count == 2, explicit.allSatisfy({ $0.reward == 1 }) else { throw SyncError.rejected("Like and playlist feedback lost the selected learning snapshot") }
             let callsBefore = await fixtureResolver.calls[tracks[1].id]
             let switchedAt = ProcessInfo.processInfo.systemUptime
             player.play(tracks[1], list: tracks)
@@ -161,7 +176,7 @@ enum NativeSmoke {
             guard !player.isPlaying else { throw SyncError.rejected("Explicit pause failed") }
             player.resume(); try await Task.sleep(nanoseconds: 500_000_000)
             guard player.isPlaying else { throw SyncError.rejected("Resume failed") }
-            write(["status": "passed", "nativeStarts": starts.count, "automaticTransitions": feedback.count, "background": background, "pinnedTLS": true, "wrongPinRejected": rejectedWrongPin, "bidirectionalSync": true, "pauseResume": true, "miniPlayerAboveTabs": true, "miniPlayerBottom": miniFrame.maxY, "tabBarTop": barFrame.minY, "preparedManualSwitchMilliseconds": switchDelay * 1000, "preparedStreamReused": true, "controlledColdStartMilliseconds": coldStartMilliseconds, "preparedPlayingMilliseconds": preparedPlayingMilliseconds, "startupTimeoutRecovered": true])
+            write(["status": "passed", "nativeStarts": starts.count, "automaticTransitions": feedback.count, "background": background, "pinnedTLS": true, "wrongPinRejected": rejectedWrongPin, "bidirectionalSync": true, "pauseResume": true, "miniPlayerAboveTabs": true, "miniPlayerBottom": miniFrame.maxY, "tabBarTop": barFrame.minY, "preparedManualSwitchMilliseconds": switchDelay * 1000, "preparedStreamReused": true, "controlledColdStartMilliseconds": coldStartMilliseconds, "preparedPlayingMilliseconds": preparedPlayingMilliseconds, "startupTimeoutRecovered": true, "recommendationSnapshotCaptured": true, "explicitLearningFeedbackCaptured": true])
             player.pause()
         } catch { let failure = error as NSError; write(["status": "failed", "stage": stage, "error": error.localizedDescription, "domain": failure.domain, "code": failure.code, "taskCancelled": Task.isCancelled]) }
     }

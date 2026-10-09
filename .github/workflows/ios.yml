@@ -28,6 +28,8 @@ jobs:
           plutil -lint ios/Forma/Info.plist ios/Forma.xcodeproj/project.pbxproj
       - name: Test portable Pulse, sync and storage
         run: swift test --package-path ios/Packages/FormaCore
+      - name: Measure optimized ranking and fast playback selection
+        run: swift test -c release --package-path ios/Packages/FormaCore --filter 'DiscoveryPerformanceTests/testThreeThousandTracksAndSixMoodsHaveBoundedRankingCost|ContextualLearningTests/testIndexedCachedChoiceIsBoundedWithLongHistoryAndPlaylistProfileStaysIsolated'
       - name: Test audio extraction with controlled slow and failed responses
         run: swift test --package-path ios/Vendor/YouTubeKit --filter AudioLoadingTests
       - name: Build iOS Simulator app
