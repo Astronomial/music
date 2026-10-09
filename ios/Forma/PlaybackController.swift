@@ -62,6 +62,7 @@ final class PlaybackController: ObservableObject {
         statusObservation = engine.observe(\.timeControlStatus, options: [.new]) { [weak self] _, _ in
             Task { @MainActor in
                 guard let self else { return }
+                self.adoptPreparedItem()
                 self.isPlaying = self.engine.timeControlStatus == .playing
                 if self.isPlaying { self.isLoading = false; self.markStarted() }
                 self.updateNowPlaying()
@@ -92,11 +93,15 @@ final class PlaybackController: ObservableObject {
         for (command, target) in remoteTargets { command.removeTarget(target) }
     }
     func play(_ track: Track, list: [Track]? = nil, asPulse: Bool = false, context: String? = nil) {
+        // AVQueuePlayer may have advanced before its asynchronous KVO callback arrives.
+        let alreadyAdvanced = prepared.map { $0.track.id == track.id && engine.currentItem === $0.item } ?? false
+        adoptPreparedItem()
         finish(.skip)
         if let list {
             queue = Array(list.drop { $0.id != track.id }.dropFirst())
             pulseMode = asPulse; mood = context; playedInRun = []
         }
+        if alreadyAdvanced { resume(); return }
         if let ready = prepared, ready.track.id == track.id, ready.audio.isFresh(margin: 15), ready.item.status != .failed, engine.items().contains(ready.item) {
             requestedPlayback = true; engine.advanceToNextItem(); adoptPreparedItem()
             if !interrupted { engine.play() }; return
@@ -171,7 +176,7 @@ final class PlaybackController: ObservableObject {
         if isPlaying { prepareNext() }
     }
 #if DEBUG && targetEnvironment(simulator)
-    var debugPreparedTrackID: String? { prepared?.track.id }
+    var debugPreparedTrackID: String? { prepared?.item.status == .readyToPlay ? prepared?.track.id : nil }
 #endif
     func previous() { seek(to: 0) }
     func seek(to value: Double) {
@@ -225,6 +230,9 @@ final class PlaybackController: ObservableObject {
         itemObservation = item.observe(\.status, options: [.initial, .new]) { [weak self, weak item] _, _ in
             Task { @MainActor in
                 guard let self, let item, self.generation == token, item.status == .failed else { return }
+#if DEBUG && targetEnvironment(simulator)
+                if ProcessInfo.processInfo.arguments.contains("--forma-smoke") { print("Native item failed for \(self.current?.id ?? "none"): \(item.error?.localizedDescription ?? "unknown")") }
+#endif
                 if self.retryCount < 1, self.requestedPlayback, let track = self.current {
                     self.retryCount += 1
                     self.start(track, at: self.position, refreshing: true)
@@ -255,6 +263,7 @@ final class PlaybackController: ObservableObject {
         }
     }
     func refreshPreparedSelection() {
+        adoptPreparedItem()
         guard let next = candidate() else {
             preparationToken = UUID(); prefetch?.cancel(); preparing = false
             if let ready = prepared, engine.currentItem !== ready.item { engine.remove(ready.item); prepared = nil }

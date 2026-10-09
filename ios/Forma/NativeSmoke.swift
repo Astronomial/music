@@ -10,8 +10,13 @@ private actor FixtureResolver: StreamResolving {
     init(url: URL) { self.url = url }
     func resolve(videoID: String, forceRefresh: Bool) async throws -> ResolvedAudio {
         calls[videoID, default: 0] += 1
+        print("Native fixture resolve: \(videoID), attempt \(calls[videoID]!), refresh \(forceRefresh)")
         try await Task.sleep(nanoseconds: 500_000_000)
-        return ResolvedAudio(debugFixture: url)
+        // Real tracks have distinct URLs. Sharing one file URL across queue items can
+        // make AVFoundation coalesce and cancel an unrelated asset's load during a skip.
+        let trackURL = url.deletingLastPathComponent().appendingPathComponent("fixture-\(videoID).wav")
+        if !FileManager.default.fileExists(atPath: trackURL.path) { try FileManager.default.copyItem(at: url, to: trackURL) }
+        return ResolvedAudio(debugFixture: trackURL)
     }
     func invalidate() async {}
 }
@@ -75,7 +80,8 @@ enum NativeSmoke {
             let switchDelay = ProcessInfo.processInfo.systemUptime - switchedAt
             guard player.current?.id == tracks[1].id, switchDelay < 0.2 else { throw SyncError.rejected("Manual next-track reuse failed") }
             try await Task.sleep(nanoseconds: 100_000_000)
-            guard await fixtureResolver.calls[tracks[1].id] == callsBefore else { throw SyncError.rejected("Prepared track was extracted twice") }
+            let callsAfter = await fixtureResolver.calls[tracks[1].id]
+            guard callsAfter == callsBefore else { throw SyncError.rejected("Prepared track was extracted twice: \(callsBefore ?? 0) -> \(callsAfter ?? 0); \(player.error ?? "no error"), playing \(player.isPlaying)") }
             try await Task.sleep(nanoseconds: 200_000_000)
             func tabBar(in view: UIView) -> UITabBar? {
                 if let bar = view as? UITabBar { return bar }
