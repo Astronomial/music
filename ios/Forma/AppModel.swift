@@ -139,9 +139,10 @@ final class AppModel: ObservableObject {
     private func restorePCConnection(epoch: UUID) async {
         guard let connection = await sync.restore() else { return }
         let base = await storage?.syncBase(peerID: connection.pin, allowLegacy: connection.baselineVersion == nil)
+        let pending = await storage?.pendingSync(peerID: connection.pin)
         guard connectionEpoch == epoch, pcHost == nil else { return }
         pcHost = connection.host; pcIdentity = connection.pin; syncBase = base
-        pendingExchange = await storage?.pendingSync(peerID: connection.pin)
+        pendingExchange = pending
         syncStatus = canSynchronizePC ? "ПК подключён. Подготовь обмен и подтверди изменения" : "Изменения сохранены. Для обмена нужна общая Wi-Fi сеть"
         scheduleSync()
     }

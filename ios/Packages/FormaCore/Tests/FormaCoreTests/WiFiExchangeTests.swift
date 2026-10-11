@@ -18,6 +18,13 @@ final class WiFiExchangeTests: XCTestCase {
         XCTAssertEqual(f.pending.summary.toPhone.likesAdded, 1); XCTAssertNil(f.pending.library)
         XCTAssertThrowsError(try c.mergingApproved(f.pending, into: f.sent))
         XCTAssertNoThrow(try f.pending.validated(expectedID: c.id))
+        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .millisecondsSince1970
+        var wire = try XCTUnwrap(JSONSerialization.jsonObject(with: encoder.encode(f.pending)) as? [String: Any])
+        var summary = try XCTUnwrap(wire["summary"] as? [String: Any]), toPC = try XCTUnwrap(summary["toPC"] as? [String: Any])
+        toPC["likesAdded"] = -1; summary["toPC"] = toPC; wire["summary"] = summary
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .millisecondsSince1970
+        let invalid = try decoder.decode(WiFiProposal.self, from: JSONSerialization.data(withJSONObject: wire))
+        XCTAssertThrowsError(try invalid.validated(expectedID: c.id))
     }
     func testApprovedExchangePreservesPhoneEditsMadeAfterPreview() throws {
         let f = try fixture(), c = try checkpoint(f); var current = f.sent

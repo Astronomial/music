@@ -306,7 +306,7 @@ final class PlaybackController: ObservableObject {
     var debugBufferedTrackIDs: Set<String> { Set(bufferedItems.filter { $0.value.item.status == .readyToPlay && $0.value.audio.isFresh(margin: 45) }.keys) }
     var debugExtraPlayersMuted: Bool { bufferedItems.values.allSatisfy { $0.player.isMuted && $0.player.rate == 0 } }
     var debugHasPlayerItem: Bool { engine.currentItem != nil }
-    var debugPlaybackState: String { "loading=\(isLoading), playing=\(isPlaying), cursor=\(engine.currentTime().seconds), itemCursor=\(engine.currentItem?.currentTime().seconds ?? -1), itemStatus=\(engine.currentItem?.status.rawValue ?? -1)" }
+    var debugPlaybackState: String { "loading=\(isLoading), playing=\(isPlaying), cursor=\(engine.currentTime().seconds), itemCursor=\(engine.currentItem?.currentTime().seconds ?? -1), itemStatus=\(engine.currentItem?.status.rawValue ?? -1), next=\(prepared?.track.id ?? "none"), nextStatus=\(prepared?.item.status.rawValue ?? -1), preparing=\(preparing), warmFailures=\(warmingFailures.keys.sorted())" }
     func debugAdvanceEngine() { engine.advanceToNextItem() }
 #endif
     func previous() { seek(to: 0) }
@@ -441,6 +441,15 @@ final class PlaybackController: ObservableObject {
                 try Task.checkCancellation()
                 guard generation == token, preparationToken == requestToken, engine.currentItem === active else { return }
                 let item = buffered?.item ?? makePlayerItem(audio.url); item.preferredForwardBufferDuration = networkPolicy.lean ? 12 : 8
+                if buffered == nil {
+                    // AVQueuePlayer can defer opening a queued asset until the
+                    // current song nears its end. Warm it now without sound.
+                    let warmer = AVPlayer(playerItem: item); warmer.isMuted = true; warmer.volume = 0; warmer.allowsExternalPlayback = false
+                    _ = await AudioPreroll(warmer).wait(seconds: networkPolicy.lean ? 12 : 8)
+                    warmer.pause(); warmer.replaceCurrentItem(with: nil)
+                    try Task.checkCancellation()
+                    guard generation == token, preparationToken == requestToken, engine.currentItem === active else { return }
+                }
                 guard engine.canInsert(item, after: active) else { preparing = false; return }
                 prepared = (next, item, audio); engine.insert(item, after: active); preparing = false
                 scheduleExtraPreparation()

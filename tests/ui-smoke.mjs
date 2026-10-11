@@ -78,7 +78,8 @@ try{
   await page.mouse.move(box.x+box.width*.37,box.y+box.height/2,{steps:24});
   const liveVolume=await page.locator('audio').evaluate(a=>a.volume);assert.ok(liveVolume>.2&&liveVolume<.5);
   assert.equal((await page.evaluate(()=>JSON.parse(localStorage.getItem('forma-library')))).settings.volume,savedVolume);
-  await page.mouse.up();await page.waitForTimeout(350);
+  await page.mouse.up();
+  await page.waitForFunction(value=>JSON.parse(localStorage.getItem('forma-library')).settings.volume===value,liveVolume,{timeout:5000});
   assert.equal((await page.evaluate(()=>JSON.parse(localStorage.getItem('forma-library')))).settings.volume,liveVolume);
   await page.getByRole('button',{name:'Выключить звук',exact:true}).click();assert.equal(await page.locator('audio').evaluate(a=>a.volume),0);
   await page.getByRole('button',{name:'Включить звук',exact:true}).click();assert.equal(await page.locator('audio').evaluate(a=>a.volume),liveVolume);

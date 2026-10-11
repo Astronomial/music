@@ -5,9 +5,11 @@ public struct SyncChangeSummary: Codable, Sendable {
     public let hiddenAdded: Int, hiddenRemoved: Int, playlistsAdded: Int, playlistsRemoved: Int, playlistsChanged: Int
     public let tracksAdded: Int, settingsChanged: Int, soundProfilesChanged: Int, historyAdded: Int, historyRemoved: Int
     public let details: [String]
-    public var rows: [(String, Int)] {
-        [("Новые лайки", likesAdded), ("Снять лайки", likesRemoved), ("Новые дизлайки", dislikesAdded), ("Снять дизлайки", dislikesRemoved), ("Скрыть треки", hiddenAdded), ("Вернуть скрытые треки", hiddenRemoved), ("Новые плейлисты", playlistsAdded), ("Удалить плейлисты", playlistsRemoved), ("Изменить плейлисты", playlistsChanged), ("Новые треки", tracksAdded), ("Настройки Пульса", settingsChanged), ("Профили звучания", soundProfilesChanged), ("Добавить события истории", historyAdded), ("Удалить события истории", historyRemoved)].filter { $0.1 > 0 }
+    private var allRows: [(String, Int)] {
+        [("Новые лайки", likesAdded), ("Снять лайки", likesRemoved), ("Новые дизлайки", dislikesAdded), ("Снять дизлайки", dislikesRemoved), ("Скрыть треки", hiddenAdded), ("Вернуть скрытые треки", hiddenRemoved), ("Новые плейлисты", playlistsAdded), ("Удалить плейлисты", playlistsRemoved), ("Изменить плейлисты", playlistsChanged), ("Новые треки", tracksAdded), ("Настройки Пульса", settingsChanged), ("Профили звучания", soundProfilesChanged), ("Добавить события истории", historyAdded), ("Удалить события истории", historyRemoved)]
     }
+    public var rows: [(String, Int)] { allRows.filter { $0.1 > 0 } }
+    var isValid: Bool { allRows.allSatisfy { (0...30000).contains($0.1) } && details.count <= 10 && details.allSatisfy { $0.count <= 1000 } }
 }
 public struct WiFiProposal: Codable, Sendable, Identifiable {
     public enum Status: String, Codable, Sendable { case pending, committing, approved, rejected, stale }
@@ -20,7 +22,7 @@ public struct WiFiProposal: Codable, Sendable, Identifiable {
     public let library: Library?
     public func validated(expectedID: String) throws -> WiFiProposal {
         guard protocolVersion == 2, id == expectedID, UUID(uuidString: id) != nil,
-              [summary.toPC, summary.toPhone].allSatisfy({ s in s.rows.allSatisfy { $0.1 <= 30000 } && s.details.count <= 10 && s.details.allSatisfy { $0.count <= 1000 } }),
+              [summary.toPC, summary.toPhone].allSatisfy({ $0.isValid }),
               status != .approved || library != nil,
               library.map({ $0.version == 1 && $0.tracks.count <= 6000 && $0.tracks.allSatisfy { VideoID.isValid($0.key) && $0.key == $0.value.id } }) ?? true else { throw WiFiExchangeError.invalidProposal }
         return self
