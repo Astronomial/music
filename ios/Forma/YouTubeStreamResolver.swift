@@ -20,6 +20,7 @@ actor YouTubeStreamResolver: StreamResolving {
         for id in optionalIDs where id != videoID { await requests.cancel(videoID: id) }
         return try await requests.resolve(videoID: videoID, forceRefresh: forceRefresh)
     }
+    func analysisAudio(videoID: String) async throws -> ResolvedAudio { try await requests.resolve(videoID: videoID) }
     nonisolated private static func extract(_ videoID: String) async throws -> ResolvedAudio {
         guard VideoID.isValid(videoID) else { throw ResolverError.invalidID }
         let video = YouTube(videoID: videoID, useOAuth: false, allowOAuthCache: false, methods: [.local])

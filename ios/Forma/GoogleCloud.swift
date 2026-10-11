@@ -48,7 +48,9 @@ actor GoogleCloudClient {
     }
     func restore() async throws -> String? {
         if !restored {
+            let generation = epoch
             let raw = try await Task.detached(priority: .utility) { try Self.keychain() }.value
+            guard generation == epoch else { return credentials?.email }
             credentials = try raw.map { try JSONDecoder().decode(GoogleCredentials.self, from: $0) }; restored = true
         }
         return credentials?.email
@@ -59,11 +61,7 @@ actor GoogleCloudClient {
         return Data(fields.sorted { $0.key < $1.key }.map { ($0.key.addingPercentEncoding(withAllowedCharacters: allowed) ?? "") + "=" + ($0.value.addingPercentEncoding(withAllowedCharacters: allowed) ?? "") }.joined(separator: "&").utf8)
     }
     private func json(_ request: URLRequest) async throws -> Data {
-        let (bytes, response) = try await session.bytes(for: request)
-        guard let http = response as? HTTPURLResponse else { throw GoogleError.message("Некорректный ответ Google") }
-        guard (200..<300).contains(http.statusCode) else { throw GoogleError.message("Google: \(http.statusCode). При отозванном доступе войди заново.") }
-        guard response.expectedContentLength <= 12 * 1024 * 1024 else { throw GoogleError.message("Слишком большой ответ Google") }
-        var data = Data(); for try await byte in bytes { if data.count >= 12 * 1024 * 1024 { throw GoogleError.message("Слишком большой ответ Google") }; data.append(byte); if data.count % 16384 == 0 { try Task.checkCancellation() } }; return data
+        try await BoundedHTTPData(limit: 12 * 1024 * 1024).load(request)
     }
     private func token(_ fields: [String: String]) async throws -> GoogleToken {
         var req = URLRequest(url: URL(string: "https://oauth2.googleapis.com/token")!); req.httpMethod = "POST"; req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type"); req.httpBody = Self.form(fields)
@@ -90,7 +88,7 @@ actor GoogleCloudClient {
             catch { refreshing = nil; throw error }
         }
         guard epoch == generation else { throw CancellationError() }
-        var req = URLRequest(url: url); req.httpMethod = method; req.httpBody = body; req.setValue("Bearer " + c.accessToken, forHTTPHeaderField: "Authorization"); if let contentType { req.setValue(contentType, forHTTPHeaderField: "Content-Type") }; return try await json(req)
+        var req = URLRequest(url: url); req.networkServiceType = .background; req.httpMethod = method; req.httpBody = body; req.setValue("Bearer " + c.accessToken, forHTTPHeaderField: "Authorization"); if let contentType { req.setValue(contentType, forHTTPHeaderField: "Content-Type") }; return try await json(req)
     }
     private func url(_ path: String, query: [String: String] = [:], upload: Bool = false) -> URL {
         var u = URLComponents(string: "https://www.googleapis.com/" + (upload ? "upload/" : "") + "drive/v3/" + path)!
@@ -131,6 +129,7 @@ actor GoogleCloudClient {
             document = try document.merging(JSONDecoder().decode(CloudDocument.self, from: data)); try Task.checkCancellation()
         }
         guard epoch == generation else { throw CancellationError() }
+        document = try document.publishing()
         return GoogleExchange(library: try document.library(), document: document, files: files, sub: c.sub, epoch: generation)
     }
     // Called only after AppModel has durably saved the received library.

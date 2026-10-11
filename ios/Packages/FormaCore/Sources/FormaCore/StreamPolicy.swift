@@ -30,11 +30,13 @@ public struct ResolvedAudio: Sendable {
 }
 public protocol StreamResolving: Sendable {
     func resolve(videoID: String, forceRefresh: Bool) async throws -> ResolvedAudio
+    func analysisAudio(videoID: String) async throws -> ResolvedAudio
     func invalidate() async
     func prewarm(videoIDs: [String]) async
     func cancel(videoID: String) async
 }
 public extension StreamResolving {
+    func analysisAudio(videoID: String) async throws -> ResolvedAudio { try await resolve(videoID: videoID, forceRefresh: false) }
     func prewarm(videoIDs: [String]) async {}
     func cancel(videoID: String) async {}
 }

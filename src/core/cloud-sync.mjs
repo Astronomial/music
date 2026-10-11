@@ -57,3 +57,10 @@ export function materializeCloud(doc){
   playlists.sort((a,b)=>a.order-b.order||a.id.localeCompare(b.id));events.sort((a,b)=>a.at-b.at);
   return sanitizePortable({version:1,tracks,likedIDs,dislikedIDs,hiddenIDs,playlists,events:events.slice(-3000),settings});
 }
+// Promote first-login imports only after merging the account's existing files.
+// A later new device's low-clock defaults can then never replace published data.
+export function publishCloudDocument(doc,now=Date.now()){
+  const next=validateCloudDocument(doc,now);
+  for(const entry of Object.values(next.records))if(entry.stamp.actor===next.actor&&entry.stamp.time===1){const time=Math.max(now,next.clock);next.counter=time===next.clock?next.counter+1:0;next.clock=time;entry.stamp={time,counter:next.counter,actor:next.actor};}
+  return validateCloudDocument(next,now);
+}

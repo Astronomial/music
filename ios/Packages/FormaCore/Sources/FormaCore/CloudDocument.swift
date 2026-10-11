@@ -81,6 +81,16 @@ public struct CloudDocument: Codable, Sendable {
         }
         return try a.validated(now: now)
     }
+    public func publishing(now: Date = Date()) throws -> CloudDocument {
+        var next = try validated(now: now)
+        for key in next.records.keys.sorted() {
+            guard let entry = next.records[key], entry.stamp.actor == actor, entry.stamp.time == 1 else { continue }
+            let time = max(Int64(now.timeIntervalSince1970 * 1000), next.clock)
+            next.counter = time == next.clock ? next.counter + 1 : 0; next.clock = time
+            next.records[key]?.stamp = CloudStamp(time: time, counter: next.counter, actor: actor)
+        }
+        return try next.validated(now: now)
+    }
     public func library() throws -> Library {
         let fields = try validated().records; var result = Library(), settings = try CloudValue.encoded(result.settings).object
         var playlists: [(Double, Playlist)] = []

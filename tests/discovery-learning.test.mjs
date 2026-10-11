@@ -84,9 +84,9 @@ test('Russian preference keeps strong nearby international matches above weak Ru
   s.tracks={seed,good,weak};s.likes=['seed'];assert.equal(rankTracks([weak,good],s,{now,limit:1})[0].track.id,'good');
   s.settings.blockedArtists=[good.artist,weak.artist];assert.equal(rankTracks([weak,good],s,{now,limit:1}).length,0);
 });
-test('phone sync preserves PC-only learning context, explicit feedback and preferences without exporting them to iOS',()=>{
-  const s=initialState(),t=song('yt_abcdefghijk',{source:'youtube',videoId:'abcdefghijk',directRelatedTo:['seed'],discoveryLanguages:['ru']});s.tracks={[t.id]:t};s.likes=[t.id];
+test('phone sync shares learning context, explicit feedback and preferences with iOS',()=>{
+  const s=initialState(),t=song('yt_abcdefghijk',{source:'youtube',videoId:'abcdefghijk',directRelatedTo:['yt_lmnopqrstuv'],discoveryLanguages:['ru']});s.tracks={[t.id]:t};s.likes=[t.id];
   s.events=[{trackId:t.id,type:'play',seconds:0,ratio:0,at:now,recommendation:context(),surface:'pulse'},{trackId:t.id,type:'like',at:now+1,recommendation:context()}];
-  const portable=portableLibrary(s);assert.equal(portable.events[0].recommendation,undefined);assert.equal(portable.settings.languagePreference,undefined);
-  const merged=applyPortable(s,portable);assert.deepEqual(merged.events[0].recommendation,s.events[0].recommendation);assert.equal(merged.events[1].type,'like');assert.equal(merged.settings.languagePreference,'ru');assert.equal(merged.settings.recommendationVersion,2);assert.deepEqual(merged.tracks[t.id].directRelatedTo,['seed']);
+  const portable=portableLibrary(s);assert.deepEqual(portable.events[0].recommendation,s.events[0].recommendation);assert.equal(portable.settings.languagePreference,'ru');
+  const merged=applyPortable(s,portable);assert.deepEqual(merged.events[0].recommendation,s.events[0].recommendation);assert.equal(merged.events[1].type,'like');assert.equal(merged.settings.languagePreference,'ru');assert.equal(merged.settings.recommendationVersion,2);assert.deepEqual(merged.tracks[t.id].directRelatedTo,['yt_lmnopqrstuv']);
 });

@@ -5,6 +5,8 @@ struct SettingsView: View {
     @ObservedObject var model: AppModel
     @AppStorage("forma.palette") private var palette = "iris"
     @AppStorage("forma.showArtwork") private var showArtwork = true
+    @AppStorage("forma.soundAnalysis") private var soundAnalysis = true
+    @AppStorage("forma.soundCellular") private var soundCellular = true
     @State private var code = ""
     var body: some View {
         ScrollView {
@@ -21,6 +23,13 @@ struct SettingsView: View {
                 GlassPanel {
                     Toggle("Показывать обложки", isOn: $showArtwork)
                         .onChange(of: showArtwork) { _, _ in model.player.refreshArtworkPreference() }
+                }
+                GlassPanel {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Toggle("Анализировать звучание", isOn: $soundAnalysis).onChange(of: soundAnalysis) { _, _ in model.soundPolicyChanged() }
+                        Toggle("Анализ по мобильной сети", isOn: $soundCellular).disabled(!soundAnalysis).onChange(of: soundCellular) { _, _ in model.soundPolicyChanged() }
+                        Text("Пульс сравнивает спектр, темп, динамику и ритм. До 6 МБ на трек, 12 треков в час; временное аудио удаляется после обработки. Проанализировано: \(model.library.tracks.values.filter { $0.soundProfile != nil }.count)").font(.footnote).foregroundStyle(.secondary)
+                    }
                 }
                 GlassPanel { DisclosureGroup("Скорость воспроизведения") { PlaybackPerformanceView(player: model.player) } }
                 NavigationLink { PulseSettingsView(model: model) } label: { Label("Настроить Пульс", systemImage: "slider.horizontal.3").font(.headline) }

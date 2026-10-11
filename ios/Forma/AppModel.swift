@@ -27,6 +27,8 @@ final class AppModel: ObservableObject {
     private let audioResolver: any StreamResolving
     private let catalog: any MusicCatalogProviding
     private let sync = SyncClient()
+    private let soundAnalyzer = SoundAnalyzer()
+    private var soundTask: Task<Void, Never>?
     private var storage: LibraryStorage?
     private var storageURL: URL?
     private var didLoadLibrary = false
@@ -75,13 +77,14 @@ final class AppModel: ObservableObject {
         }
         player.onSelected = { [weak self] track in
             guard let self else { return }
+            self.soundTask?.cancel()
             self.library.merge([track])
             self.activeContext = self.selectedContexts.removeValue(forKey: track.id) ?? self.context(for: track)
         }
         player.onStarted = { [weak self] track in
             guard let self else { return }
             self.library.record(ListeningEvent(trackID: track.id, kind: .play, seconds: 0, ratio: 0, newArtist: PulseDiversity.newArtist(track, library: self.library), recommendation: self.activeContext, surface: self.player.selectionSurface))
-            self.persist(); self.updateRecommendations()
+            self.persist(); self.updateRecommendations(); self.scheduleSoundAnalysis(track)
         }
         player.onFeedback = { [weak self] event in
             guard let self else { return }
@@ -107,7 +110,7 @@ final class AppModel: ObservableObject {
     deinit {
         localWiFiMonitor.cancel(); recommendationTask?.cancel(); rankingWork?.cancel()
         settingsTask?.cancel(); persistTask?.cancel(); syncTask?.cancel()
-        pulseWork?.cancel(); linkTask?.cancel()
+        pulseWork?.cancel(); linkTask?.cancel(); soundTask?.cancel()
     }
     private func restoreLibrary() async {
         guard !didLoadLibrary, let storageURL else { isRestoringLibrary = false; return }
@@ -226,7 +229,7 @@ final class AppModel: ObservableObject {
         var result = library; if pulsePlaylistID != nil { result.settings.discovery = 0.75 }; return result
     }
     func play(_ track: Track, list: [Track], context: String? = nil) {
-        pulseGeneration = UUID(); pulseWork?.cancel(); linkTask?.cancel()
+        pulseGeneration = UUID(); pulseWork?.cancel(); linkTask?.cancel(); soundTask?.cancel()
         let exposure = self.context(for: track)
         selectedContexts.removeAll()
         if let exposure { selectedContexts[track.id] = exposure }
@@ -236,7 +239,7 @@ final class AppModel: ObservableObject {
     }
     func startPulse(mood: String? = nil, playlistID: String? = nil) {
         guard !isRestoringLibrary else { return }
-        pulseWork?.cancel(); linkTask?.cancel()
+        pulseWork?.cancel(); linkTask?.cancel(); soundTask?.cancel()
         let changedProfile = pulsePlaylistID != playlistID
         pulsePlaylistID = playlistID
         if changedProfile { updateRecommendations() }
@@ -350,7 +353,7 @@ final class AppModel: ObservableObject {
         catch { if searchGeneration == token, !Task.isCancelled { message = error.localizedDescription; searchResults = [] } }
     }
     func openYouTube(_ value: String) async {
-        let token = UUID(); pulseGeneration = token; pulseWork?.cancel(); linkTask?.cancel()
+        let token = UUID(); pulseGeneration = token; pulseWork?.cancel(); linkTask?.cancel(); soundTask?.cancel()
         guard let id = VideoID.parse(value) else { message = "Вставь ссылку на трек или видео YouTube."; return }
         if let existing = library.tracks[id] { play(existing, list: [existing]); return }
         let work = Task { await catalog.describe(videoID: id) }; linkTask = work
@@ -390,6 +393,24 @@ final class AppModel: ObservableObject {
             recommendations = result.0; pulseCache = result.1; pulseCachePlaylistID = playlistID; moodCache = result.2; playbackIndex = result.3
             player.refreshPreparedSelection()
             if player.current == nil, player.networkPolicy.canPrewarmExtraTracks { await audioResolver.prewarm(videoIDs: Array(pulseCache.prefix(3).map(\.id))) }
+        }
+    }
+    func soundPolicyChanged() { soundTask?.cancel(); if let track = player.current { scheduleSoundAnalysis(track) } }
+    private func scheduleSoundAnalysis(_ current: Track) {
+        soundTask?.cancel()
+        guard UserDefaults.standard.object(forKey: "forma.soundAnalysis") as? Bool != false else { return }
+        let cellular = UserDefaults.standard.object(forKey: "forma.soundCellular") as? Bool != false
+        guard cellular || !player.networkPolicy.lean else { return }
+        let pool = [current] + PulseEngine.anchors(in: library, limit: 2) + pulseCache.prefix(2).map(\.track)
+        var seen = Set<String>(); let tracks = pool.filter { library.tracks[$0.id]?.soundProfile == nil && seen.insert($0.id).inserted }
+        soundTask = Task(priority: .utility) {
+            for track in tracks.prefix(3) {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                guard !Task.isCancelled, !player.isLoading else { return }
+                if let profile = await soundAnalyzer.analyze(track, resolver: audioResolver), !Task.isCancelled, library.tracks[track.id] != nil {
+                    library.tracks[track.id]?.soundProfile = profile; persist(); updateRecommendations()
+                }
+            }
         }
     }
     func persist(immediately: Bool = false, background: Bool = false) {
@@ -457,9 +478,9 @@ final class AppModel: ObservableObject {
             guard epoch == syncEpoch else { return }
             let merged = LibrarySync.merge(current: exchange.library, base: sent, incoming: library)
             persistTask?.cancel(); saveRevision += 1
+            library = merged; updateRecommendations()
             guard let storage else { return }; try await storage.save(merged, revision: saveRevision)
             guard epoch == syncEpoch else { return }
-            library = merged; updateRecommendations()
             try await google.client.commit(exchange)
             guard epoch == syncEpoch else { return }
             syncBackoff.reset(); syncStatus = "Google · синхронизировано \(Date().formatted(date: .omitted, time: .shortened))"

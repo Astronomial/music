@@ -1,0 +1,400 @@
+{
+  "warm": {
+    "version": 1,
+    "seconds": 12,
+    "bands": [
+      0.059299335368553543,
+      0.9883048620064914,
+      0.13928246720692072,
+      0.017382073257134974,
+      0.005508383413682911,
+      0.002019504127812807,
+      0.0007882371111288508,
+      0.0005517379057438177
+    ],
+    "tempo": 60.483870967741936,
+    "tempoConfidence": 0.8690530782871593,
+    "dynamicRange": 0.8361544419700099,
+    "brightness": 0.0000353464172143853,
+    "onsetRate": 0.6527777777777778
+  },
+  "bright": {
+    "version": 1,
+    "seconds": 12,
+    "bands": [
+      0.0025916715571715674,
+      0.003674293757758921,
+      0.005250002891018247,
+      0.007750969699426181,
+      0.013381586557471164,
+      0.9994195471546521,
+      0.027463946958882133,
+      0.010925944632805815
+    ],
+    "tempo": 60.483870967741936,
+    "tempoConfidence": 0.8687192871464197,
+    "dynamicRange": 0.836006922467334,
+    "brightness": 0.9998921427422844,
+    "onsetRate": 0.6527777777777778
+  },
+  "document": {
+    "schema": 2,
+    "actor": "desktop-fixture",
+    "clock": 1730000000000,
+    "counter": 23,
+    "records": {
+      "track:abcdefghijk": {
+        "stamp": {
+          "time": 1730000000000,
+          "counter": 0,
+          "actor": "desktop-fixture"
+        },
+        "value": {
+          "videoID": "abcdefghijk",
+          "title": "Музыка",
+          "artist": "Автор",
+          "duration": 0,
+          "genres": [],
+          "moodHints": [],
+          "relatedTo": [],
+          "directRelatedTo": [],
+          "discoveryLanguages": [],
+          "genre": "",
+          "mood": "",
+          "tags": [],
+          "language": "",
+          "soundProfile": {
+            "version": 1,
+            "seconds": 12,
+            "bands": [
+              0.059299335368553543,
+              0.9883048620064914,
+              0.13928246720692072,
+              0.017382073257134974,
+              0.005508383413682911,
+              0.002019504127812807,
+              0.0007882371111288508,
+              0.0005517379057438177
+            ],
+            "tempo": 60.483870967741936,
+            "tempoConfidence": 0.8690530782871593,
+            "dynamicRange": 0.8361544419700099,
+            "brightness": 0.0000353464172143853,
+            "onsetRate": 0.6527777777777778
+          }
+        }
+      },
+      "preference:abcdefghijk": {
+        "stamp": {
+          "time": 1730000000000,
+          "counter": 1,
+          "actor": "desktop-fixture"
+        },
+        "value": "disliked"
+      },
+      "playlist:mix": {
+        "stamp": {
+          "time": 1730000000000,
+          "counter": 2,
+          "actor": "desktop-fixture"
+        },
+        "value": {
+          "id": "mix",
+          "name": "Музыка",
+          "order": 0
+        }
+      },
+      "member:mix:abcdefghijk": {
+        "stamp": {
+          "time": 1730000000000,
+          "counter": 3,
+          "actor": "desktop-fixture"
+        },
+        "value": 0
+      },
+      "setting:genres": {
+        "stamp": {
+          "time": 1730000000000,
+          "counter": 4,
+          "actor": "desktop-fixture"
+        },
+        "value": []
+      },
+      "setting:excludedArtists": {
+        "stamp": {
+          "time": 1730000000000,
+          "counter": 5,
+          "actor": "desktop-fixture"
+        },
+        "value": []
+      },
+      "setting:excludedGenres": {
+        "stamp": {
+          "time": 1730000000000,
+          "counter": 6,
+          "actor": "desktop-fixture"
+        },
+        "value": []
+      },
+      "setting:preferredArtists": {
+        "stamp": {
+          "time": 1730000000000,
+          "counter": 7,
+          "actor": "desktop-fixture"
+        },
+        "value": []
+      },
+      "setting:seedPlaylistIDs": {
+        "stamp": {
+          "time": 1730000000000,
+          "counter": 8,
+          "actor": "desktop-fixture"
+        },
+        "value": []
+      },
+      "setting:discovery": {
+        "stamp": {
+          "time": 1730000000000,
+          "counter": 9,
+          "actor": "desktop-fixture"
+        },
+        "value": 0.7
+      },
+      "setting:repeatHours": {
+        "stamp": {
+          "time": 1730000000000,
+          "counter": 10,
+          "actor": "desktop-fixture"
+        },
+        "value": 2
+      },
+      "setting:artistDiversity": {
+        "stamp": {
+          "time": 1730000000000,
+          "counter": 11,
+          "actor": "desktop-fixture"
+        },
+        "value": 0.6
+      },
+      "setting:mood": {
+        "stamp": {
+          "time": 1730000000000,
+          "counter": 12,
+          "actor": "desktop-fixture"
+        },
+        "value": "any"
+      },
+      "setting:genreMode": {
+        "stamp": {
+          "time": 1730000000000,
+          "counter": 13,
+          "actor": "desktop-fixture"
+        },
+        "value": "prefer"
+      },
+      "setting:energy": {
+        "stamp": {
+          "time": 1730000000000,
+          "counter": 14,
+          "actor": "desktop-fixture"
+        },
+        "value": "any"
+      },
+      "setting:vocals": {
+        "stamp": {
+          "time": 1730000000000,
+          "counter": 15,
+          "actor": "desktop-fixture"
+        },
+        "value": "any"
+      },
+      "setting:includeLibrary": {
+        "stamp": {
+          "time": 1730000000000,
+          "counter": 16,
+          "actor": "desktop-fixture"
+        },
+        "value": true
+      },
+      "setting:playlistSource": {
+        "stamp": {
+          "time": 1730000000000,
+          "counter": 17,
+          "actor": "desktop-fixture"
+        },
+        "value": "all"
+      },
+      "setting:explorationStyle": {
+        "stamp": {
+          "time": 1730000000000,
+          "counter": 18,
+          "actor": "desktop-fixture"
+        },
+        "value": "nearby"
+      },
+      "setting:languagePreference": {
+        "stamp": {
+          "time": 1730000000000,
+          "counter": 19,
+          "actor": "desktop-fixture"
+        },
+        "value": "ru"
+      },
+      "setting:skipSensitivity": {
+        "stamp": {
+          "time": 1730000000000,
+          "counter": 20,
+          "actor": "desktop-fixture"
+        },
+        "value": "strict"
+      },
+      "setting:sessionInfluence": {
+        "stamp": {
+          "time": 1730000000000,
+          "counter": 21,
+          "actor": "desktop-fixture"
+        },
+        "value": 0.65
+      },
+      "setting:recommendationVersion": {
+        "stamp": {
+          "time": 1730000000000,
+          "counter": 22,
+          "actor": "desktop-fixture"
+        },
+        "value": 2
+      },
+      "event:abcdefghijk:dislike:1730000000000:0:0": {
+        "stamp": {
+          "time": 1730000000000,
+          "counter": 23,
+          "actor": "desktop-fixture"
+        },
+        "value": {
+          "trackID": "abcdefghijk",
+          "kind": "dislike",
+          "at": 1730000000000,
+          "seconds": 0,
+          "ratio": 0,
+          "recommendation": {
+            "version": 1,
+            "features": [
+              1,
+              0.5,
+              0.6,
+              0.2,
+              0,
+              1,
+              0,
+              0.8,
+              0,
+              1
+            ],
+            "lane": "nearby"
+          },
+          "surface": "pulse"
+        }
+      }
+    }
+  },
+  "library": {
+    "version": 1,
+    "tracks": {
+      "abcdefghijk": {
+        "videoID": "abcdefghijk",
+        "title": "Музыка",
+        "artist": "Автор",
+        "duration": 0,
+        "genres": [],
+        "moodHints": [],
+        "relatedTo": [],
+        "directRelatedTo": [],
+        "discoveryLanguages": [],
+        "genre": "",
+        "mood": "",
+        "tags": [],
+        "language": "",
+        "soundProfile": {
+          "version": 1,
+          "seconds": 12,
+          "bands": [
+            0.059299335368553543,
+            0.9883048620064914,
+            0.13928246720692072,
+            0.017382073257134974,
+            0.005508383413682911,
+            0.002019504127812807,
+            0.0007882371111288508,
+            0.0005517379057438177
+          ],
+          "tempo": 60.483870967741936,
+          "tempoConfidence": 0.8690530782871593,
+          "dynamicRange": 0.8361544419700099,
+          "brightness": 0.0000353464172143853,
+          "onsetRate": 0.6527777777777778
+        }
+      }
+    },
+    "likedIDs": [],
+    "hiddenIDs": [],
+    "dislikedIDs": [
+      "abcdefghijk"
+    ],
+    "playlists": [
+      {
+        "id": "mix",
+        "name": "Музыка",
+        "trackIDs": [
+          "abcdefghijk"
+        ]
+      }
+    ],
+    "events": [
+      {
+        "trackID": "abcdefghijk",
+        "kind": "dislike",
+        "at": 1730000000000,
+        "seconds": 0,
+        "ratio": 0,
+        "recommendation": {
+          "version": 1,
+          "features": [
+            1,
+            0.5,
+            0.6,
+            0.2,
+            0,
+            1,
+            0,
+            0.8,
+            0,
+            1
+          ],
+          "lane": "nearby"
+        },
+        "surface": "pulse"
+      }
+    ],
+    "settings": {
+      "genres": [],
+      "excludedArtists": [],
+      "excludedGenres": [],
+      "preferredArtists": [],
+      "seedPlaylistIDs": [],
+      "discovery": 0.7,
+      "repeatHours": 2,
+      "artistDiversity": 0.6,
+      "mood": "any",
+      "genreMode": "prefer",
+      "energy": "any",
+      "vocals": "any",
+      "includeLibrary": true,
+      "playlistSource": "all",
+      "explorationStyle": "nearby",
+      "languagePreference": "ru",
+      "skipSensitivity": "strict",
+      "sessionInfluence": 0.65,
+      "recommendationVersion": 2
+    }
+  }
+}

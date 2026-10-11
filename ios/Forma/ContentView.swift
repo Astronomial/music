@@ -116,6 +116,7 @@ struct TrackRow: View {
             Button { model.toggleLike(track) } label: { Image(systemName: model.isLiked(track) ? "heart.fill" : "heart").foregroundStyle(model.isLiked(track) ? FormaTheme.accent : .secondary) }
                 .buttonStyle(ResponsiveButtonStyle()).accessibilityLabel(model.isLiked(track) ? "Убрать из любимого" : "Добавить в любимое")
             Menu {
+                Button(model.isDisliked(track) ? "Снять дизлайк" : "Не нравится — снизить приоритет") { model.toggleDislike(track) }
                 if model.library.playlists.isEmpty { Text("Создай плейлист в библиотеке") }
                 ForEach(model.library.playlists) { playlist in Button(playlist.name) { model.add(track, to: playlist.id) } }
             } label: { Image(systemName: "ellipsis").frame(width: 30, height: 40) }.accessibilityLabel("Добавить в плейлист")

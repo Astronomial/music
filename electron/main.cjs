@@ -65,6 +65,9 @@ app.whenReady().then(async () => {
     }});
   });
   handle('youtube:request',(route,params)=>catalog.request(route,params));
+  const soundAudio=new (require('./sound-audio.cjs').SoundAudio)(net.fetch);
+  handle('sound:audio',id=>soundAudio.load(id));
+  handle('sound:cancel',()=>soundAudio.cancel());
   let localBusy=false;
   handle('local:import',async kind=>{
     if(localBusy)throw new Error('Дождись завершения импорта файлов.');localBusy=true;

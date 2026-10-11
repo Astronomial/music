@@ -111,6 +111,14 @@ enum NativeSmoke {
         write(["status": "running", "stage": "pairing"])
         var stage = "pairing"
         do {
+            let analysisURL = dir.appendingPathComponent("analysis-fixture.wav")
+            let format = AVAudioFormat(standardFormatWithSampleRate: 22050, channels: 1)!
+            let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 22050 * 12)!
+            buffer.frameLength = buffer.frameCapacity
+            for i in 0..<Int(buffer.frameLength) { let time = Double(i) / 22050; buffer.floatChannelData![0][i] = Float(sin(2 * Double.pi * 220 * time) * 0.3 * (0.1 + exp(-time.truncatingRemainder(dividingBy: 0.5) * 15))) }
+            do { let file = try AVAudioFile(forWriting: analysisURL, settings: format.settings); try file.write(from: buffer) }
+            guard let profile = try await SoundAnalyzer.decode(analysisURL), profile.isValid, profile.tempoConfidence > 0.3, profile.brightness < 0.1 else { throw SyncError.rejected("Native PCM decoder did not produce valid real-audio features") }
+            try? FileManager.default.removeItem(at: analysisURL)
             let args = ProcessInfo.processInfo.arguments
             guard let index = args.firstIndex(of: "--forma-pair-code"), args.count > index + 1 else { throw SyncError.invalidCode }
             let sync = SyncClient()
@@ -265,7 +273,7 @@ enum NativeSmoke {
             }
             guard UIApplication.shared.applicationState == .background else { throw SyncError.rejected("Simulator did not move app to background") }
             var starts: [String] = [], feedback: [ListeningEvent] = []
-            player.onStarted = { starts.append($0.id); write(["status": "running", "stage": "playing", "nativeStarts": starts.count]) }; player.onFeedback = { feedback.append($0) }
+            player.onStarted = { starts.append($0.id); write(["status": "running", "stage": "playing", "realPCMAnalysis": true, "nativeStarts": starts.count]) }; player.onFeedback = { feedback.append($0) }
             player.pulseNext = { exclude, _ in tracks.first { !exclude.contains($0.id) } }
             player.startPulse(tracks[0])
             for _ in 0..<100 {
@@ -286,7 +294,7 @@ enum NativeSmoke {
             guard !player.isPlaying else { throw SyncError.rejected("Explicit pause failed") }
             player.resume(); try await Task.sleep(nanoseconds: 500_000_000)
             guard player.isPlaying else { throw SyncError.rejected("Resume failed") }
-            var final: [String: Any] = ["status": "passed", "nativeStarts": starts.count, "automaticTransitions": feedback.count, "background": background, "pinnedTLS": true, "wrongPinRejected": rejectedWrongPin, "bidirectionalSync": true, "pauseResume": true, "miniPlayerAboveTabs": true, "miniPlayerBottom": miniFrame.maxY, "tabBarTop": barFrame.minY, "preparedManualSwitchMilliseconds": switchDelay * 1000, "preparedStreamReused": true, "controlledColdStartMilliseconds": coldStartMilliseconds, "preparedPlayingMilliseconds": preparedPlayingMilliseconds, "startupTimeoutRecovered": true, "recommendationSnapshotCaptured": true, "explicitLearningFeedbackCaptured": true, "networkHandoffRecovered": true, "oldNetworkPreparedItemDiscarded": true, "networkRecoveryRespectsPause": true]
+            var final: [String: Any] = ["status": "passed", "realPCMAnalysis": true, "nativeStarts": starts.count, "automaticTransitions": feedback.count, "background": background, "pinnedTLS": true, "wrongPinRejected": rejectedWrongPin, "bidirectionalSync": true, "pauseResume": true, "miniPlayerAboveTabs": true, "miniPlayerBottom": miniFrame.maxY, "tabBarTop": barFrame.minY, "preparedManualSwitchMilliseconds": switchDelay * 1000, "preparedStreamReused": true, "controlledColdStartMilliseconds": coldStartMilliseconds, "preparedPlayingMilliseconds": preparedPlayingMilliseconds, "startupTimeoutRecovered": true, "recommendationSnapshotCaptured": true, "explicitLearningFeedbackCaptured": true, "networkHandoffRecovered": true, "oldNetworkPreparedItemDiscarded": true, "networkRecoveryRespectsPause": true]
             stability.forEach { final[$0.key] = $0.value }; write(final)
             player.pause()
         } catch { let failure = error as NSError; write(["status": "failed", "stage": stage, "error": error.localizedDescription, "domain": failure.domain, "code": failure.code, "taskCancelled": Task.isCancelled]) }
