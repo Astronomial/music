@@ -1,9 +1,10 @@
 const LIMIT=6*1024*1024;
 class SoundAudio {
-  constructor(fetch){this.fetch=fetch;this.client=null;this.active=null;}
+  constructor(fetch,createClient){this.fetch=fetch;this.createClient=createClient;this.client=null;this.active=null;}
   cancel(){this.active?.abort();}
   async load(videoID){if(!/^[A-Za-z0-9_-]{11}$/.test(videoID))throw new Error('Некорректный трек');this.cancel();const controller=new AbortController();this.active=controller;
-    try{if(!this.client){const {Innertube}=await import('youtubei.js');this.client=await Innertube.create({retrieve_player:false,generate_session_locally:true,fetch:(input,options={})=>{const u=new URL(typeof input==='string'?input:input.url||input.href);if(u.protocol!=='https:'||!(/(^|\.)youtube\.com$/.test(u.hostname)||u.hostname==='youtubei.googleapis.com'))throw new Error('Недопустимый адрес анализа');return this.fetch(input,{...options,signal:AbortSignal.any([this.active?.signal||AbortSignal.timeout(20000),AbortSignal.timeout(20000)]),redirect:'error'});}});}
+    try{if(!this.client&&this.createClient)this.client=await this.createClient();
+      if(!this.client){const {Innertube}=await import('youtubei.js');this.client=await Innertube.create({retrieve_player:false,generate_session_locally:true,fetch:(input,options={})=>{const u=new URL(typeof input==='string'?input:input.url||input.href);if(u.protocol!=='https:'||!(/(^|\.)youtube\.com$/.test(u.hostname)||u.hostname==='youtubei.googleapis.com'))throw new Error('Недопустимый адрес анализа');return this.fetch(input,{...options,signal:AbortSignal.any([this.active?.signal||AbortSignal.timeout(20000),AbortSignal.timeout(20000)]),redirect:'error'});}});}
       let source;
       for(const client of ['IOS','ANDROID_VR']){try{const info=await this.client.getBasicInfo(videoID,{client});const formats=info.streaming_data?.adaptive_formats||[];const f=formats.filter(f=>f.has_audio&&!f.has_video&&f.mime_type?.includes('audio/mp4')&&f.url&&(!f.content_length||Number(f.content_length)<=LIMIT)).sort((a,b)=>a.bitrate-b.bitrate)[0];if(f){source=f.url;break;}}catch(e){if(controller.signal.aborted)throw e;}}
       if(!source)throw new Error('Аудио для анализа пока недоступно');const u=new URL(source);if(u.protocol!=='https:'||u.username||u.password||u.port||!/(^|\.)googlevideo\.com$/.test(u.hostname))throw new Error('Недопустимый поток анализа');

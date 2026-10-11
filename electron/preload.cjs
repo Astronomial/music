@@ -3,6 +3,7 @@ contextBridge.exposeInMainWorld('forma',{
   desktop:true,
   soundAudio:id=>ipcRenderer.invoke('sound:audio',id),
   cancelSound:()=>ipcRenderer.invoke('sound:cancel'),
+  openGoogleGuide:()=>ipcRenderer.invoke('google:guide'),
   googleStatus:()=>ipcRenderer.invoke('google:status'),
   googleLogin:config=>ipcRenderer.invoke('google:login',config),
   googleLogout:()=>ipcRenderer.invoke('google:logout'),

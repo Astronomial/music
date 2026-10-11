@@ -25,6 +25,7 @@ actor GoogleCloudClient {
     private struct Saved: Codable { var document: CloudDocument; var base: Library? }
     private var saved: Saved?
     private var savedSub: String?
+    private var exchanging = false
     init() {
         let config = URLSessionConfiguration.ephemeral
         config.allowsCellularAccess = true; config.waitsForConnectivity = false
@@ -104,6 +105,7 @@ actor GoogleCloudClient {
         try data.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]); saved = state; savedSub = sub
     }
     func exchange(_ library: Library) async throws -> GoogleExchange {
+        guard !exchanging else { throw CancellationError() }; exchanging = true; defer { exchanging = false }
         guard let c = credentials else { throw GoogleError.message("Войди в Google") }; let generation = epoch
         if savedSub != c.sub {
             let file = try stateURL(c.sub), d = JSONDecoder(); d.dateDecodingStrategy = .millisecondsSince1970

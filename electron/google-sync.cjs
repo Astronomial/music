@@ -9,7 +9,7 @@ class GoogleSync {
       if(this.sub!==sub){this.cloud=await this.store.read('google-cloud-'+sub+'.json',null)||{document:emptyCloudDocument(randomUUID()),base:null};this.sub=sub;}
       const sentState=await this.store.read('library.json',null);if(!sentState)return this.status();const sent=portableLibrary(sentState);
       this.cloud={document:captureCloudChanges(this.cloud.document,sent,this.cloud.base),base:sent};await this.store.write('google-cloud-'+sub+'.json',this.cloud);
-      const drive=new GoogleDriveLibrary((u,o)=>this.auth.authorizedFetch(u,o)),files=await drive.files();let document=this.cloud.document;
+      const drive=new GoogleDriveLibrary((u,o)=>{if(epoch!==this.epoch||this.auth.credentials?.sub!==sub)throw new Error('Аккаунт изменён');return this.auth.authorizedFetch(u,o);}),files=await drive.files();let document=this.cloud.document;
       for(const file of files){if(epoch!==this.epoch)throw new Error('Аккаунт изменён');document=mergeCloudDocuments(document,await drive.download(file.id));}
       if(epoch!==this.epoch)throw new Error('Аккаунт изменён');document=publishCloudDocument(document);const remote=materializeCloud(document);
       const updated=await this.coordinator.mutate(current=>applyPortable(current,mergePortable(remote,sent,portableLibrary(current))));

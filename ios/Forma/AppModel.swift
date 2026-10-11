@@ -14,7 +14,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var isSyncing = false
     @Published private(set) var isRestoringLibrary = true
     @Published private(set) var pcHost: String?
-    @Published private(set) var syncStatus = "Подключи ПК, чтобы перенести библиотеку"
+    @Published private(set) var syncStatus = "Войди в Google, чтобы синхронизировать библиотеку"
     @Published var message: String?
     @Published private(set) var localWiFiAvailable = false
     var canSynchronizePC: Bool { player.networkPolicy.canSyncPC(localWiFi: localWiFiAvailable) }

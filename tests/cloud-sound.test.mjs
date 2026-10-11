@@ -45,3 +45,10 @@ test('Drive writes only its own device file and uses private appDataFolder',asyn
   const doc=emptyCloudDocument(actor1);await drive.upload(doc,[]);assert.ok(calls[0].options.body.includes('appDataFolder'));await drive.upload(doc,[{id:'own-file',appProperties:{actor:actor1}},{id:'foreign-file',appProperties:{actor:actor2}}]);assert.ok(calls[1].url.includes('own-file'));assert.equal(calls[1].options.method,'PATCH');
   await assert.rejects(boundedJSON(new Response('1234567890'),4));
 });
+test('background audio acquisition selects AAC, limits size and rejects arbitrary hosts',async()=>{
+  const {SoundAudio}=await import('../electron/sound-audio.cjs');
+  const create=()=>({getBasicInfo:async()=>({streaming_data:{adaptive_formats:[{has_audio:true,has_video:false,mime_type:'audio/mp4',url:'https://r1.googlevideo.com/file',bitrate:96000,content_length:8}]}})});
+  const audio=new SoundAudio(async url=>{assert.ok(String(url).startsWith('https://r1.googlevideo.com/'));return new Response(new Uint8Array([1,2,3]));},create);assert.deepEqual([...await audio.load(id)],[1,2,3]);
+  const huge=new SoundAudio(async()=>new Response('',{headers:{'content-length':String(7*1024*1024)}}),create);await assert.rejects(huge.load(id),/лимит/);
+  const evil=new SoundAudio(async()=>{throw new Error('Must not fetch');},()=>({getBasicInfo:async()=>({streaming_data:{adaptive_formats:[{has_audio:true,mime_type:'audio/mp4',url:'https://evil.invalid/stream',bitrate:1}]}})}));await assert.rejects(evil.load(id),/Недопустимый/);
+});

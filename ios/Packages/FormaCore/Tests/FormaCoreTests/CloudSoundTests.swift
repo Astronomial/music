@@ -37,7 +37,12 @@ final class CloudSoundTests: XCTestCase {
     }
     func testPCAndSwiftPCMDescriptorsAgreeAndSilenceIsNotInvented() throws {
         let f = try fixture()
-        let samples = (0..<(16000 * 12)).map { i in Float(sin(2 * Double.pi * 220 * Double(i) / 16000) * 0.3 * (0.1 + exp(-(Double(i) / 16000).truncatingRemainder(dividingBy: 0.5) * 15))) }
+        let samples: [Float] = (0..<(16000 * 12)).map { i in
+            let time: Double = Double(i) / 16000
+            let carrier: Double = sin(2 * Double.pi * 220 * time)
+            let amplitude: Double = 0.3 * (0.1 + exp(-time.truncatingRemainder(dividingBy: 0.5) * 15))
+            return Float(carrier * amplitude)
+        }
         let profile = try XCTUnwrap(SoundProfile.analyze(samples))
         for (a, b) in zip(profile.bands, f.warm.bands) { XCTAssertEqual(a, b, accuracy: 0.00001) }
         XCTAssertEqual(profile.tempo, f.warm.tempo, accuracy: 0.001); XCTAssertEqual(profile.dynamicRange, f.warm.dynamicRange, accuracy: 0.00001)

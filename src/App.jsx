@@ -49,6 +49,7 @@ export default function App() {
   const [modal,setModal]=useState(null), [playlistName,setPlaylistName]=useState(''), [playlistTarget,setPlaylistTarget]=useState(null), [context,setContext]=useState(null);
   const [current,setCurrent]=useState(null), [playing,setPlaying]=useState(false), [buffering,setBuffering]=useState(false), [position,setPosition]=useState(0), [duration,setDuration]=useState(0);
   const [queue,setQueue]=useState([]), [wave,setWave]=useState(false), [queueOpen,setQueueOpen]=useState(false), [shuffle,setShuffle]=useState(false), [repeat,setRepeat]=useState(false);
+  const readyRef=useRef(false),pendingCloudSync=useRef(null);
   const audio = useRef(null), stateRef=useRef(state), currentRef=useRef(null), session=useRef({clock:new ListeningClock(),recorded:false}), playToken=useRef(0), queueRef=useRef([]), waveRef=useRef(false), contextRef=useRef(null);
   const toastTimer=useRef(null), refreshBusy=useRef(false), refreshPending=useRef(false), refreshSignature=useRef(null), saveChain=useRef(Promise.resolve()), navHistory=useRef(['home']), playbackHistory=useRef([]), repeatRef=useRef(false), refreshCount=useRef(0);
   const notify = message => { setToast(message);clearTimeout(toastTimer.current);toastTimer.current=setTimeout(()=>setToast(''),4500); };
@@ -73,14 +74,15 @@ export default function App() {
       if(saved?.version===1) initial={...initial,...saved,settings:{...initial.settings,...saved.settings,...upgradeWaveSettings(saved.settings)}};
       for(const [id,file] of Object.entries(files)) initial.tracks[id]=file.track;
       if(bridge.desktop){initial=ensureRequestedPlaylist(initial);initial.importRequests=initial.importRequests.map(r=>r.status==='loading'?{...r,status:'pending'}:r);}
-      stateRef.current=initial;setState(initial);setDownloads(files);setReady(true);
+      if(pendingCloudSync.current){const {state:remote,base}=pendingCloudSync.current;initial=mergeDesktop(remote,base||{},initial);pendingCloudSync.current=null;}
+      readyRef.current=true;stateRef.current=initial;setState(initial);setDownloads(files);setReady(true);
       if(!initial.onboarded)setModal('onboarding');
     }).catch(e=>{if(alive){notify('Не удалось прочитать библиотеку: '+e.message);setReady(true);}});
     const on=()=>setOnline(true),off=()=>setOnline(false);window.addEventListener('online',on);window.addEventListener('offline',off);
     const unsub=bridge.onProgress(p=>setProgress(old=>({...old,[p.id]:p})));
     return ()=>{alive=false;unsub();window.removeEventListener('online',on);window.removeEventListener('offline',off);};
   },[]);
-  useEffect(()=>bridge.onSync?.(({state:remote,base})=>{change(local=>mergeDesktop(remote,base||{},local));notify('Библиотека синхронизирована.');}),[]);
+  useEffect(()=>bridge.onSync?.(({state:remote,base})=>{if(!readyRef.current){pendingCloudSync.current={state:remote,base};return;}change(local=>mergeDesktop(remote,base||{},local));notify('Библиотека синхронизирована.');}),[]);
   useEffect(()=>{
     if(!ready)return;
     const timer=setTimeout(()=>{
