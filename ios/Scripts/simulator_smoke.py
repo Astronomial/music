@@ -47,10 +47,16 @@ with tempfile.TemporaryDirectory(prefix='forma-simulator-') as directory:
         launch = subprocess.Popen(['xcrun','simctl','launch','--console',device,'music.forma.ios','--forma-smoke','--forma-pair-code',pairing,'--forma-slow-audio',slow_audio], stdout=stream, stderr=stream)
         print('Launching native app; waiting for foreground audio', flush=True)
         last_stage = None
-        for _ in range(360):
+        launch_deadline = time.monotonic() + 240
+        test_deadline = None
+        while time.monotonic() < (test_deadline or launch_deadline):
             if launch.poll() is not None and launch.returncode != 0: raise RuntimeError('Simulator launch failed')
             if report.exists():
                 result = json.loads(report.read_text())
+                # A cold CI simulator may spend minutes starting the process.
+                # Give native assertions their own budget after the first report;
+                # their audio-start and buffering limits remain unchanged.
+                if test_deadline is None: test_deadline = time.monotonic() + 180
                 if result.get('stage') != last_stage:
                     last_stage = result.get('stage'); print('Native stage: ' + str(last_stage), flush=True)
                 if result['status'] == 'failed':
@@ -59,7 +65,9 @@ with tempfile.TemporaryDirectory(prefix='forma-simulator-') as directory:
                     raise RuntimeError(result.get('error', 'Native startup failed'))
                 if result.get('stage') == 'awaiting-background': break
             time.sleep(.5)
-        else: raise RuntimeError('Native app did not reach background transition handshake')
+        else:
+            if report.exists(): (root/'ios/native-smoke-result.json').write_text(report.read_text())
+            raise RuntimeError('Native app did not reach background transition handshake; last stage: ' + str(last_stage))
         run('xcrun','simctl','io',device,'screenshot',str(root/'ios/native-layout.png'))
         # Moving to Safari is the assertion's only purpose: opening our pinned
         # self-signed HTTPS server additionally invokes unrelated browser/TLS UI.

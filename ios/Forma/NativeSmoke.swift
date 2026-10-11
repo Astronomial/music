@@ -122,6 +122,7 @@ enum NativeSmoke {
         func write(_ value: [String: Any]) { if let bytes = try? JSONSerialization.data(withJSONObject: value, options: .prettyPrinted) { try? bytes.write(to: report, options: .atomic) } }
         write(["status": "running", "stage": "pairing"])
         var stage = "pairing"
+        func advanceStage(_ name: String) { stage = name; write(["status": "running", "stage": name]) }
         do {
             let analysisURL = dir.appendingPathComponent("analysis-fixture.wav")
             let format = AVAudioFormat(standardFormatWithSampleRate: 22050, channels: 1)!
@@ -140,7 +141,7 @@ enum NativeSmoke {
             do { try await sync.pair(invalid.string!) } catch { rejectedWrongPin = true }
             guard rejectedWrongPin else { throw SyncError.rejected("Wrong certificate pin was accepted") }
             try await sync.pair(args[index + 1])
-            stage = "first-sync"
+            advanceStage("first-sync")
             guard let connection = await sync.connection else { throw SyncError.rejected("Connection missing") }
             let firstCheckpoint = WiFiCheckpoint(peerID: connection.pin, sent: Library(), base: nil)
             let firstPreview = try await sync.prepare(firstCheckpoint)
@@ -149,7 +150,7 @@ enum NativeSmoke {
             try await sync.acknowledge(firstCheckpoint.id)
             guard library.tracks.count >= 4, library.likedIDs.count == 1 else { throw SyncError.rejected("Initial PC library failed") }
             let base = library
-            stage = "second-sync"
+            advanceStage("second-sync")
             library.likedIDs = []; library.playlists.append(Playlist(id: "phone-playlist", name: "На iPhone", trackIDs: Array(library.tracks.keys.sorted().prefix(2))))
             library.settings.artistDiversity = 1
             let secondCheckpoint = WiFiCheckpoint(peerID: connection.pin, sent: library, base: base)
@@ -159,16 +160,16 @@ enum NativeSmoke {
             try await sync.acknowledge(secondCheckpoint.id)
             try await sync.acknowledge(secondCheckpoint.id)
             guard merged.likedIDs.isEmpty, merged.playlists.contains(where: { $0.id == "phone-playlist" }), merged.settings.artistDiversity == 1 else { throw SyncError.rejected("Bidirectional PC sync failed") }
-            stage = "native-playback"
+            advanceStage("native-playback")
             let tracks = merged.tracks.values.sorted { $0.id < $1.id }.map { track -> Track in var next = track; next.duration = 5; return next }
             let recoveryAudio = try await fixtureResolver.resolve(videoID: tracks[0].id, forceRefresh: false)
             guard let slowIndex = args.firstIndex(of: "--forma-slow-audio"), args.count > slowIndex + 1,
                   let slowURL = URL(string: args[slowIndex + 1]) else { throw SyncError.rejected("Slow audio fixture missing") }
-            stage = "playback-boundaries"
+            advanceStage("playback-boundaries")
             let stability = try await checkBoundaries(model: model, tracks: tracks, audio: recoveryAudio, slowURL: slowURL)
-            stage = "three-track-preroll"
+            advanceStage("three-track-preroll")
             let bufferedStartMilliseconds = try await checkThreeTrackPreroll(audio: recoveryAudio, slowURL: slowURL)
-            stage = "native-playback"
+            advanceStage("native-playback")
             let recoveryResolver = RecoveringFixtureResolver(audio: recoveryAudio)
             let recoveryPlayer = PlaybackController(resolver: recoveryResolver, extractionTimeout: 0.1, bufferTimeout: 4)
             recoveryPlayer.play(tracks[0], list: [tracks[0]])

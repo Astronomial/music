@@ -54,7 +54,7 @@ jobs:
           cd ..
           shasum -a 256 Forma-iOS-1.3.0-unsigned.ipa > Forma-iOS-SHA256SUMS.txt
       - name: Check native background queue and encrypted PC sync
-        timeout-minutes: 10
+        timeout-minutes: 12
         run: python3 ios/Scripts/simulator_smoke.py
       - uses: actions/upload-artifact@v4
         if: always() && steps.package.conclusion == 'success'
