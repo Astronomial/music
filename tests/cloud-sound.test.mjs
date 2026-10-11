@@ -52,3 +52,10 @@ test('background audio acquisition selects AAC, limits size and rejects arbitrar
   const huge=new SoundAudio(async()=>new Response('',{headers:{'content-length':String(7*1024*1024)}}),create);await assert.rejects(huge.load(id),/лимит/);
   const evil=new SoundAudio(async()=>{throw new Error('Must not fetch');},()=>({getBasicInfo:async()=>({streaming_data:{adaptive_formats:[{has_audio:true,mime_type:'audio/mp4',url:'https://evil.invalid/stream',bitrate:1}]}})}));await assert.rejects(evil.load(id),/Недопустимый/);
 });
+
+test('concurrent member positions use ASCII ordering shared with Swift, independent of host locale',()=>{
+  const doc=emptyCloudDocument(actor1),stamp={time:1,counter:0,actor:actor1};
+  doc.records['playlist:mix']={stamp,value:{id:'mix',name:'Тест',order:0}};
+  doc.records['member:mix:abcdefghijk']={stamp,value:0};doc.records['member:mix:A0123456789']={stamp,value:0};
+  assert.deepEqual(materializeCloud(doc).playlists[0].trackIDs,['A0123456789','abcdefghijk']);
+});

@@ -1,6 +1,7 @@
 import {sanitizePortable} from './sync.mjs';
 const MAX_RECORDS=30000;
 const canonical=v=>Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;
+const compareKey=(a,b)=>a<b?-1:a>b?1:0;
 const equal=(a,b)=>JSON.stringify(canonical(a))===JSON.stringify(canonical(b));
 export const emptyCloudDocument=actor=>({schema:2,actor,clock:0,counter:0,records:{}});
 export function cloudFields(library){
@@ -50,11 +51,11 @@ export function materializeCloud(doc){
     if(kind==='track')Object.defineProperty(tracks,id,{value,enumerable:true});
     else if(kind==='preference'){if(value==='liked')likedIDs.push(id);if(value==='disliked')dislikedIDs.push(id);}
     else if(kind==='hidden'&&value===true)hiddenIDs.push(id);
-    else if(kind==='playlist'&&value&&value.id===id){const prefix='member:'+id+':';const members=Object.entries(fields).filter(([k,v])=>k.startsWith(prefix)&&Number.isInteger(v.value)&&v.value>=0).sort((a,b)=>a[1].value-b[1].value||a[0].localeCompare(b[0]));playlists.push({...value,trackIDs:members.map(([k])=>k.slice(prefix.length))});}
+    else if(kind==='playlist'&&value&&value.id===id){const prefix='member:'+id+':';const members=Object.entries(fields).filter(([k,v])=>k.startsWith(prefix)&&Number.isInteger(v.value)&&v.value>=0).sort((a,b)=>a[1].value-b[1].value||compareKey(a[0],b[0]));playlists.push({...value,trackIDs:members.map(([k])=>k.slice(prefix.length))});}
     else if(kind==='setting')Object.defineProperty(settings,id,{value,enumerable:true});
     else if(kind==='event')events.push(value);
   }
-  playlists.sort((a,b)=>a.order-b.order||a.id.localeCompare(b.id));events.sort((a,b)=>a.at-b.at);
+  playlists.sort((a,b)=>a.order-b.order||compareKey(a.id,b.id));events.sort((a,b)=>a.at-b.at);
   return sanitizePortable({version:1,tracks,likedIDs,dislikedIDs,hiddenIDs,playlists,events:events.slice(-3000),settings});
 }
 // Promote first-login imports only after merging the account's existing files.

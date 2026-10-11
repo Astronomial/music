@@ -34,3 +34,17 @@ test('cloud sync retains pending edits on failure, isolates accounts and writes 
     auth.credentials={sub:'987654321012345'};files.clear();await sync.reset();await sync.run(true);assert.ok(store.files.has('google-cloud-987654321012345.json'));assert.notEqual((await store.read('google-cloud-987654321012345.json')).document.actor,captured.document.actor);
   }finally{clearInterval(sync.poll);clearTimeout(sync.timer);}
 });
+test('logout clears credential backup and cancels refresh even when encryption becomes unavailable',async()=>{
+  const fs=await import('node:fs/promises'),os=await import('node:os'),path=await import('node:path');const {Store}=await import('../electron/storage.cjs');
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'forma-google-logout-'));let resolveToken;const waiting=new Promise(r=>resolveToken=r);const store=new Store(dir);
+  const auth=new GoogleAuth({store,safeStorage,fetch:async()=>{await waiting;return Response.json({access_token:'new-token',expires_in:3600});}});
+  auth.credentials={clientID,secret,sub:'123456789012345',refreshToken:'old-refresh',accessToken:'expired',expires:0};await auth.persist();
+  try{const refresh=auth.authorizedFetch('https://www.googleapis.com/drive/v3/files');refresh.catch(()=>{});auth.safeStorage={...safeStorage,isEncryptionAvailable:()=>false};await auth.logout();resolveToken();await assert.rejects(refresh,/Аккаунт изменён/);
+    assert.equal(auth.status().connected,false);assert.equal(await store.read('google-secure.json','bad'),null);await fs.unlink(path.join(dir,'google-secure.json'));
+    const restored=new GoogleAuth({store,safeStorage,fetch:()=>{}});await restored.restore();assert.equal(restored.status().connected,false);
+  }finally{resolveToken();await fs.rm(dir,{recursive:true,force:true});}
+});
+test('logout cancels an unfinished browser login instead of reauthorizing silently later',async()=>{
+  let opened;const ready=new Promise(r=>opened=r);const auth=new GoogleAuth({store:memory(),safeStorage,fetch:()=>{throw new Error('Cancelled login must not exchange code');},openExternal:async()=>opened()});
+  const pending=auth.login(clientID,secret);pending.catch(()=>{});await ready;await auth.logout();await assert.rejects(pending,/Вход отменён/);assert.equal(auth.status().connected,false);assert.equal(auth.loggingIn,false);
+});

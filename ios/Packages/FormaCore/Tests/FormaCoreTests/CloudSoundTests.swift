@@ -29,6 +29,11 @@ final class CloudSoundTests: XCTestCase {
         let updated = try ab.capturing(edited, base: l, now: now.addingTimeInterval(3)).merging(b).library()
         XCTAssertEqual(updated.likedIDs, [id]); XCTAssertTrue(updated.dislikedIDs.isEmpty); XCTAssertTrue(updated.playlists.isEmpty)
     }
+    func testConcurrentMemberPositionsUseSameASCIIOrderAsPC() throws {
+        var doc = try fixture().document
+        doc.records["member:mix:A0123456789"] = CloudRegister(stamp: CloudStamp(time: 1, counter: 0, actor: doc.actor), value: .number(0))
+        XCTAssertEqual(try doc.library().playlists.first?.trackIDs, ["A0123456789", id])
+    }
     func testFirstLoginDoesNotReplaceExistingAccountSettings() throws {
         var base = Library(); base.settings.discovery = 0.9
         let published = try CloudDocument(actor: "first-device").capturing(base, base: nil).publishing()
