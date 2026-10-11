@@ -10,7 +10,7 @@ public struct SoundProfile: Codable, Hashable, Sendable {
     public var brightness: Double
     public var onsetRate: Double
     public var isValid: Bool {
-        version == 1 && bands.count == 8 && bands.allSatisfy { $0.isFinite && (0...1).contains($0) } && bands.reduce(0, +) >= 0.5 && seconds.isFinite && (8...30).contains(seconds) && tempo.isFinite && (0...220).contains(tempo) && [tempoConfidence, dynamicRange, brightness, onsetRate].allSatisfy { $0.isFinite && (0...1).contains($0) }
+        version == 1 && bands.count == 8 && bands.allSatisfy { $0.isFinite && (0...1).contains($0) } && bands.reduce(0, +) >= 0.5 && (0.9...1.1).contains(bands.reduce(0) { $0 + $1 * $1 }) && seconds.isFinite && (8...30).contains(seconds) && tempo.isFinite && (0...220).contains(tempo) && [tempoConfidence, dynamicRange, brightness, onsetRate].allSatisfy { $0.isFinite && (0...1).contains($0) }
     }
     public static func similarity(_ a: SoundProfile?, _ b: SoundProfile?) -> Double? {
         guard let a, let b, a.isValid, b.isValid else { return nil }

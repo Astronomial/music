@@ -35,7 +35,7 @@ app.whenReady().then(async () => {
   googleSync=new GoogleSync({auth:googleAuth,store,coordinator,onChange:(state,base)=>window?.webContents.send('sync:changed',{state,base})});
   handle('google:guide',()=>shell.openExternal('https://github.com/Astronomial/music/blob/main/docs/GOOGLE_SYNC.md'));
   handle('google:status',()=>({...googleSync.status(),error:googleSync.error||googleRestoreError}));
-  handle('google:login',async config=>{await googleAuth.login(String(config?.clientID||'').trim(),String(config?.secret||'').trim());await googleSync.reset();await syncServer.stop();googleRestoreError='';return googleSync.run(true);});
+  handle('google:login',async config=>{await googleAuth.login(String(config?.clientID||googleAuth.credentials?.clientID||'').trim(),String(config?.secret||googleAuth.credentials?.secret||'').trim());await googleSync.reset();await syncServer.stop();googleRestoreError='';return googleSync.run(true);});
   handle('google:logout',async()=>{await googleSync.reset();await googleAuth.logout();return googleSync.status();});
   handle('google:sync',()=>googleSync.run(true));
   googleSync.schedule();

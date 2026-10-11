@@ -1,8 +1,8 @@
 name: Build and verify Forma iOS
 on:
   push:
-    branches: [main, ios-ready, google-sync-audio]
-    paths: ['ios/**', 'electron/sync*.cjs', 'src/core/sync.mjs', '.github/workflows/ios.yml']
+    branches: [main, ios-ready]
+    paths: ['ios/**', 'electron/sync*.cjs', 'src/core/sync.mjs', 'src/core/cloud-sync.mjs', 'src/core/sound-profile.mjs', '.github/workflows/ios.yml']
   pull_request:
     paths: ['ios/**', 'electron/sync*.cjs', 'src/core/sync.mjs', '.github/workflows/ios.yml']
   workflow_dispatch:

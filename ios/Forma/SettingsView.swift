@@ -7,7 +7,6 @@ struct SettingsView: View {
     @AppStorage("forma.showArtwork") private var showArtwork = true
     @AppStorage("forma.soundAnalysis") private var soundAnalysis = true
     @AppStorage("forma.soundCellular") private var soundCellular = true
-    @State private var code = ""
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
@@ -68,6 +67,7 @@ private struct GoogleSettingsView: View {
                 if let email = account.email {
                     Text(email).font(.headline)
                     Button("Синхронизировать сейчас") { Task { await model.synchronize(showErrors: true) } }.buttonStyle(.borderedProminent).disabled(model.isSyncing)
+                    Button("Войти повторно") { Task { await model.loginGoogle(clientID) } }.disabled(account.busy || model.isSyncing)
                     Button("Выйти из Google", role: .destructive) { Task { await model.logoutGoogle() } }.disabled(account.busy)
                 } else {
                     DisclosureGroup("Настройка Google Cloud") {

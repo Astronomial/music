@@ -1,5 +1,5 @@
 const DAY = 86400000;
-import {soundSimilarity} from './sound-profile.mjs';
+import {createSoundMatcher} from './sound-profile.mjs';
 import {waveSettings,genresOf,blockedByPreferences,preferenceAffinity,activeSeedPlaylists} from './wave-settings.mjs';
 import {buildFeedbackModel,predictFeedback,feedbackReward} from './feedback.mjs';
 import {artistIndex,recordingKey,diversityHistory,familiarArtists,artistSpacing} from './diversity.mjs';
@@ -150,7 +150,8 @@ export function prepareRanking(state,now=Date.now(),context=null,candidates=[]){
   const source=playlistSeedState(state,context),profile=buildProfile(source,now,artistKeys),settings=waveSettings(state.settings);
   const anchors=selectRetrievalAnchors(source,{now,limit:45,profile,artistKeys}).map(track=>({track,weight:profile.weights.get(track.id)||0,vector:features(track)}));
   const anchorArtists=new Map();for(const a of anchors)for(const key of artistKeys(a.track))if(!anchorArtists.has(key))anchorArtists.set(key,a.track);
-  return {state,now,context,artistKeys,profile,anchors,anchorArtists,semanticNeighbours:new Map(),affinityVectors:new Map(),affinities:new WeakMap(),neighbourhoods:new WeakMap(),settings,feedback:buildFeedbackModel(state,now),recentTaste:sessionProfile(state,now),contextual:buildContextualModel(state,now),policy:discoveryPolicy(state,settings,now)};
+  const sound=createSoundMatcher(anchors.map(a=>({profile:a.track.soundProfile,weight:a.weight})),(state.dislikes||[]).map(id=>state.tracks[id]?.soundProfile));
+  return {state,now,context,artistKeys,profile,anchors,sound,anchorArtists,semanticNeighbours:new Map(),affinityVectors:new Map(),affinities:new WeakMap(),neighbourhoods:new WeakMap(),settings,feedback:buildFeedbackModel(state,now),recentTaste:sessionProfile(state,now),contextual:buildContextualModel(state,now),policy:discoveryPolicy(state,settings,now)};
 }
 function semanticFeatures(track){
   if(semanticCache.has(track))return semanticCache.get(track);
@@ -176,7 +177,7 @@ function nearestSemantic(track,anchors,keys,cache,anchorArtists){
 export function rankTracks(candidates, state, options = {}) {
   const { now = Date.now(), limit = 30, exclude = [], context = null, seed = Math.floor(now / 3600000), allowRecent = false, currentTrackId = null } = options;
   if(context?.playlistId&&!playlistPulseContext(state,context.playlistId))return [];
-  const {profile,anchors,anchorArtists,semanticNeighbours,affinityVectors,affinities,neighbourhoods,settings,feedback,recentTaste,contextual,policy,artistKeys:sharedArtistKeys}=options.prepared||prepareRanking(state,now,context,candidates);
+  const {profile,anchors,sound,anchorArtists,semanticNeighbours,affinityVectors,affinities,neighbourhoods,settings,feedback,recentTaste,contextual,policy,artistKeys:sharedArtistKeys}=options.prepared||prepareRanking(state,now,context,candidates);
   const banned = new Set([...state.hidden, ...exclude]);
   const recent = new Set(state.events.filter(e => e.type === 'play' && e.at<=now && now - e.at < settings.repeatCooldown * 3600000).map(e => e.trackId));
   const library=new Set([...state.likes,...state.playlists.flatMap(p=>p.trackIds)]);
@@ -184,7 +185,7 @@ export function rankTracks(candidates, state, options = {}) {
   const lastTrack = last && state.tracks[last.trackId];
   const lastVector = lastTrack ? features(lastTrack) : {};
   const discovery = context?.discovery??settings.discovery;
-  const liked=new Set(state.likes);
+  const liked=new Set(state.likes),disliked=new Set(state.dislikes||[]);
   const contextSettings=context?.mood?{...settings,mood:context.mood==='night'?'any':context.mood,energy:context.energy||'any',vocals:context.vocals||'any',genres:[],preferredArtists:[]}:null;
   const artistKeys=sharedArtistKeys||artistIndex([...Object.values(state.tracks),...candidates]);
   const familiar=familiarArtists(state,now,artistKeys);
@@ -204,8 +205,7 @@ export function rankTracks(candidates, state, options = {}) {
     }
     const {global:globalAffinity,closest:closestAnchor}=affinities.get(track);
     // Preserve several distinct musical interests instead of averaging them away.
-    const audioMatches=anchors.map(a=>soundSimilarity(track.soundProfile,a.track.soundProfile)).filter(x=>x!==null);
-    const audioAffinity=audioMatches.length?Math.max(...audioMatches):null;
+    const audio=sound(track.soundProfile),audioAffinity=audio.fit;
     const affinity = audioAffinity===null?globalAffinity*0.4+closestAnchor*0.6:(globalAffinity*0.4+closestAnchor*0.6)*.7+audioAffinity*.3;
     // One early skip is useful feedback, but should not erase a whole genre.
     const avoidance = cosine(vector, profile.negative)*Math.min(1,profile.negativeEvidence/8);
@@ -237,9 +237,8 @@ export function rankTracks(candidates, state, options = {}) {
     let score = 2.2 * affinity - 1.65 * avoidance + novelty + session + learning+exploration+popular*.04+noise*.03+contextScore+preference.score+neighbourhoodFit.fit*.65+learned.correction*1.4+language.fit*.15;
     if(!nearby&&anchors.length)score-=settings.explorationStyle==='nearby'?.35:settings.explorationStyle==='balanced'?.15:0;
     const ownWeight = profile.weights.get(track.id) || 0;
-    if((state.dislikes||[]).includes(track.id))score-=1000;
-    const soundAvoidance=(state.dislikes||[]).map(id=>soundSimilarity(track.soundProfile,state.tracks[id]?.soundProfile)).filter(x=>x!==null);
-    if(soundAvoidance.length)score-=Math.max(0,Math.max(...soundAvoidance)-.75)*2;
+    if(disliked.has(track.id))score-=1000;
+    score-=Math.max(0,audio.avoidance-.75)*2;
     if (ownWeight < 0) score -= Math.min(1.8, Math.abs(ownWeight) * 0.3);
     let reason = track.source==='local'?'Из твоей локальной музыки':`Новое из ${track.source==='youtube'?'YouTube':'Audius'}`;
     if (contextScore) reason = track.mood||track.genre?`Под настроение · ${track.mood || track.genre}`:'Найдено в направлении подборки';
@@ -292,7 +291,7 @@ export function rankTracks(candidates, state, options = {}) {
     const withinCap=item=>item.artistKeys.every(key=>(sessionCounts.get(key)||0)<spacing.maxPerWindow);
     // Enforce spacing when suitable alternatives exist, and relax gracefully for small catalogues.
     let pool=ranked.map((_,i)=>i);
-    const preferred=pool.filter(i=>!(state.dislikes||[]).includes(ranked[i].track.id));
+    const preferred=pool.filter(i=>!disliked.has(ranked[i].track.id));
     if(preferred.length)pool=preferred;
     // Discovery of new artists and distance from taste are independent. Most
     // slots use a supported neighbourhood; occasional stretch slots are budgeted

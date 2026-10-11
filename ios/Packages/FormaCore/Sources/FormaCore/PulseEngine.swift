@@ -117,7 +117,7 @@ public enum PulseEngine {
         let vectors = prepared.vectors, orderedVectors = prepared.orderedVectors, artistNames = prepared.artists
         let familiarIDs = Set(library.likedIDs + library.playlists.flatMap(\.trackIDs) + library.events.filter { [FeedbackKind.play, .listen, .skip].contains($0.kind) && $0.at <= now && now.timeIntervalSince($0.at) < 30 * 86400 }.map(\.trackID))
         let familiarArtists = Set(familiarIDs.flatMap { artistNames[$0] ?? [] })
-        let hidden = Set(library.hiddenIDs), saved = Set(library.likedIDs + library.playlists.flatMap(\.trackIDs))
+        let hidden = Set(library.hiddenIDs), disliked = Set(library.dislikedIDs), saved = Set(library.likedIDs + library.playlists.flatMap(\.trackIDs))
         let trackWeights = weights(profileSource, now: now)
         var positive: Vector = [:], negative: Vector = [:], positiveSession: Vector = [:], negativeSession: Vector = [:]
         var totals: [String: Double] = [:], saveCounts: [String: Int] = [:], positiveCount = 0.0, negativeCount = 0.0, negativeEvidence = 0.0
@@ -154,7 +154,7 @@ public enum PulseEngine {
             if let context, !track.moodHints.contains(context) && track.mood != context { continue }
             let vector = orderedVectors[track.id] ?? []
             let metadataAffinity = 0.4 * similarity(vector, positive) + 0.6 * (seedTracks.map { similarity(vector, vectors[$0.id] ?? [:]) * min(1, (trackWeights[$0.id] ?? 0) / 3) }.max() ?? 0)
-            let soundMatches = seedTracks.compactMap { SoundProfile.similarity(track.soundProfile, $0.soundProfile) }
+            let soundMatches = seedTracks.prefix(12).compactMap { seed in SoundProfile.similarity(track.soundProfile, seed.soundProfile).map { $0 * min(1, max(0, (trackWeights[seed.id] ?? 0) / 3)) } }
             let soundFit = soundMatches.max()
             let affinity = soundFit.map { metadataAffinity * 0.7 + $0 * 0.3 } ?? metadataAffinity
             let known = (trackWeights[track.id] ?? 0) > 0
@@ -185,8 +185,8 @@ public enum PulseEngine {
             var score = preferred + genrePreference + PulseDirections.score(track, settings: library.settings) + affinity * 2.2 - similarity(vector, negative) * 1.65 * min(1, negativeEvidence / 8) + session
             score += known ? (1 - discovery) * 0.12 : discovery * (0.2 + affinity * 0.45)
             score += (consumption.mean - 0.5) * 1.6 + learned.correction * 1.4 + exploration + neighbour * 0.65 + language * 0.15 + contextScore
-            if library.dislikedIDs.contains(track.id) { score -= 1000 }
-            if let avoidance = library.dislikedIDs.compactMap({ SoundProfile.similarity(track.soundProfile, library.tracks[$0]?.soundProfile) }).max() { score -= max(0, avoidance - 0.75) * 2 }
+            if disliked.contains(track.id) { score -= 1000 }
+            if let avoidance = library.dislikedIDs.suffix(24).compactMap({ SoundProfile.similarity(track.soundProfile, library.tracks[$0]?.soundProfile) }).max() { score -= max(0, avoidance - 0.75) * 2 }
             score -= min(1.8, max(0, -(trackWeights[track.id] ?? 0)) * 0.3)
             if !nearby && !seedTracks.isEmpty { score -= library.settings.explorationStyle == "nearby" ? 0.35 : library.settings.explorationStyle == "balanced" ? 0.15 : 0 }
             let lane = known ? "familiar" : nearby ? "nearby" : "stretch"

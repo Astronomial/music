@@ -401,7 +401,7 @@ final class AppModel: ObservableObject {
         guard UserDefaults.standard.object(forKey: "forma.soundAnalysis") as? Bool != false else { return }
         let cellular = UserDefaults.standard.object(forKey: "forma.soundCellular") as? Bool != false
         guard cellular || !player.networkPolicy.lean else { return }
-        let pool = [current] + PulseEngine.anchors(in: library, limit: 2) + pulseCache.prefix(2).map(\.track)
+        let pool = [current] + pulseCache.prefix(2).map(\.track) + PulseEngine.anchors(in: library, limit: 1)
         var seen = Set<String>(); let tracks = pool.filter { library.tracks[$0.id]?.soundProfile == nil && seen.insert($0.id).inserted }
         soundTask = Task(priority: .utility) {
             for track in tracks.prefix(3) {

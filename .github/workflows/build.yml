@@ -1,7 +1,7 @@
 name: Check and build Forma
 on:
   push:
-    branches: [main, google-sync-audio]
+    branches: [main]
     paths-ignore: ['downloads/**', 'artifacts/**', '**.md']
   pull_request:
   workflow_dispatch:
@@ -19,6 +19,16 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - name: Check UI, native AAC decoding and Google settings
+        env:
+          CHROMIUM_PATH: /usr/bin/google-chrome
+        run: |
+          npm run dev > "$RUNNER_TEMP/forma-vite.log" 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://localhost:5173/ >/dev/null; then break; fi
+            sleep 1
+          done
+          npm run test:ui
   windows:
     needs: check
     runs-on: windows-latest

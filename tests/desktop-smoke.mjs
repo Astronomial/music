@@ -8,14 +8,14 @@ import {portableLibrary} from '../src/core/sync.mjs';
 import {musicSearchResponse} from './fixtures-youtube.mjs';
 const project=path.resolve('.');
 const dir=await fs.mkdtemp(path.join(os.tmpdir(),'forma-desktop-'));
-await fs.writeFile(path.join(dir,'library.json'),JSON.stringify({version:1,tracks:{},likes:[],playlists:[],events:[],hidden:[],settings:{provider:'audius'},onboarded:true}));
+await fs.writeFile(path.join(dir,'library.json'),JSON.stringify({version:1,tracks:{},likes:[],playlists:[],events:[],hidden:[],settings:{provider:'audius',audioAnalysis:false},onboarded:true}));
 const executable=process.env.FORMA_ELECTRON_PATH||path.join(project,'node_modules/electron/dist/electron');
 const desktopEnv={...process.env,XDG_CONFIG_HOME:dir,XDG_CACHE_HOME:path.join(dir,'cache')};
 const track={id:'DesktopTest',title:'Offline integration test',user:{id:'ArtistOne',name:'Test artist'},genre:'House',duration:20,is_downloadable:true,is_streamable:true};
 function wav(){const b=Buffer.alloc(320044);b.write('RIFF',0);b.writeUInt32LE(b.length-8,4);b.write('WAVEfmt ',8);b.writeUInt32LE(16,16);b.writeUInt16LE(1,20);b.writeUInt16LE(1,22);b.writeUInt32LE(8000,24);b.writeUInt32LE(16000,28);b.writeUInt16LE(2,32);b.writeUInt16LE(16,34);b.write('data',36);b.writeUInt32LE(b.length-44,40);return b;}
 let app;
 async function launch(){
-  const instance=await _electron.launch({executablePath:executable,args:['--no-sandbox','--disable-gpu',project,`--forma-test-data=${dir}`],env:desktopEnv});
+  const instance=await _electron.launch({executablePath:executable,args:['--no-sandbox','--disable-gpu',...(process.platform==='linux'&&!process.env.DISPLAY?['--ozone-platform=headless']:[]),project,`--forma-test-data=${dir}`],env:desktopEnv});
   const page=await instance.firstWindow();await page.waitForLoadState();return{instance,page};
 }
 try{
@@ -31,6 +31,9 @@ try{
     };
   },{track,audio:wav().toString('base64'),youtubeFixture:musicSearchResponse()});
   assert.equal(await page.evaluate(()=>window.forma.desktop),true);
+  const sample=[...await fs.readFile(path.join(project,'tests/fixtures/acoustic-sample.m4a'))];
+  const decoded=await page.evaluate(async bytes=>{const c=new OfflineAudioContext(1,1,16000),audio=await c.decodeAudioData(new Uint8Array(bytes).buffer);return {duration:audio.duration,rate:audio.sampleRate};},sample);
+  assert.ok(decoded.duration>=12);assert.equal(decoded.rate,16000);
   assert.equal(await page.evaluate(()=>typeof window.require),'undefined');
   const yt=await page.evaluate(()=>window.forma.catalogRequest('/tracks/search',{query:'Soft Focus'},'youtube'));assert.equal(yt[0].source,'youtube');assert.equal(yt[0].artist,'Test Artist');
   const yandex=await page.evaluate(()=>window.forma.yandexPlaylist('https://music.yandex.ru/users/test/playlists/1'));assert.equal(yandex.tracks[0].title,'Soft Focus');
@@ -78,8 +81,11 @@ try{
   assert.equal(transferred.tracks[requested.trackIds[0]].source,'youtube');
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
   await page.getByRole('switch',{name:'Только скачанная музыка'}).click();
-  // Exercise the real preload -> main -> TLS server -> renderer merge path.
-  await page.getByRole('button',{name:'Подключить iPhone',exact:true}).click();
+  // Google is the primary UI. The old TLS backend remains a compatibility test,
+  // deliberately started by IPC rather than the removed Wi-Fi setup screen.
+  await expect(page.getByRole('heading',{name:/Google ·/})).toBeVisible();
+  assert.equal((await page.evaluate(()=>window.forma.googleStatus())).connected,false);
+  await page.evaluate(()=>window.forma.syncStart());
   await expect.poll(async()=> (await page.evaluate(()=>window.forma.syncStatus())).enabled).toBe(true);
   const status=await page.evaluate(()=>window.forma.syncStatus());assert.equal(status.enabled,true);
   const pairing=new URL(status.pairing),identity=JSON.parse(await fs.readFile(path.join(dir,'sync-identity.json'),'utf8'));
@@ -101,7 +107,8 @@ try{
   assert.ok(saved.playlists.some(p=>p.id==='phone-playlist'));assert.equal(saved.settings.artistDiversity,1);assert.ok(saved.likes.includes(yt[0].id));
   launched=await launch();app=launched.instance;page=launched.page;
   await expect.poll(async()=>{const s=await page.evaluate(()=>window.forma.load());return s.importRequests?.find(r=>r.id==='astronomial-favorites')?.status;}).toBe('complete');
-  assert.equal((await page.evaluate(()=>window.forma.syncStatus())).enabled,true);
+  assert.equal((await page.evaluate(()=>window.forma.syncStatus())).enabled,false);
+  await page.evaluate(()=>window.forma.syncStart());
   const afterRestart=await syncRequest('/sync',{base:syncBase,library:phone},paired.token);assert.ok(afterRestart.library.playlists.some(p=>p.id==='phone-playlist'));
   await page.getByRole('button',{name:'Скачанное',exact:true}).click();
   await page.waitForFunction(()=>document.querySelectorAll('.track-row').length===2);
@@ -111,5 +118,5 @@ try{
   await page.locator('.track-row').first().locator('.track-actions button').last().click();
   await page.getByRole('button',{name:'Удалить скачанный файл',exact:true}).click();
   await expect.poll(async()=>Object.keys(await page.evaluate(()=>window.forma.downloads())).length).toBe(1);
-  console.log('PASS: real Electron sandbox/preload, native TLS pairing/sync/renderer update/token persistence across restart, minimized playback (real local audio + mocked YouTube player), explicit pause, catalogue and Yandex IPC and automatic requested-playlist import across restart (mock transport), file import, IPC download, audio seeking, close-save, restart offline, deletion.');
+  console.log('PASS: real Electron sandbox/preload, native AAC decode and Google-first settings, compatibility TLS pairing/sync/renderer update/token persistence across restart, minimized playback (real local audio + mocked YouTube player), explicit pause, catalogue and Yandex IPC and automatic requested-playlist import across restart (mock transport), file import, IPC download, audio seeking, close-save, restart offline, deletion.');
 }finally{if(app)await app.close();await fs.rm(dir,{recursive:true,force:true});}

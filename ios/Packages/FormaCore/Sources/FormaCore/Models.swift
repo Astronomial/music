@@ -42,7 +42,7 @@ public struct Track: Codable, Hashable, Identifiable, Sendable {
         mood = try c.decodeIfPresent(String.self, forKey: .mood) ?? ""
         tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
         language = try c.decodeIfPresent(String.self, forKey: .language) ?? ""
-        soundProfile = try c.decodeIfPresent(SoundProfile.self, forKey: .soundProfile).flatMap { $0.isValid ? $0 : nil }
+        soundProfile = (try? c.decodeIfPresent(SoundProfile.self, forKey: .soundProfile)).flatMap { $0.isValid ? $0 : nil }
     }
     private static func safeDuration(_ value: Double) -> Double { value.isFinite ? min(86400, max(0, value)) : 0 }
 }
