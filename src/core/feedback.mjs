@@ -1,6 +1,7 @@
 import {fold,genresOf} from './wave-settings.mjs';
 const DAY=86400000;
 export function feedbackReward(event){
+  if(event.type==='dislike')return 0;
   if(event.type==='like'||event.type==='playlist-add')return 1;
   if(event.type==='listen'&&event.ratio>=.8)return 1;
   if(event.type==='listen'&&event.ratio>=.5)return .7;

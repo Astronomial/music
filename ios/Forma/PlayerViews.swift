@@ -19,6 +19,7 @@ struct MiniPlayer: View {
                 Button { model.toggleLike(track) } label: {
                     Image(systemName: model.isLiked(track) ? "heart.fill" : "heart").contentTransition(.symbolEffect(.replace)).foregroundStyle(model.isLiked(track) ? FormaTheme.accent : .secondary).frame(width: 44, height: 44)
                 }.buttonStyle(ResponsiveButtonStyle()).accessibilityLabel(model.isLiked(track) ? "Убрать из любимого" : "Добавить в любимое").accessibilityIdentifier("mini-player-like")
+                Button { model.toggleDislike(track) } label: { Image(systemName: model.isDisliked(track) ? "hand.thumbsdown.fill" : "hand.thumbsdown").foregroundStyle(model.isDisliked(track) ? FormaTheme.accent : .secondary).frame(width: 44, height: 44) }.buttonStyle(ResponsiveButtonStyle()).accessibilityLabel(model.isDisliked(track) ? "Снять дизлайк" : "Не нравится")
                 Button { player.toggle() } label: {
                     Group { if player.isLoading { ProgressView() } else { Image(systemName: player.isPlaying ? "pause.fill" : "play.fill").font(.title3) } }.frame(width: 44, height: 44)
                 }.buttonStyle(ResponsiveButtonStyle()).accessibilityLabel(player.isPlaying ? "Пауза" : "Воспроизвести")
@@ -79,7 +80,7 @@ struct NowPlayingView: View {
                         Slider(value: $player.volume, in: 0...1).accessibilityLabel("Громкость")
                         Image(systemName: "speaker.wave.3.fill").foregroundStyle(.secondary)
                     }
-                    if let track = player.current { Button { model.toggleLike(track) } label: { Label(model.isLiked(track) ? "В любимом" : "Сохранить", systemImage: model.isLiked(track) ? "heart.fill" : "heart") }.buttonStyle(.bordered) }
+                    if let track = player.current { HStack { Button { model.toggleDislike(track) } label: { Label(model.isDisliked(track) ? "Дизлайк" : "Не нравится", systemImage: model.isDisliked(track) ? "hand.thumbsdown.fill" : "hand.thumbsdown") }.buttonStyle(.bordered); Button { model.toggleLike(track) } label: { Label(model.isLiked(track) ? "В любимом" : "Сохранить", systemImage: model.isLiked(track) ? "heart.fill" : "heart") }.buttonStyle(.bordered) } }
                 }.padding(32)
             }.background(LinearGradient(colors: [FormaTheme.accent.opacity(0.09), FormaTheme.background], startPoint: .topLeading, endPoint: .bottomTrailing)).tint(FormaTheme.accent)
                 .onChange(of: player.current?.id) { _, _ in dragging = false; seekTrackID = nil; seekValue = player.position }

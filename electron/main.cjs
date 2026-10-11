@@ -1,11 +1,11 @@
-const { app, BrowserWindow, ipcMain, protocol, net, shell, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net, shell, dialog, safeStorage } = require('electron');
 const path = require('node:path');
 const { startStaticServer } = require('./static.cjs');
 const { Store } = require('./storage.cjs');
 const { folderFiles, importLocalFile } = require('./local.cjs');
 const { OfflineLibrary, validId } = require('./offline.cjs');
 protocol.registerSchemesAsPrivileged([{scheme:'forma-audio', privileges:{standard:true,secure:true,stream:true,supportFetchAPI:true}}]);
-let window, store, offline, api, uiServer, syncServer, coordinator, desktopBaseline, apiKey = '', closing = false, closeTimer;
+let window, store, offline, api, uiServer, syncServer, coordinator, desktopBaseline, googleSync, apiKey = '', closing = false, closeTimer;
 // Dev smoke tests use an explicit temporary profile on all operating systems.
 const testDataArg = process.argv.find(arg=>arg.startsWith('--forma-test-data='));
 if(!app.isPackaged&&testDataArg) app.setPath('userData',path.resolve(testDataArg.slice('--forma-test-data='.length)));
@@ -28,9 +28,18 @@ app.whenReady().then(async () => {
   coordinator=new LibraryCoordinator(store);
   syncServer=new SyncServer({store,coordinator,onChange:state=>window?.webContents.send('sync:changed',{state,base:desktopBaseline})});
   handle('state:load',async()=>{desktopBaseline=await store.read('library.json',null);return desktopBaseline;});
-  if((await store.read('sync-settings.json',{})).enabled)await syncServer.start().catch(()=>{});
+  const {GoogleAuth}=require('./google-auth.cjs');
+  const {GoogleSync}=require('./google-sync.cjs');
+  const googleAuth=new GoogleAuth({store,safeStorage,fetch:net.fetch,openExternal:url=>shell.openExternal(url)});
+  let googleRestoreError='';try{await googleAuth.restore();}catch(e){googleRestoreError=e.message;}
+  googleSync=new GoogleSync({auth:googleAuth,store,coordinator,onChange:(state,base)=>window?.webContents.send('sync:changed',{state,base})});
+  handle('google:status',()=>({...googleSync.status(),error:googleSync.error||googleRestoreError}));
+  handle('google:login',async config=>{await googleAuth.login(String(config?.clientID||'').trim(),String(config?.secret||'').trim());await googleSync.reset();await syncServer.stop();googleRestoreError='';return googleSync.run(true);});
+  handle('google:logout',async()=>{await googleSync.reset();await googleAuth.logout();return googleSync.status();});
+  handle('google:sync',()=>googleSync.run(true));
+  googleSync.schedule();
   handle('sync:status',()=>syncServer.status());
-  handle('sync:start',()=>syncServer.start());
+  handle('sync:start',()=>{if(googleAuth.status().connected)throw new Error('Отключи Google перед использованием старой синхронизации');return syncServer.start();});
   handle('sync:stop',()=>syncServer.stop());
   handle('sync:pair',()=>syncServer.newPairing());
   handle('sync:forget',()=>syncServer.forget());
@@ -38,7 +47,7 @@ app.whenReady().then(async () => {
     if (!state || state.version!==1 || !state.tracks || !Array.isArray(state.likes) || !Array.isArray(state.events) || !Array.isArray(state.playlists) || JSON.stringify(state).length>25*1024**2) throw new Error('Некорректная библиотека');
     apiKey = String(state.settings?.apiKey || '').slice(0,250);
     const next=await coordinator.mutate(current=>mergeDesktop(current||state,desktopBaseline||state,state));
-    desktopBaseline=structuredClone(state);
+    desktopBaseline=structuredClone(state);googleSync.schedule();
     if(JSON.stringify(next)!==JSON.stringify(state))window?.webContents.send('sync:changed',{state:next,base:state});
   };
   handle('state:save',saveState);

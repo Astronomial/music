@@ -9,21 +9,7 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                GlassPanel {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Синхронизация с ПК").font(.title2.bold())
-                        Text("Подключи iPhone и ПК к одной Wi-Fi сети. Открой в Forma на ПК «Настройки → Подключить iPhone».").foregroundStyle(.secondary)
-                        TextField("Вставь код подключения", text: $code, axis: .vertical).textInputAutocapitalization(.never).autocorrectionDisabled().textFieldStyle(.roundedBorder)
-                        Button { Task { await model.pairPC(code) } } label: { Label("Подключить", systemImage: "laptopcomputer.and.iphone") }.buttonStyle(.borderedProminent).disabled(model.isSyncing || code.isEmpty || !model.canSynchronizePC)
-                        if model.pcHost != nil {
-                            Button("Синхронизировать сейчас") { Task { await model.synchronize(showErrors: true) } }.buttonStyle(.bordered).disabled(model.isSyncing || !model.canSynchronizePC)
-                            Button("Отключить ПК", role: .destructive) { Task { await model.disconnectPC() } }
-                        }
-                        if model.isSyncing { ProgressView("Переносим библиотеку…") }
-                        Text(model.syncStatus).font(.footnote).foregroundStyle(.secondary)
-                    }
-                }
-                Text("Избранное, плейлисты, история и основные настройки Пульса общие. Изменения без подключения сохраняются и отправятся при следующем соединении. Локальные файлы с ПК не переносятся.").font(.footnote).foregroundStyle(.secondary)
+                GoogleSettingsView(model: model, account: model.google)
                 GlassPanel {
                     VStack(alignment: .leading, spacing: 16) {
                         Text("Твой цвет").font(.headline)
@@ -57,5 +43,36 @@ private struct PlaybackPerformanceView: View {
             } else { Text("Выбери несколько треков, чтобы увидеть время запуска.").font(.subheadline) }
             Text("Для сравнения с ПК выбирай одинаковые треки в одной Wi-Fi сети. Загрузка нового и заранее подготовленного трека измеряется отдельно.").font(.footnote).foregroundStyle(.secondary)
         }.padding(.top, 12)
+    }
+}
+
+@MainActor
+private struct GoogleSettingsView: View {
+    @ObservedObject var model: AppModel
+    @ObservedObject var account: GoogleAccount
+    @AppStorage("forma.googleClientID") private var clientID = ""
+    var body: some View {
+        GlassPanel {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Синхронизация через Google").font(.title2.bold())
+                Text("Один аккаунт на iPhone и Windows. Плейлисты, лайки, дизлайки, история, настройки Пульса и анализ звучания доступны через интернет. ПК может быть выключен.").foregroundStyle(.secondary)
+                if let email = account.email {
+                    Text(email).font(.headline)
+                    Button("Синхронизировать сейчас") { Task { await model.synchronize(showErrors: true) } }.buttonStyle(.borderedProminent).disabled(model.isSyncing)
+                    Button("Выйти из Google", role: .destructive) { Task { await model.logoutGoogle() } }.disabled(account.busy)
+                } else {
+                    DisclosureGroup("Настройка Google Cloud") {
+                        Text("Создай OAuth-клиенты Desktop и iOS в одном проекте и включи Google Drive API. На iPhone нужен iOS Client ID.").font(.subheadline)
+                        TextField("iOS Client ID", text: $clientID).textInputAutocapitalization(.never).autocorrectionDisabled().textFieldStyle(.roundedBorder)
+                        Link("Открыть инструкцию", destination: URL(string: "https://github.com/Astronomial/music/blob/main/docs/GOOGLE_SYNC.md")!)
+                    }
+                    Button("Войти через Google") { Task { await model.loginGoogle(clientID) } }.buttonStyle(.borderedProminent).disabled(clientID.isEmpty || account.busy || model.isRestoringLibrary)
+                }
+                if model.isSyncing || account.busy { ProgressView("Подключаемся…") }
+                if let error = account.error { Text(error).font(.footnote).foregroundStyle(.secondary) }
+                Text(model.syncStatus).font(.footnote).foregroundStyle(.secondary)
+                Text("Файлы музыки не загружаются в Drive. Изменения без интернета сохраняются на устройстве и отправятся позже.").font(.footnote).foregroundStyle(.secondary)
+            }
+        }
     }
 }

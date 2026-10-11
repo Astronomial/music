@@ -1,11 +1,11 @@
 import {WAVE_GENRES,DEFAULT_WAVE_SETTINGS} from './wave-settings.mjs';
 export const GENRES = WAVE_GENRES;
-export const initialState = () => ({ version: 1, tracks: {}, likes: [], playlists: [], events: [], hidden: [], imports: [], settings: { ...structuredClone(DEFAULT_WAVE_SETTINGS), offlineOnly: false, volume: 0.7, palette: 'iris', textScale: 1, provider:'youtube' }, onboarded: false });
+export const initialState = () => ({ version: 1, tracks: {}, likes: [], playlists: [], events: [], hidden: [], dislikes: [], imports: [], settings: { ...structuredClone(DEFAULT_WAVE_SETTINGS), offlineOnly: false, volume: 0.7, palette: 'iris', textScale: 1, provider:'youtube' }, onboarded: false });
 export function normalizeTrack(t) {
   const artwork = t.artwork || {};
   const download = t.download || {};
   return {
-    source:t.source||'audius',videoId:t.videoId||'',relatedTo:t.relatedTo||[],directRelatedTo:t.directRelatedTo||[],retrievalSources:t.retrievalSources||[],discoveryGenres:t.discoveryGenres||[],discoveryMoods:t.discoveryMoods||[],discoveryEnergy:t.discoveryEnergy||[],discoveryVocals:t.discoveryVocals||[],discoveryLanguages:t.discoveryLanguages||[],language:typeof t.language==='string'?t.language.slice(0,20):'',discoveredAt:Number.isFinite(t.discoveredAt)?t.discoveredAt:0,album:t.album||'',
+    source:t.source||'audius',videoId:t.videoId||'',relatedTo:t.relatedTo||[],directRelatedTo:t.directRelatedTo||[],retrievalSources:t.retrievalSources||[],discoveryGenres:t.discoveryGenres||[],discoveryMoods:t.discoveryMoods||[],discoveryEnergy:t.discoveryEnergy||[],discoveryVocals:t.discoveryVocals||[],discoveryLanguages:t.discoveryLanguages||[],language:typeof t.language==='string'?t.language.slice(0,20):'',discoveredAt:Number.isFinite(t.discoveredAt)?t.discoveredAt:0,soundProfile:t.soundProfile||null,album:t.album||'',
     id: String(t.id), title: t.title || 'Без названия', artist: t.user?.name || t.artist || 'Неизвестный исполнитель',
     artistId: String(t.user?.id || t.artistId || ''), genre: t.genre || '', mood: t.mood || '',
     tags: (Array.isArray(t.tags) ? t.tags : String(t.tags || '').split(',')).map(x => x.trim().toLowerCase()).filter(Boolean).slice(0, 30),
@@ -21,12 +21,12 @@ export function normalizeTrack(t) {
 export function mergeTracks(state, tracks, now=Date.now()) {
   const next = { ...state.tracks };
   for (const t of tracks) if (t?.id) {
-    const merged={...t,discoveredAt:next[t.id]?.discoveredAt||t.discoveredAt||now};
+    const merged={...t,soundProfile:t.soundProfile||next[t.id]?.soundProfile||null,discoveredAt:next[t.id]?.discoveredAt||t.discoveredAt||now};
     for(const key of ['relatedTo','directRelatedTo','discoveryGenres','discoveryMoods','discoveryEnergy','discoveryVocals','discoveryLanguages','retrievalSources'])merged[key]=[...new Set([...(next[t.id]?.[key]||[]),...(t[key]||[])])].slice(-15);
     next[t.id]=merged;
   }
   // Preserve library/history metadata while bounding the discovery cache.
-  const keep = new Set([...state.likes, ...state.hidden, ...state.playlists.flatMap(p => p.trackIds), ...state.events.map(e => e.trackId)]);
+  const keep = new Set([...state.likes, ...state.hidden, ...(state.dislikes||[]), ...state.playlists.flatMap(p => p.trackIds), ...state.events.map(e => e.trackId)]);
   const ids = Object.keys(next);
   let count=ids.length;
   if (count > 6000) for (const id of ids) { if (count <= 6000) break; if (!keep.has(id)){delete next[id];count--;} }

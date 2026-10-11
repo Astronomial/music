@@ -1,4 +1,5 @@
 const DAY = 86400000;
+import {soundSimilarity} from './sound-profile.mjs';
 import {waveSettings,genresOf,blockedByPreferences,preferenceAffinity,activeSeedPlaylists} from './wave-settings.mjs';
 import {buildFeedbackModel,predictFeedback,feedbackReward} from './feedback.mjs';
 import {artistIndex,recordingKey,diversityHistory,familiarArtists,artistSpacing} from './diversity.mjs';
@@ -66,6 +67,7 @@ export function buildProfile(state, now = Date.now(), sharedArtistKeys=null) {
     implicit.set(e.trackId, clamp((implicit.get(e.trackId) || 0) + value, -7, 4));
   }
   for (const [id, weight] of implicit) weights.set(id, (weights.get(id) || 0) + weight);
+  for(const id of state.dislikes||[])weights.set(id,-4);
   const positive = {}, negative = {};
   const artistKeys=sharedArtistKeys||artistIndex(Object.values(state.tracks)),totals=new Map(),counts=new Map(),balancedWeights=new Map();
   for(const [id,weight] of weights)if(weight>0&&state.tracks[id])for(const key of artistKeys(state.tracks[id])){totals.set(key,(totals.get(key)||0)+weight);counts.set(key,(counts.get(key)||0)+1);}
@@ -202,7 +204,9 @@ export function rankTracks(candidates, state, options = {}) {
     }
     const {global:globalAffinity,closest:closestAnchor}=affinities.get(track);
     // Preserve several distinct musical interests instead of averaging them away.
-    const affinity = globalAffinity*0.4+closestAnchor*0.6;
+    const audioMatches=anchors.map(a=>soundSimilarity(track.soundProfile,a.track.soundProfile)).filter(x=>x!==null);
+    const audioAffinity=audioMatches.length?Math.max(...audioMatches):null;
+    const affinity = audioAffinity===null?globalAffinity*0.4+closestAnchor*0.6:(globalAffinity*0.4+closestAnchor*0.6)*.7+audioAffinity*.3;
     // One early skip is useful feedback, but should not erase a whole genre.
     const avoidance = cosine(vector, profile.negative)*Math.min(1,profile.negativeEvidence/8);
     const known = (profile.weights.get(track.id) || 0) > 0;
@@ -221,7 +225,7 @@ export function rankTracks(candidates, state, options = {}) {
     }
     const neighbourhoodFit=neighbourhoods.get(track),language=languageEvidence(track,settings.languagePreference);
     const metadata=track.genre||track.mood||track.tags?.length?1:0;
-    const nearby=known||neighbourhoodFit.close||preferenceAffinity(track,settings).score>=.6||(!anchors.length&&preferenceAffinity(track,settings).score>0);
+    const nearby=(audioAffinity!==null&&audioAffinity>=.78)||known||neighbourhoodFit.close||preferenceAffinity(track,settings).score>=.6||(!anchors.length&&preferenceAffinity(track,settings).score>0);
     // Novel candidates still need a taste match: exploration is not random genre drift.
     const novelty = !known ? discovery * (0.2 + affinity * 0.45) : (1 - discovery) * 0.12;
     const preference=preferenceAffinity(track,settings);
@@ -233,6 +237,9 @@ export function rankTracks(candidates, state, options = {}) {
     let score = 2.2 * affinity - 1.65 * avoidance + novelty + session + learning+exploration+popular*.04+noise*.03+contextScore+preference.score+neighbourhoodFit.fit*.65+learned.correction*1.4+language.fit*.15;
     if(!nearby&&anchors.length)score-=settings.explorationStyle==='nearby'?.35:settings.explorationStyle==='balanced'?.15:0;
     const ownWeight = profile.weights.get(track.id) || 0;
+    if((state.dislikes||[]).includes(track.id))score-=1000;
+    const soundAvoidance=(state.dislikes||[]).map(id=>soundSimilarity(track.soundProfile,state.tracks[id]?.soundProfile)).filter(x=>x!==null);
+    if(soundAvoidance.length)score-=Math.max(0,Math.max(...soundAvoidance)-.75)*2;
     if (ownWeight < 0) score -= Math.min(1.8, Math.abs(ownWeight) * 0.3);
     let reason = track.source==='local'?'Из твоей локальной музыки':`Новое из ${track.source==='youtube'?'YouTube':'Audius'}`;
     if (contextScore) reason = track.mood||track.genre?`Под настроение · ${track.mood || track.genre}`:'Найдено в направлении подборки';
@@ -247,6 +254,7 @@ export function rankTracks(candidates, state, options = {}) {
     if(context?.mood)reason=moodEvidence(track,context)>=1?'Под настроение · и в твоём вкусе':'В направлении этой подборки';
     if(context?.playlistId&&affinity>.1)reason=`По мотивам «${context.playlistName||'плейлиста'}»`;
     if(newArtist&&affinity>.1&&!context?.playlistId&&!context?.mood)reason=`Новый исполнитель · ${genresOf(track).values.find(g=>settings.genres.includes(g))||'в твоём вкусе'}`;
+    if(audioAffinity!==null&&audioAffinity>=.78)reason='Похожее звучание · анализ аудио';
     if(newArtist&&neighbourhoodFit.match&&neighbourhoodFit.fit>=.24&&!context?.playlistId&&!context?.mood)reason=`Новый исполнитель · рядом с ${neighbourhoodFit.match.artist}`;
     const lane=known?'familiar':nearby?'nearby':'stretch';
     if(lane==='stretch'&&anchors.length&&!context?.mood&&!context?.playlistId)reason='Небольшой шаг в новое направление';
@@ -284,6 +292,8 @@ export function rankTracks(candidates, state, options = {}) {
     const withinCap=item=>item.artistKeys.every(key=>(sessionCounts.get(key)||0)<spacing.maxPerWindow);
     // Enforce spacing when suitable alternatives exist, and relax gracefully for small catalogues.
     let pool=ranked.map((_,i)=>i);
+    const preferred=pool.filter(i=>!(state.dislikes||[]).includes(ranked[i].track.id));
+    if(preferred.length)pool=preferred;
     // Discovery of new artists and distance from taste are independent. Most
     // slots use a supported neighbourhood; occasional stretch slots are budgeted
     // against real started playback so repeated single-track ranking cannot reset it.

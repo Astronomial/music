@@ -14,8 +14,10 @@ public enum LibrarySync {
     public static func merge(current: Library, base: Library, incoming: Library) -> Library {
         var result = current
         for (id, track) in incoming.tracks where !equal(base.tracks[id], track) { result.merge([track]) }
+        result.dislikedIDs = mergeIDs(current: current.dislikedIDs, base: base.dislikedIDs, incoming: incoming.dislikedIDs)
         result.hiddenIDs = mergeIDs(current: current.hiddenIDs, base: base.hiddenIDs, incoming: incoming.hiddenIDs)
         result.likedIDs = mergeIDs(current: current.likedIDs, base: base.likedIDs, incoming: incoming.likedIDs)
+        result.likedIDs.removeAll { result.dislikedIDs.contains($0) }
         var playlists = Dictionary(current.playlists.map { ($0.id, $0) }, uniquingKeysWith: { _, b in b })
         let before = Dictionary(base.playlists.map { ($0.id, $0) }, uniquingKeysWith: { _, b in b })
         let after = Dictionary(incoming.playlists.map { ($0.id, $0) }, uniquingKeysWith: { _, b in b })
@@ -76,6 +78,7 @@ public enum LibrarySync {
             result.settings.recommendationVersion = local.settings.recommendationVersion
         }
         for (id, old) in local.tracks where result.tracks[id] != nil {
+            if result.tracks[id]?.soundProfile == nil { result.tracks[id]?.soundProfile = old.soundProfile }
             if result.tracks[id]?.directRelatedTo.isEmpty == true { result.tracks[id]?.directRelatedTo = old.directRelatedTo }
             if result.tracks[id]?.discoveryLanguages.isEmpty == true { result.tracks[id]?.discoveryLanguages = old.discoveryLanguages }
             if result.tracks[id]?.genre.isEmpty == true { result.tracks[id]?.genre = old.genre }

@@ -22,6 +22,8 @@ public enum LibraryValidation {
             return track
         }
         result.likedIDs = ids(source.likedIDs); result.hiddenIDs = ids(source.hiddenIDs)
+        result.dislikedIDs = strings(source.dislikedIDs, limit: 6000).filter(VideoID.isValid)
+        result.likedIDs.removeAll { result.dislikedIDs.contains($0) }
         var playlists: [Playlist] = [], positions: [String: Int] = [:]
         for playlist in source.playlists.prefix(300) where !playlist.id.isEmpty {
             if let index = positions[playlist.id] { playlists[index].trackIDs = ids(playlists[index].trackIDs + playlist.trackIDs) }

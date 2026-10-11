@@ -16,6 +16,7 @@ public struct Track: Codable, Hashable, Identifiable, Sendable {
     public var mood: String = ""
     public var tags: [String] = []
     public var language: String = ""
+    public var soundProfile: SoundProfile?
 
     public init(videoID: String, title: String, artist: String, duration: Double = 0,
                 artworkURL: URL? = nil, genres: [String] = [], moodHints: [String] = [], relatedTo: [String] = [], directRelatedTo: [String] = [], discoveryLanguages: [String] = [], genre: String = "", mood: String = "", tags: [String] = [], language: String = "") {
@@ -25,7 +26,7 @@ public struct Track: Codable, Hashable, Identifiable, Sendable {
         self.directRelatedTo = directRelatedTo; self.discoveryLanguages = discoveryLanguages
         self.genre = genre; self.mood = mood; self.tags = tags; self.language = language
     }
-    private enum CodingKeys: String, CodingKey { case videoID, title, artist, duration, artworkURL, genres, moodHints, relatedTo, directRelatedTo, discoveryLanguages, genre, mood, tags, language }
+    private enum CodingKeys: String, CodingKey { case videoID, title, artist, duration, artworkURL, genres, moodHints, relatedTo, directRelatedTo, discoveryLanguages, genre, mood, tags, language, soundProfile }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         videoID = try c.decode(String.self, forKey: .videoID)
@@ -41,11 +42,12 @@ public struct Track: Codable, Hashable, Identifiable, Sendable {
         mood = try c.decodeIfPresent(String.self, forKey: .mood) ?? ""
         tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
         language = try c.decodeIfPresent(String.self, forKey: .language) ?? ""
+        soundProfile = try c.decodeIfPresent(SoundProfile.self, forKey: .soundProfile).flatMap { $0.isValid ? $0 : nil }
     }
     private static func safeDuration(_ value: Double) -> Double { value.isFinite ? min(86400, max(0, value)) : 0 }
 }
 
-public enum FeedbackKind: String, Codable, Sendable { case play, listen, skip, error, like; case playlistAdd = "playlist-add" }
+public enum FeedbackKind: String, Codable, Sendable { case play, listen, skip, error, like, dislike; case playlistAdd = "playlist-add" }
 public struct ListeningEvent: Codable, Sendable {
     public let trackID: String
     public let kind: FeedbackKind
@@ -64,6 +66,7 @@ public struct ListeningEvent: Codable, Sendable {
         self.ratio = ratio.isFinite ? min(1, max(0, ratio)) : 0; self.mood = mood
     }
     public var reward: Double? {
+        if kind == .dislike { return 0 }
         if kind == .like || kind == .playlistAdd { return 1 }
         guard seconds >= 3 else { return nil }
         if kind == .listen { return ratio >= 0.8 ? 1 : ratio >= 0.5 ? 0.7 : nil }
@@ -134,17 +137,19 @@ public struct Library: Codable, Sendable {
     public var tracks: [String: Track] = [:]
     public var likedIDs: [String] = []
     public var hiddenIDs: [String] = []
+    public var dislikedIDs: [String] = []
     public var playlists: [Playlist] = []
     public var events: [ListeningEvent] = []
     public var settings = PulseSettings()
     public init() {}
-    private enum CodingKeys: String, CodingKey { case version, tracks, likedIDs, hiddenIDs, playlists, events, settings }
+    private enum CodingKeys: String, CodingKey { case version, tracks, likedIDs, hiddenIDs, dislikedIDs, playlists, events, settings }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         version = try c.decode(Int.self, forKey: .version)
         tracks = try c.decode([String: Track].self, forKey: .tracks)
         likedIDs = try c.decode([String].self, forKey: .likedIDs)
         hiddenIDs = try c.decodeIfPresent([String].self, forKey: .hiddenIDs) ?? []
+        dislikedIDs = try c.decodeIfPresent([String].self, forKey: .dislikedIDs) ?? []
         playlists = try c.decode([Playlist].self, forKey: .playlists)
         events = try c.decode([ListeningEvent].self, forKey: .events)
         settings = try c.decode(PulseSettings.self, forKey: .settings)
@@ -152,6 +157,7 @@ public struct Library: Codable, Sendable {
     public mutating func merge(_ incoming: [Track]) {
         for var track in incoming {
             if let old = tracks[track.id] {
+                if track.soundProfile == nil { track.soundProfile = old.soundProfile }
                 if track.duration <= 0 { track.duration = old.duration }
                 if track.artworkURL == nil { track.artworkURL = old.artworkURL }
                 if track.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { track.title = old.title }

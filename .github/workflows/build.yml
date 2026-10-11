@@ -1,7 +1,7 @@
 name: Check and build Forma
 on:
   push:
-    branches: [main]
+    branches: [main, google-sync-audio]
     paths-ignore: ['downloads/**', 'artifacts/**', '**.md']
   pull_request:
   workflow_dispatch:

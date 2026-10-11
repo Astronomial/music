@@ -22,6 +22,7 @@ final class AppModel: ObservableObject {
     private var syncBackoff = SyncBackoff()
     private var syncRouteAllowed = false
     private var lastAutomaticRefresh = Date.distantPast
+    let google = GoogleAccount()
     let player: PlaybackController
     private let audioResolver: any StreamResolving
     private let catalog: any MusicCatalogProviding
@@ -97,10 +98,10 @@ final class AppModel: ObservableObject {
             if let exposure = choice.exposure { self.selectedContexts[choice.id] = exposure }
             return choice.track
         }
-        let startupEpoch = connectionEpoch
-        Task {
+                Task {
             await restoreLibrary()
-            await restorePCConnection(epoch: startupEpoch)
+            await google.restore()
+            if google.email != nil { scheduleSync() }
         }
     }
     deinit {
@@ -128,7 +129,7 @@ final class AppModel: ObservableObject {
     }
     func becameActive() async {
         if !isRestoringLibrary, !didLoadLibrary { await restoreLibrary() }
-        if pcHost == nil, !isSyncing { await restorePCConnection(epoch: connectionEpoch) }
+        await google.restore()
         await synchronize()
     }
     private func restorePCConnection(epoch: UUID) async {
@@ -144,7 +145,7 @@ final class AppModel: ObservableObject {
         localWiFiAvailable = available; updateSyncRoute()
     }
     private func updateSyncRoute() {
-        let allowed = canSynchronizePC
+        let allowed = google.email != nil ? player.networkPolicy.reachable : canSynchronizePC
         guard allowed != syncRouteAllowed else { return }
         syncRouteAllowed = allowed; syncBackoff.reset()
         if allowed { scheduleSync() } else { stopSyncForNetwork() }
@@ -152,15 +153,24 @@ final class AppModel: ObservableObject {
     private func stopSyncForNetwork() {
         syncTask?.cancel(); syncEpoch = UUID(); isSyncing = false
         Task { await sync.cancelPendingRequests() }
-        if pcHost != nil { syncStatus = "Синхронизация продолжится по Wi-Fi. Изменения сохранены" }
+        if google.email != nil { syncStatus = "Нет соединения. Изменения сохранены на iPhone" }
+        else if pcHost != nil { syncStatus = "Синхронизация продолжится по Wi-Fi. Изменения сохранены" }
     }
     func prepareTracks(_ tracks: [Track]) async { guard player.networkPolicy.canPrewarmExtraTracks else { return }; await audioResolver.prewarm(videoIDs: Array(tracks.prefix(3).map(\.id))) }
     var liked: [Track] { library.likedIDs.compactMap { library.tracks[$0] } }
     func isLiked(_ track: Track) -> Bool { library.likedIDs.contains(track.id) }
+    func isDisliked(_ track: Track) -> Bool { library.dislikedIDs.contains(track.id) }
+    func toggleDislike(_ track: Track) {
+        library.merge([track]); let disliked = isDisliked(track)
+        library.likedIDs.removeAll { $0 == track.id }; library.events.removeAll { $0.trackID == track.id && $0.kind == .dislike }
+        if disliked { library.dislikedIDs.removeAll { $0 == track.id } }
+        else { library.dislikedIDs.append(track.id); library.record(.init(trackID: track.id, kind: .dislike, seconds: 0, ratio: 0, recommendation: context(for: track), surface: player.selectionSurface)) }
+        changed()
+    }
     func toggleLike(_ track: Track) {
         library.merge([track])
         if isLiked(track) { library.likedIDs.removeAll { $0 == track.id } }
-        else { library.likedIDs.append(track.id); library.record(.init(trackID: track.id, kind: .like, seconds: 0, ratio: 0, recommendation: context(for: track), surface: player.current?.id == track.id ? player.selectionSurface : "library")) }
+        else { library.dislikedIDs.removeAll { $0 == track.id }; library.events.removeAll { $0.trackID == track.id && $0.kind == .dislike }; library.likedIDs.append(track.id); library.record(.init(trackID: track.id, kind: .like, seconds: 0, ratio: 0, recommendation: context(for: track), surface: player.current?.id == track.id ? player.selectionSurface : "library")) }
         changed()
     }
     func createPlaylist(_ name: String) {
@@ -398,7 +408,7 @@ final class AppModel: ObservableObject {
         scheduleSync()
     }
     private func scheduleSync() {
-        guard didLoadLibrary, pcHost != nil, canSynchronizePC, syncBackoff.allows() else { return }
+        guard didLoadLibrary, (google.email != nil ? player.networkPolicy.reachable : pcHost != nil && canSynchronizePC), syncBackoff.allows() else { return }
         syncTask?.cancel(); syncTask = Task {
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             guard !Task.isCancelled else { return }; await synchronize()
@@ -428,7 +438,39 @@ final class AppModel: ObservableObject {
         try? await storage?.saveSyncBase(nil)
         if connectionEpoch == epoch { syncStatus = "ПК отключён" }
     }
+    func loginGoogle(_ clientID: String) async {
+        guard didLoadLibrary, !isSyncing else { return }
+        do { try await google.login(clientID); await disconnectPC(); syncBackoff.reset(); await synchronize(showErrors: true) }
+        catch { message = error.localizedDescription }
+    }
+    func logoutGoogle() async {
+        syncEpoch = UUID(); syncTask?.cancel(); isSyncing = false
+        do { try await google.logout(); syncStatus = "Google отключён. Библиотека сохранена на iPhone" }
+        catch { message = error.localizedDescription }
+    }
+    private func synchronizeGoogle(showErrors: Bool) async {
+        guard didLoadLibrary, !isSyncing, !player.isLoading, syncBackoff.allows(manual: showErrors) else { return }
+        let epoch = syncEpoch, sent = library; isSyncing = true
+        defer { if epoch == syncEpoch { isSyncing = false } }
+        do {
+            let exchange = try await google.client.exchange(sent)
+            guard epoch == syncEpoch else { return }
+            let merged = LibrarySync.merge(current: exchange.library, base: sent, incoming: library)
+            persistTask?.cancel(); saveRevision += 1
+            guard let storage else { return }; try await storage.save(merged, revision: saveRevision)
+            guard epoch == syncEpoch else { return }
+            library = merged; updateRecommendations()
+            try await google.client.commit(exchange)
+            guard epoch == syncEpoch else { return }
+            syncBackoff.reset(); syncStatus = "Google · синхронизировано \(Date().formatted(date: .omitted, time: .shortened))"
+        } catch {
+            guard epoch == syncEpoch else { return }; syncBackoff.failed()
+            syncStatus = "Облако недоступно. Изменения сохранены на iPhone"
+            if showErrors { message = error.localizedDescription }
+        }
+    }
     func synchronize(showErrors: Bool = false) async {
+        if google.email != nil { await synchronizeGoogle(showErrors: showErrors); return }
         guard didLoadLibrary, !isSyncing, pcHost != nil, let pcIdentity else { return }
         guard canSynchronizePC else { stopSyncForNetwork(); return }
         guard syncBackoff.allows(manual: showErrors) else { return }

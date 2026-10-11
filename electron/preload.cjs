@@ -1,6 +1,10 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('forma',{
   desktop:true,
+  googleStatus:()=>ipcRenderer.invoke('google:status'),
+  googleLogin:config=>ipcRenderer.invoke('google:login',config),
+  googleLogout:()=>ipcRenderer.invoke('google:logout'),
+  googleSync:()=>ipcRenderer.invoke('google:sync'),
   syncStatus:()=>ipcRenderer.invoke('sync:status'),
   syncStart:()=>ipcRenderer.invoke('sync:start'),
   syncStop:()=>ipcRenderer.invoke('sync:stop'),
