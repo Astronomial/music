@@ -6,7 +6,7 @@ final class CloudSoundTests: XCTestCase {
     private let id = "abcdefghijk", other = "lmnopqrstuv"
     private struct Fixture: Decodable { let warm: SoundProfile; let bright: SoundProfile; let document: CloudDocument; let library: Library }
     private func fixture() throws -> Fixture {
-        let url = Bundle.module.url(forResource: "cloud-sound", withExtension: "json", subdirectory: "Fixtures")!
+        let url = try XCTUnwrap(Bundle.module.url(forResource: "cloud-sound", withExtension: "json"))
         let d = JSONDecoder(); d.dateDecodingStrategy = .millisecondsSince1970
         return try d.decode(Fixture.self, from: Data(contentsOf: url))
     }
