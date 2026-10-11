@@ -43,7 +43,7 @@ final class PlaybackController: ObservableObject {
     private var prefetchedCurrent: String?
     private var prepared: (track: Track, item: AVPlayerItem, audio: ResolvedAudio)?
     @Published private(set) var preparationDepth = 3
-    private struct BufferedItem { let track: Track; let item: AVPlayerItem; let audio: ResolvedAudio; let player: AVPlayer }
+    private struct BufferedItem { let track: Track; let item: AVPlayerItem; let audio: ResolvedAudio; let player: AVQueuePlayer }
     private var bufferedItems: [String: BufferedItem] = [:]
     private var extraPrefetch: Task<Void, Never>?
     private var extraToken = UUID()
@@ -91,15 +91,16 @@ final class PlaybackController: ObservableObject {
         network.start(queue: DispatchQueue(label: "music.forma.network"))
     }
     private func configureEngine() {
+        engine.isMuted = false
         engine.volume = volume
         // AAC can start with a small buffer; AVPlayer's conservative wait can take seconds.
         engine.automaticallyWaitsToMinimizeStalling = false
-        periodic = engine.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.tick() }
+        periodic = engine.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self, weak observedEngine = engine] _ in
+            Task { @MainActor in guard let self, self.engine === observedEngine else { return }; self.tick() }
         }
-        statusObservation = engine.observe(\.timeControlStatus, options: [.new]) { [weak self] _, _ in
+        statusObservation = engine.observe(\.timeControlStatus, options: [.new]) { [weak self, weak observedEngine = engine] _, _ in
             Task { @MainActor in
-                guard let self else { return }
+                guard let self, self.engine === observedEngine else { return }
                 self.adoptPreparedItem()
                 let now = ProcessInfo.processInfo.systemUptime
                 self.clock.tick(at: now, playing: self.isPlaying, seeking: self.seeking)
@@ -113,9 +114,17 @@ final class PlaybackController: ObservableObject {
             }
         }
         engine.actionAtItemEnd = .advance
-        currentObservation = engine.observe(\.currentItem, options: [.new]) { [weak self] _, _ in
-            Task { @MainActor in self?.adoptPreparedItem() }
+        currentObservation = engine.observe(\.currentItem, options: [.new]) { [weak self, weak observedEngine = engine] _, _ in
+            Task { @MainActor in guard let self, self.engine === observedEngine else { return }; self.adoptPreparedItem() }
         }
+    }
+    private func promote(_ player: AVQueuePlayer) {
+        // Promote the owning player, never move its AVPlayerItem to another
+        // player. AVFoundation may keep that association after replace(nil).
+        engine.pause()
+        if let periodic { engine.removeTimeObserver(periodic); self.periodic = nil }
+        statusObservation = nil; currentObservation = nil; itemObservation = nil
+        engine.removeAllItems(); engine = player; configureEngine()
     }
     deinit {
         extraPrefetch?.cancel(); extraPending?.player.cancelPendingPrerolls(); extraPending?.player.replaceCurrentItem(with: nil)
@@ -190,6 +199,7 @@ final class PlaybackController: ObservableObject {
             pulseMode = asPulse; mood = context; playedInRun = []
         }
         if alreadyAdvanced { refreshPreparedSelection(); resume(); return }
+        if bufferedItems[track.id]?.audio.isFresh(margin: 45) == true { start(track); return }
         if let ready = prepared, ready.track.id == track.id, ready.audio.isFresh(margin: 15), ready.item.status != .failed, engine.items().contains(ready.item) {
             beginTiming(source: "prepared")
             requestedPlayback = true; engine.advanceToNextItem(); adoptPreparedItem()
@@ -232,8 +242,9 @@ final class PlaybackController: ObservableObject {
                 if requestedPlayback, !interrupted { armStartWatchdog(seconds: networkPolicy.bufferDeadline(base: bufferTimeout), token: token) }
                 let item = buffered?.item ?? makePlayerItem(resolved.url)
                 item.preferredForwardBufferDuration = networkPolicy.lean ? 6 : 3
+                if let buffered { promote(buffered.player) }
+                else { engine.insert(item, after: nil) }
                 observe(item, token: token)
-                engine.insert(item, after: nil)
                 if seconds > 0 { await engine.seek(to: CMTime(seconds: seconds, preferredTimescale: 600)) }
                 guard generation == token, !Task.isCancelled else { return }
                 if requestedPlayback, !interrupted, !mediaServicesLost { try activateAudio(); confirmStart(); engine.play() }
@@ -275,6 +286,10 @@ final class PlaybackController: ObservableObject {
         if let current { playedInRun.insert(current.id) }
         if pulseMode { refreshPreparedSelection() }
         if let ready = prepared, ready.audio.isFresh(margin: 15), ready.item.status != .failed, engine.items().contains(ready.item) {
+            if bufferedItems[ready.track.id]?.audio.isFresh(margin: 45) == true {
+                if !pulseMode { queue.removeAll { $0.id == ready.track.id } }
+                start(ready.track); return
+            }
             beginTiming(source: "prepared")
             requestedPlayback = true; engine.advanceToNextItem(); adoptPreparedItem(); if !interrupted { engine.play() }; return
         }
@@ -295,14 +310,18 @@ final class PlaybackController: ObservableObject {
         current = ready.track; startedID = nil; prepared = nil; position = 0; duration = ready.track.duration
         clock.reset(); retryCount = 0; artworkTask?.cancel(); artworkTask = nil; artwork = nil; error = nil
         generation = UUID(); prefetchedCurrent = nil; failedCandidates = []
-        observe(ready.item, token: generation)
+        if let buffered = takeBufferedItem(ready.track.id) {
+            promote(buffered.player)
+            observe(buffered.item, token: generation)
+            if requestedPlayback, !interrupted, !mediaServicesLost { engine.play() }
+        } else { observe(ready.item, token: generation) }
         cancelStartConfirmation(); isPlaying = false
         isLoading = requestedPlayback && !interrupted && !mediaServicesLost
         if isLoading { armStartWatchdog(seconds: networkPolicy.bufferDeadline(base: bufferTimeout), token: generation); confirmStart() }
         updateNowPlaying()
     }
 #if DEBUG && targetEnvironment(simulator)
-    var debugPreparedTrackID: String? { prepared?.item.status == .readyToPlay ? prepared?.track.id : nil }
+    var debugPreparedTrackID: String? { guard let prepared else { return nil }; return prepared.item.status == .readyToPlay || bufferedItems[prepared.track.id]?.item.status == .readyToPlay ? prepared.track.id : nil }
     var debugBufferedTrackIDs: Set<String> { Set(bufferedItems.filter { $0.value.item.status == .readyToPlay && $0.value.audio.isFresh(margin: 45) }.keys) }
     var debugExtraPlayersMuted: Bool { bufferedItems.values.allSatisfy { $0.player.isMuted && $0.player.rate == 0 } }
     var debugHasPlayerItem: Bool { engine.currentItem != nil }
@@ -434,22 +453,15 @@ final class PlaybackController: ObservableObject {
         prefetch = Task { [weak self] in
             guard let self else { return }
             do {
-                let buffered = takeBufferedItem(next.id)
+                let buffered = bufferedItems[next.id].flatMap { $0.audio.isFresh(margin: 45) ? $0 : nil }
                 let audio: ResolvedAudio
                 if let buffered { audio = buffered.audio }
                 else { audio = try await resolver.resolve(videoID: next.id, forceRefresh: false) }
                 try Task.checkCancellation()
                 guard generation == token, preparationToken == requestToken, engine.currentItem === active else { return }
-                let item = buffered?.item ?? makePlayerItem(audio.url); item.preferredForwardBufferDuration = networkPolicy.lean ? 12 : 8
-                if buffered == nil {
-                    // AVQueuePlayer can defer opening a queued asset until the
-                    // current song nears its end. Warm it now without sound.
-                    let warmer = AVPlayer(playerItem: item); warmer.isMuted = true; warmer.volume = 0; warmer.allowsExternalPlayback = false
-                    _ = await AudioPreroll(warmer).wait(seconds: networkPolicy.lean ? 12 : 8)
-                    warmer.pause(); warmer.replaceCurrentItem(with: nil)
-                    try Task.checkCancellation()
-                    guard generation == token, preparationToken == requestToken, engine.currentItem === active else { return }
-                }
+                // The main queue retains its normal automatic transition. Its
+                // item is distinct from the independently warmed player's item.
+                let item = makePlayerItem(audio.url); item.preferredForwardBufferDuration = networkPolicy.lean ? 12 : 8
                 guard engine.canInsert(item, after: active) else { preparing = false; return }
                 prepared = (next, item, audio); engine.insert(item, after: active); preparing = false
                 scheduleExtraPreparation()
@@ -496,14 +508,13 @@ final class PlaybackController: ObservableObject {
     }
     private func takeBufferedItem(_ id: String) -> BufferedItem? {
         guard let entry = bufferedItems.removeValue(forKey: id) else { return nil }
-        entry.player.pause(); entry.player.cancelPendingPrerolls(); entry.player.replaceCurrentItem(with: nil)
-        guard entry.audio.isFresh(margin: 45), entry.item.status == .readyToPlay else { return nil }
+        guard entry.audio.isFresh(margin: 45), entry.item.status == .readyToPlay else { entry.player.removeAllItems(); return nil }
         return entry
     }
     private func scheduleExtraPreparation() {
-        guard preparationDepth > 1, isPlaying, requestedPlayback, !isLoading, !interrupted, !mediaServicesLost,
-              !networkRecovering, networkPolicy.canPrewarmExtraTracks, let prepared, prepared.item.status == .readyToPlay else { return }
-        var exclude: Set<String> = [prepared.track.id], desired: [Track] = []
+        guard isPlaying, requestedPlayback, !isLoading, !interrupted, !mediaServicesLost,
+              !networkRecovering, networkPolicy.canPrewarmExtraTracks, let prepared, prepared.item.status != .failed else { return }
+        var exclude: Set<String> = [prepared.track.id], desired: [Track] = [prepared.track]
         for _ in 1..<preparationDepth {
             guard let track = candidate(excluding: exclude) else { break }
             exclude.insert(track.id); desired.append(track)
@@ -516,17 +527,19 @@ final class PlaybackController: ObservableObject {
         cancelExtraPreparation(); extraDesired = ids
         let missing = desired.filter { bufferedItems[$0.id] == nil && now.timeIntervalSince(warmingFailures[$0.id] ?? .distantPast) > 30 }
         guard !missing.isEmpty else { return }
-        let token = extraToken
+        let token = extraToken, nearest = prepared
         extraPrefetch = Task(priority: .utility) { [weak self] in
             do { try await Task.sleep(nanoseconds: 500_000_000) } catch { return }
             for track in missing {
                 guard let self, !Task.isCancelled, extraToken == token, isPlaying else { return }
                 do {
-                    let audio = try await resolver.analysisAudio(videoID: track.id)
+                    let audio: ResolvedAudio
+                    if track.id == nearest.track.id { audio = nearest.audio }
+                    else { audio = try await resolver.analysisAudio(videoID: track.id) }
                     try Task.checkCancellation(); guard extraToken == token, isPlaying else { return }
                     let item = makePlayerItem(audio.url); item.preferredForwardBufferDuration = 3
                     item.canUseNetworkResourcesForLiveStreamingWhilePaused = false
-                    let warmer = AVPlayer(playerItem: item); warmer.isMuted = true; warmer.volume = 0; warmer.allowsExternalPlayback = false
+                    let warmer = AVQueuePlayer(items: [item]); warmer.isMuted = true; warmer.volume = 0; warmer.allowsExternalPlayback = false
                     let entry = BufferedItem(track: track, item: item, audio: audio, player: warmer); extraPending = entry
                     let ready = await AudioPreroll(warmer).wait(seconds: networkPolicy.lean ? 12 : 8)
                     try Task.checkCancellation()

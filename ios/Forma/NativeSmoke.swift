@@ -255,7 +255,7 @@ enum NativeSmoke {
                 if player.measurements.count > switchSamples { break }
                 try await Task.sleep(nanoseconds: 10_000_000)
             }
-            guard let warmed = player.measurements.dropFirst(switchSamples).last, warmed.source == "prepared", warmed.totalMilliseconds < 250 else { throw SyncError.rejected("Prepared playback exceeded 250ms: \(player.debugPlaybackState); sample=\(player.measurements.dropFirst(switchSamples).last?.totalMilliseconds ?? -1)") }
+            guard let warmed = player.measurements.dropFirst(switchSamples).last, ["prepared", "buffered"].contains(warmed.source), warmed.totalMilliseconds < 250 else { throw SyncError.rejected("Prepared playback exceeded 250ms: \(player.debugPlaybackState); sample=\(player.measurements.dropFirst(switchSamples).last?.totalMilliseconds ?? -1)") }
             let preparedPlayingMilliseconds = warmed.totalMilliseconds
             let callsAfter = await fixtureResolver.calls[tracks[1].id]
             guard callsAfter == callsBefore else { throw SyncError.rejected("Prepared track was extracted twice: \(callsBefore ?? 0) -> \(callsAfter ?? 0); \(player.error ?? "no error"), playing \(player.isPlaying)") }
@@ -344,10 +344,10 @@ enum NativeSmoke {
         try await Task.sleep(nanoseconds: 450_000_000)
         player.setPreparationDepth(3); player.play(tracks[0], list: tracks)
         for _ in 0..<1500 {
-            if player.debugPreparedTrackID == tracks[1].id, player.debugBufferedTrackIDs == Set(tracks.dropFirst(2).map(\.id)) { break }
+            if player.debugPreparedTrackID == tracks[1].id, player.debugBufferedTrackIDs == Set(tracks.dropFirst().map(\.id)) { break }
             try await Task.sleep(nanoseconds: 20_000_000)
         }
-        guard player.debugPreparedTrackID == tracks[1].id, player.debugBufferedTrackIDs == Set(tracks.dropFirst(2).map(\.id)), player.debugExtraPlayersMuted else { throw SyncError.rejected("Three-track muted preparation failed: \(player.debugBufferedTrackIDs); \(player.debugPlaybackState)") }
+        guard player.debugPreparedTrackID == tracks[1].id, player.debugBufferedTrackIDs == Set(tracks.dropFirst().map(\.id)), player.debugExtraPlayersMuted else { throw SyncError.rejected("Three-track muted preparation failed: \(player.debugBufferedTrackIDs); \(player.debugPlaybackState)") }
         let before = await resolver.calls[tracks[3].id], sampleCount = player.measurements.count
         player.play(tracks[3], list: tracks)
         for _ in 0..<100 { if player.measurements.count > sampleCount { break }; try await Task.sleep(nanoseconds: 10_000_000) }
