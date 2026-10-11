@@ -19,7 +19,7 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
-      - name: Check UI, native AAC decoding and Google settings
+      - name: Check UI, native AAC decoding and reviewed Wi-Fi sync
         env:
           CHROMIUM_PATH: /usr/bin/google-chrome
         run: |

@@ -49,7 +49,7 @@ class SyncServer {
         :req.url==='/sync/reject'?await this.approvals.reject(body.id,device.id)
         :await this.approvals.acknowledge(body.id,device.id);
       send(200,data);
-    } catch(e){send(409,{error:e.message});}
+    } catch(e){send(409,{error:e.message,...(e.code==='proposal_missing'?{code:e.code}:{})});}
   }
 }
 module.exports={SyncServer,LibraryCoordinator,privateIP};

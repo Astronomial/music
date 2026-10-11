@@ -483,6 +483,12 @@ final class AppModel: ObservableObject {
             guard epoch == syncEpoch else { return }
             syncProposal = proposal; syncBackoff.reset()
             try await receiveProposal(proposal, checkpoint: checkpoint, epoch: epoch)
+        } catch SyncError.proposalMissing {
+            guard epoch == syncEpoch else { return }
+            do { try await storage.savePendingSync(nil) } catch { message = error.localizedDescription; return }
+            guard epoch == syncEpoch else { return }
+            pendingExchange = nil; syncProposal = nil; syncBackoff.reset()
+            syncStatus = "Срок хранения пакета истёк. Подготовь новый обмен; библиотека сохранена"
         } catch {
             guard epoch == syncEpoch else { return }; syncBackoff.failed()
             syncStatus = "Обмен не завершён. Библиотека сохранена на iPhone"

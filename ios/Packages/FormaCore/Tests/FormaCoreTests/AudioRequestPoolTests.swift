@@ -58,7 +58,9 @@ final class AudioRequestPoolTests: XCTestCase {
         let result = try await retry.value; XCTAssertTrue(result.isFresh())
     }
     func testDeadlineReleasesWaiterEvenWhenLoaderIgnoresCancellation() async throws {
-        let probe = ExtractionProbe(cooperative: false), pool = AudioRequestPool(timeout: 0.05) { try await probe.load($0) }
+        // CI can pause an actor for more than 50 ms. A 250-ms deadline still
+        // exercises a hung loader, without racing the explicitly finished retry.
+        let probe = ExtractionProbe(cooperative: false), pool = AudioRequestPool(timeout: 0.25) { try await probe.load($0) }
         let first = Task { try await pool.resolve(videoID: id) }
         try await wait { await probe.calls == 1 }
         do { _ = try await first.value; XCTFail("Hung extraction returned audio") } catch { XCTAssertTrue(error is AudioRequestPool.LoadError) }
@@ -68,6 +70,7 @@ final class AudioRequestPoolTests: XCTestCase {
         try await wait { await probe.calls == 2 }; try await probe.finish(2)
         let result = try await retry.value
         XCTAssertEqual(URLComponents(url: result.url, resolvingAgainstBaseURL: false)?.queryItems?.first?.value, "2")
+        let remaining = await pool.activeConsumerCount; XCTAssertEqual(remaining, 0)
     }
     func testInvalidationRejectsOldConsumersAndCannotCacheLateOldNetworkResult() async throws {
         let probe = ExtractionProbe(cooperative: false), pool = AudioRequestPool(timeout: 2) { try await probe.load($0) }

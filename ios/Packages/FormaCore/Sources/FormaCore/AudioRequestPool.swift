@@ -20,6 +20,9 @@ public actor AudioRequestPool {
         self.loader = loader
     }
     public func resolve(videoID: String, forceRefresh: Bool = false) async throws -> ResolvedAudio {
+        // Loader callbacks hold only weak references. Keep the pool alive until
+        // this suspended consumer finishes, even if its owner is released.
+        defer { withExtendedLifetime(self) {} }
         try Task.checkCancellation()
         if forceRefresh { cancel(videoID: videoID) }
         if let hit = cache[videoID], hit.isFresh() { return hit }

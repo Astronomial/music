@@ -35,12 +35,13 @@ struct PCConnection: Codable, Sendable {
     }
 }
 enum SyncError: LocalizedError {
-    case invalidCode, rejected(String), tooLarge
+    case invalidCode, rejected(String), tooLarge, proposalMissing
     var errorDescription: String? {
         switch self {
         case .invalidCode: return "Скопируй полный код подключения из настроек Forma на ПК."
         case .rejected(let message): return message
         case .tooLarge: return "Библиотека слишком большая для синхронизации."
+        case .proposalMissing: return "Пакет больше не хранится на ПК. Подготовь новый обмен и подтверди его."
         }
     }
 }
@@ -75,7 +76,7 @@ private final class PinnedPCSession: NSObject, URLSessionDelegate, URLSessionTas
 }
 actor SyncClient {
     struct ConnectionRead: Sendable { let connection: PCConnection?; let retry: Bool }
-    private struct Failure: Decodable { let error: String }
+    private struct Failure: Decodable { let error: String; let code: String? }
     private(set) var connection: PCConnection?
     private let account = "music.forma.pc-connection"
     private let readConnection: @Sendable () -> ConnectionRead
@@ -167,7 +168,9 @@ actor SyncClient {
         catch { if let issue = delegate.validationIssue { throw SyncError.rejected(issue) }; throw error }
         guard bytes.count <= 8 * 1024 * 1024 else { throw SyncError.tooLarge }
         guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-            throw SyncError.rejected((try? JSONDecoder().decode(Failure.self, from: bytes).error) ?? "ПК недоступен. Проверь сеть и разрешение брандмауэра.")
+            let failure = try? JSONDecoder().decode(Failure.self, from: bytes)
+            if (response as? HTTPURLResponse)?.statusCode == 409, failure?.code == "proposal_missing" { throw SyncError.proposalMissing }
+            throw SyncError.rejected(failure?.error ?? "ПК недоступен. Проверь сеть и разрешение брандмауэра.")
         }
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .millisecondsSince1970
         return try decoder.decode(Reply.self, from: bytes)

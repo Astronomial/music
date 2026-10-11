@@ -5,9 +5,10 @@ class SyncApprovals {
   async persist(){if(JSON.stringify(this.proposals).length>32*1024**2)throw new Error('Слишком много данных ожидают подтверждения');await this.store.write('sync-proposals.json',this.proposals);}
   async restore(deviceIDs){
     const {sanitizePortable,applyPortable,portableLibrary}=await import('../src/core/sync.mjs');const {stableJSON}=await import('../src/core/sync-preview.mjs');
-    this.proposals=[];this.receipts=(await this.store.read('sync-receipts.json',[])||[]).filter(r=>validID(r.id)&&deviceIDs.includes(r.deviceID)&&r.expiresAt>Date.now()).slice(-100);
-    for(const p of await this.store.read('sync-proposals.json',[])||[]){
-      if(!validID(p.id)||!deviceIDs.includes(p.deviceID)||!['pending','committing','approved','rejected','stale'].includes(p.status)||!Number.isFinite(p.expiresAt)||p.expiresAt<Date.now())continue;
+    const receipts=await this.store.read('sync-receipts.json',[]),saved=await this.store.read('sync-proposals.json',[]);
+    this.proposals=[];this.receipts=(Array.isArray(receipts)?receipts:[]).filter(r=>r&&validID(r.id)&&deviceIDs.includes(r.deviceID)&&r.expiresAt>Date.now()).slice(-100);
+    for(const p of Array.isArray(saved)?saved:[]){
+      if(!p||!validID(p.id)||!deviceIDs.includes(p.deviceID)||!['pending','committing','approved','rejected','stale'].includes(p.status)||!Number.isFinite(p.expiresAt)||p.expiresAt<Date.now())continue;
       try{p.sent=sanitizePortable(p.sent);p.snapshot=sanitizePortable(p.snapshot);p.merged=sanitizePortable(p.merged);this.proposals.push(p);}catch{/* Invalid drafts cannot touch a library. */}
     }
     for(const p of this.proposals.filter(p=>p.status==='committing')){
@@ -18,7 +19,8 @@ class SyncApprovals {
   prune(){for(const p of this.proposals)if(p.status==='pending'&&p.expiresAt<Date.now())p.status='stale';this.proposals=this.proposals.filter(p=>p.expiresAt>Date.now()||p.status==='stale'&&p.expiresAt>Date.now()-86400000);}
   public(p){return {protocolVersion:2,id:p.id,status:p.status,deviceName:p.deviceName,createdAt:p.createdAt,expiresAt:p.expiresAt,summary:p.summary,...(p.status==='approved'?{library:p.merged}:{})};}
   pending(){this.prune();return this.proposals.filter(p=>p.status==='pending').map(p=>{const {library,...safe}=this.public(p);return safe;});}
-  find(id,deviceID){const p=this.proposals.find(p=>p.id===id&&(!deviceID||p.deviceID===deviceID));if(!p)throw new Error('Пакет не найден. Подготовь обмен заново');return p;}
+  missing(){return Object.assign(new Error('Пакет больше не хранится на ПК. Подготовь обмен заново'),{code:'proposal_missing'});}
+  find(id,deviceID){const p=this.proposals.find(p=>p.id===id&&(!deviceID||p.deviceID===deviceID));if(!p)throw this.missing();return p;}
   async prepare(device,body){return this.serialized(async()=>{
     this.prune();if(!validID(body.id))throw new Error('Некорректный идентификатор пакета');
     const duplicate=this.proposals.find(p=>p.id===body.id);if(duplicate){if(duplicate.deviceID!==device.id)throw new Error('Пакет принадлежит другому телефону');return this.public(duplicate);}
@@ -40,10 +42,10 @@ class SyncApprovals {
     },{afterWrite:async()=>{p.status='approved';await this.persist();}});
     this.onChange?.(updated);return this.public(p);
   });}
-  async reject(id,deviceID){return this.serialized(async()=>{const p=this.find(id,deviceID);if(p.status==='approved')throw new Error('Обмен уже подтверждён');p.status='rejected';p.expiresAt=Date.now()+86400000;await this.persist();return this.public(p);});}
+  async reject(id,deviceID){return this.serialized(async()=>{const p=this.find(id,deviceID);if(['approved','committing'].includes(p.status))throw new Error('Обмен уже подтверждён');p.status='rejected';p.expiresAt=Date.now()+86400000;await this.persist();return this.public(p);});}
   async acknowledge(id,deviceID){return this.serialized(async()=>{
     const p=this.proposals.find(p=>p.id===id&&p.deviceID===deviceID);
-    if(!p){if(this.receipts.some(r=>r.id===id&&r.deviceID===deviceID&&r.expiresAt>Date.now()))return {protocolVersion:2};throw new Error('Пакет не найден');}
+    if(!p){if(this.receipts.some(r=>r.id===id&&r.deviceID===deviceID&&r.expiresAt>Date.now()))return {protocolVersion:2};throw this.missing();}
     if(p.status==='pending'||p.status==='committing')throw new Error('Пакет ещё ожидает решения');
     this.receipts=this.receipts.filter(r=>r.id!==id&&r.expiresAt>Date.now()).slice(-99);this.receipts.push({id,deviceID,expiresAt:Date.now()+86400000});
     await this.store.write('sync-receipts.json',this.receipts);

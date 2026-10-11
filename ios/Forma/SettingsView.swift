@@ -76,7 +76,7 @@ private struct WiFiSettingsView: View {
                         if proposal.status == .pending {
                             Button("Применить на обоих устройствах") { Task { await model.approveExchange() } }.buttonStyle(.borderedProminent).disabled(model.isSyncing || !model.canSynchronizePC)
                         }
-                        Button("Отклонить обмен", role: .destructive) { Task { await model.rejectExchange() } }.disabled(model.isSyncing || !model.canSynchronizePC || proposal.status == .approved)
+                        Button("Отклонить обмен", role: .destructive) { Task { await model.rejectExchange() } }.disabled(model.isSyncing || !model.canSynchronizePC || proposal.status == .approved || proposal.status == .committing)
                         Button("Проверить решение на ПК") { Task { await model.synchronize(showErrors: true) } }.disabled(model.isSyncing || !model.canSynchronizePC)
                     } else {
                         Button("Подготовить обмен") { Task { await model.synchronize(showErrors: true) } }.buttonStyle(.bordered).disabled(model.isSyncing || !model.canSynchronizePC)
