@@ -31,6 +31,7 @@ struct SettingsView: View {
                         Text("Пульс сравнивает спектр, темп, динамику и ритм. До 6 МБ на трек, 12 треков в час; временное аудио удаляется после обработки. Проанализировано: \(model.library.tracks.values.filter { $0.soundProfile != nil }.count)").font(.footnote).foregroundStyle(.secondary)
                     }
                 }
+                GlassPanel { PreparationSettingsView(player: model.player) }
                 GlassPanel { DisclosureGroup("Скорость воспроизведения") { PlaybackPerformanceView(player: model.player) } }
                 NavigationLink { PulseSettingsView(model: model) } label: { Label("Настроить Пульс", systemImage: "slider.horizontal.3").font(.headline) }
                 Text("Forma 1.3.0 · iOS 17+\nВоспроизведение работает через нативный плеер. YouTube должен быть доступен в твоей сети.").font(.footnote).foregroundStyle(.secondary)
@@ -100,6 +101,20 @@ private struct WiFiChangesView: View {
             if !summary.details.isEmpty {
                 DisclosureGroup("Какие треки и плейлисты") { ForEach(Array(summary.details.enumerated()), id: \.offset) { row in Text(row.element).font(.footnote) } }
             }
+        }
+    }
+}
+
+@MainActor
+private struct PreparationSettingsView: View {
+    @ObservedObject var player: PlaybackController
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Готовить треки заранее").font(.headline)
+            Picker("Глубина подготовки", selection: Binding(get: { player.preparationDepth }, set: { player.setPreparationDepth($0) })) {
+                Text("Следующий").tag(1); Text("До трёх").tag(3)
+            }.pickerStyle(.segmented)
+            Text("Подготовка начала следующих треков Пульса и очереди работает также по мобильной сети. Расход трафика увеличивается. В системном режиме экономии данных готовится только следующий трек.").font(.footnote).foregroundStyle(.secondary)
         }
     }
 }

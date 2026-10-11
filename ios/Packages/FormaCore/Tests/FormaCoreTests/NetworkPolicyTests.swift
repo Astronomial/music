@@ -6,7 +6,7 @@ final class NetworkPolicyTests: XCTestCase {
         let policy = NetworkPolicy(reachable: true, cellular: true, expensive: true)
         XCTAssertFalse(policy.canSyncPC(localWiFi: false))
         XCTAssertFalse(policy.canSyncPC(localWiFi: true), "Cellular Wi-Fi Assist must not upload to a private PC address")
-        XCTAssertFalse(policy.canPrewarmExtraTracks)
+        XCTAssertTrue(policy.canPrewarmExtraTracks, "User approved up to three prepared tracks on mobile data")
         XCTAssertEqual(policy.catalogParallelism, 1)
         XCTAssertEqual(policy.extractionDeadline(base: 12), 24)
         XCTAssertEqual(policy.bufferDeadline(base: 8), 12)
@@ -14,7 +14,7 @@ final class NetworkPolicyTests: XCTestCase {
     func testVPNOtherInterfaceUsesCostFlagsAndPreservesLocalWiFiSync() {
         let cellularVPN = NetworkPolicy(reachable: true, expensive: true)
         XCTAssertTrue(cellularVPN.lean)
-        XCTAssertFalse(cellularVPN.canPrewarmExtraTracks)
+        XCTAssertTrue(cellularVPN.canPrewarmExtraTracks)
         XCTAssertFalse(cellularVPN.canSyncPC(localWiFi: false))
         let wifiVPN = NetworkPolicy(reachable: true)
         XCTAssertTrue(wifiVPN.canSyncPC(localWiFi: true))
@@ -24,6 +24,7 @@ final class NetworkPolicyTests: XCTestCase {
     func testLowDataAndUnknownPathsDoNotStartOptionalPrewarming() {
         XCTAssertFalse(NetworkPolicy.unknown.canPrewarmExtraTracks)
         XCTAssertTrue(NetworkPolicy(reachable: true, constrained: true).lean)
+        XCTAssertFalse(NetworkPolicy(reachable: true, constrained: true).canPrewarmExtraTracks)
         XCTAssertFalse(NetworkPolicy(reachable: false).canPrewarmExtraTracks)
         XCTAssertEqual(NetworkPolicy(reachable: true, constrained: true).automaticRefreshInterval, 120)
     }

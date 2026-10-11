@@ -20,6 +20,18 @@ private actor FixtureResolver: StreamResolving {
     }
     func invalidate() async {}
 }
+private actor PrerollFixtureResolver: StreamResolving {
+    let urls: [String: URL]
+    private(set) var calls: [String: Int] = [:]
+    init(urls: [String: URL]) { self.urls = urls }
+    func resolve(videoID: String, forceRefresh: Bool) async throws -> ResolvedAudio {
+        calls[videoID, default: 0] += 1
+        try await Task.sleep(nanoseconds: 250_000_000)
+        guard let url = urls[videoID] else { throw SyncError.rejected("Missing preroll fixture") }
+        return ResolvedAudio(debugFixture: url)
+    }
+    func invalidate() async {}
+}
 private actor RecoveringFixtureResolver: StreamResolving {
     let audio: ResolvedAudio
     var calls = 0
@@ -154,6 +166,8 @@ enum NativeSmoke {
                   let slowURL = URL(string: args[slowIndex + 1]) else { throw SyncError.rejected("Slow audio fixture missing") }
             stage = "playback-boundaries"
             let stability = try await checkBoundaries(model: model, tracks: tracks, audio: recoveryAudio, slowURL: slowURL)
+            stage = "three-track-preroll"
+            let bufferedStartMilliseconds = try await checkThreeTrackPreroll(audio: recoveryAudio, slowURL: slowURL)
             stage = "native-playback"
             let recoveryResolver = RecoveringFixtureResolver(audio: recoveryAudio)
             let recoveryPlayer = PlaybackController(resolver: recoveryResolver, extractionTimeout: 0.1, bufferTimeout: 4)
@@ -305,9 +319,43 @@ enum NativeSmoke {
             player.resume(); try await Task.sleep(nanoseconds: 500_000_000)
             guard player.isPlaying else { throw SyncError.rejected("Resume failed") }
             var final: [String: Any] = ["status": "passed", "realPCMAnalysis": true, "nativeStarts": starts.count, "automaticTransitions": feedback.count, "background": background, "pinnedTLS": true, "wrongPinRejected": rejectedWrongPin, "bidirectionalSync": true, "wifiApprovalRequired": true, "pauseResume": true, "miniPlayerAboveTabs": true, "miniPlayerBottom": miniFrame.maxY, "tabBarTop": barFrame.minY, "preparedManualSwitchMilliseconds": switchDelay * 1000, "preparedStreamReused": true, "controlledColdStartMilliseconds": coldStartMilliseconds, "preparedPlayingMilliseconds": preparedPlayingMilliseconds, "startupTimeoutRecovered": true, "recommendationSnapshotCaptured": true, "explicitLearningFeedbackCaptured": true, "networkHandoffRecovered": true, "oldNetworkPreparedItemDiscarded": true, "networkRecoveryRespectsPause": true]
+            final["threeTracksPreparedOnCellular"] = true; final["mutedPrerollReusedWithoutExtraction"] = true; final["bufferedThirdTrackMilliseconds"] = bufferedStartMilliseconds
             stability.forEach { final[$0.key] = $0.value }; write(final)
             player.pause()
         } catch { let failure = error as NSError; write(["status": "failed", "stage": stage, "error": error.localizedDescription, "domain": failure.domain, "code": failure.code, "taskCancelled": Task.isCancelled]) }
+    }
+    private static func checkThreeTrackPreroll(audio: ResolvedAudio, slowURL: URL) async throws -> Double {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("forma-preroll-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let input = try AVAudioFile(forReading: audio.url)
+        let buffer = AVAudioPCMBuffer(pcmFormat: input.processingFormat, frameCapacity: AVAudioFrameCount(input.length))!
+        try input.read(into: buffer)
+        let longURL = folder.appendingPathComponent("warm0000000.wav")
+        do { let output = try AVAudioFile(forWriting: longURL, settings: input.processingFormat.settings); for _ in 0..<8 { try output.write(from: buffer) } }
+        let secondURL = folder.appendingPathComponent("warm0000001.wav"); try FileManager.default.copyItem(at: longURL, to: secondURL)
+        let tracks = (0..<4).map { Track(videoID: "warm000000\($0)", title: "Preroll \($0)", artist: "Fixture") }
+        var urls = [tracks[0].id: longURL, tracks[1].id: secondURL]
+        for track in tracks.dropFirst(2) { var components = URLComponents(url: slowURL, resolvingAgainstBaseURL: false)!; components.queryItems = [URLQueryItem(name: "video", value: track.id)]; urls[track.id] = components.url! }
+        let resolver = PrerollFixtureResolver(urls: urls), player = PlaybackController(resolver: resolver)
+        defer { player.pause() }
+        for _ in 0..<100 { if player.networkPolicy.known { break }; try await Task.sleep(nanoseconds: 20_000_000) }
+        player.debugNetworkChanged(NetworkPolicy(reachable: true, cellular: true, expensive: true), signature: "preroll-cellular-VPN")
+        try await Task.sleep(nanoseconds: 450_000_000)
+        player.setPreparationDepth(3); player.play(tracks[0], list: tracks)
+        for _ in 0..<1500 {
+            if player.debugPreparedTrackID == tracks[1].id, player.debugBufferedTrackIDs == Set(tracks.dropFirst(2).map(\.id)) { break }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        guard player.debugPreparedTrackID == tracks[1].id, player.debugBufferedTrackIDs == Set(tracks.dropFirst(2).map(\.id)), player.debugExtraPlayersMuted else { throw SyncError.rejected("Three-track muted preparation failed: \(player.debugBufferedTrackIDs); \(player.debugPlaybackState)") }
+        let before = await resolver.calls[tracks[3].id], sampleCount = player.measurements.count
+        player.play(tracks[3], list: tracks)
+        for _ in 0..<100 { if player.measurements.count > sampleCount { break }; try await Task.sleep(nanoseconds: 10_000_000) }
+        guard let sample = player.measurements.dropFirst(sampleCount).last, sample.source == "buffered", sample.totalMilliseconds < 350, player.isPlaying else { throw SyncError.rejected("Third track buffer was not reused: \(player.measurements.last?.totalMilliseconds ?? -1) ms; \(player.debugPlaybackState)") }
+        let after = await resolver.calls[tracks[3].id]; guard before == after else { throw SyncError.rejected("Buffered third track repeated extraction") }
+        player.pause(); player.debugNetworkChanged(NetworkPolicy(reachable: true), signature: "preroll-new-wifi")
+        guard player.debugBufferedTrackIDs.isEmpty else { throw SyncError.rejected("Old-network preroll cache survived handoff") }
+        return sample.totalMilliseconds
     }
     private static func checkBoundaries(model: AppModel, tracks: [Track], audio: ResolvedAudio, slowURL: URL) async throws -> [String: Bool] {
         func until(_ label: String, diagnostic: () -> String = { "" }, _ condition: () async -> Bool) async throws {

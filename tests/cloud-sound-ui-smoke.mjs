@@ -5,7 +5,7 @@ const source=await fs.readFile('tests/youtube-ui-smoke.mjs','utf8'),start=source
 const bytes=[...await fs.readFile('tests/fixtures/acoustic-sample.m4a')];
 await page.addInitScript(({bytes})=>{
   window.syncState={enabled:false,devices:[],pending:[]};window.forma.desktop=true;window.forma.soundAudio=async()=>bytes;window.forma.cancelSound=async()=>{};
-  window.forma.syncStatus=async()=>window.syncState;window.forma.onSync=()=>()=>{};
+  window.forma.syncStatus=async()=>structuredClone(window.syncState);window.forma.onSync=()=>()=>{};
   window.forma.syncStart=async()=>window.syncState={enabled:true,devices:[{id:'phone',name:'iPhone'}],pending:[],pairing:'forma://pair?host=192.168.1.2&code=123456'};
   window.forma.syncStop=async()=>window.syncState={enabled:false,devices:[],pending:[]};
   window.forma.syncApprove=async id=>{window.confirmedExchange=id;window.syncState.pending=[];return window.syncState;};

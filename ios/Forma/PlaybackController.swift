@@ -42,6 +42,14 @@ final class PlaybackController: ObservableObject {
     private var prefetch: Task<Void, Never>?
     private var prefetchedCurrent: String?
     private var prepared: (track: Track, item: AVPlayerItem, audio: ResolvedAudio)?
+    @Published private(set) var preparationDepth = 3
+    private struct BufferedItem { let track: Track; let item: AVPlayerItem; let audio: ResolvedAudio; let player: AVPlayer }
+    private var bufferedItems: [String: BufferedItem] = [:]
+    private var extraPrefetch: Task<Void, Never>?
+    private var extraToken = UUID()
+    private var extraDesired: [String] = []
+    private var extraPending: BufferedItem?
+    private var warmingFailures: [String: Date] = [:]
     private var currentObservation: NSKeyValueObservation?
     private var preparing = false
     private var failedCandidates: Set<String> = []
@@ -70,6 +78,7 @@ final class PlaybackController: ObservableObject {
 
     init(resolver: any StreamResolving = YouTubeStreamResolver(), extractionTimeout: TimeInterval = 12, bufferTimeout: TimeInterval = 8) {
         self.resolver = resolver; self.extractionTimeout = extractionTimeout; self.bufferTimeout = bufferTimeout
+        preparationDepth = UserDefaults.standard.integer(forKey: "forma.preparationDepth") == 1 ? 1 : 3
         configureEngine()
         installRemoteCommands()
         installAudioEvents()
@@ -109,6 +118,8 @@ final class PlaybackController: ObservableObject {
         }
     }
     deinit {
+        extraPrefetch?.cancel(); extraPending?.player.cancelPendingPrerolls(); extraPending?.player.replaceCurrentItem(with: nil)
+        for entry in bufferedItems.values { entry.player.cancelPendingPrerolls(); entry.player.replaceCurrentItem(with: nil) }
         task?.cancel(); startWatchdog?.cancel(); startConfirmation?.cancel(); prefetch?.cancel(); artworkTask?.cancel(); networkRecoveryTask?.cancel(); stallTask?.cancel(); network.cancel()
         if let periodic { engine.removeTimeObserver(periodic) }
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
@@ -122,11 +133,13 @@ final class PlaybackController: ObservableObject {
         if previous == nil, policy.reachable {
             // Initial delivery updates budgets, without cancelling the cold start.
             if isLoading { armStartWatchdog(seconds: engine.currentItem == nil ? policy.extractionDeadline(base: extractionTimeout) : policy.bufferDeadline(base: bufferTimeout), token: generation) }
+            if isPlaying { scheduleExtraPreparation() }
             return
         }
         guard previous != signature else { return }
         networkRecoveryTask?.cancel(); stallTask?.cancel(); networkRecovering = true
         adoptPreparedItem()
+        clearBufferedItems()
         preparationToken = UUID(); prefetch?.cancel(); preparing = false; prefetchedCurrent = nil; failedCandidates = []
         if let ready = prepared, engine.currentItem !== ready.item { engine.remove(ready.item) }
         prepared = nil
@@ -189,6 +202,9 @@ final class PlaybackController: ObservableObject {
     }
     private func start(_ track: Track, at seconds: Double = 0, refreshing: Bool = false) {
         if !refreshing || startTiming == nil { beginTiming(source: "network") }
+        let buffered = refreshing ? nil : takeBufferedItem(track.id)
+        cancelExtraPreparation()
+        if refreshing { clearBufferedItems() }
         task?.cancel(); prefetch?.cancel(); startWatchdog?.cancel(); cancelStartConfirmation(); artworkTask?.cancel(); artworkTask = nil; stallTask?.cancel()
         prefetchedCurrent = nil; failedCandidates = []
         let token = UUID(); generation = token
@@ -203,16 +219,18 @@ final class PlaybackController: ObservableObject {
         task = Task { [weak self] in
             guard let self else { return }
             do {
-                let resolved = try await resolver.resolve(videoID: track.id, forceRefresh: refreshing)
+                let resolved: ResolvedAudio
+                if let buffered { resolved = buffered.audio; if var timing = startTiming { timing.source = "buffered"; startTiming = timing } }
+                else { resolved = try await resolver.resolve(videoID: track.id, forceRefresh: refreshing) }
                 try Task.checkCancellation()
                 guard generation == token else { return }
                 if var timing = startTiming {
                     timing.resolved = ProcessInfo.processInfo.systemUptime
-                    if resolved.resolvedAt < timing.wall { timing.source = "cached" }
+                    if buffered == nil, resolved.resolvedAt < timing.wall { timing.source = "cached" }
                     startTiming = timing
                 }
                 if requestedPlayback, !interrupted { armStartWatchdog(seconds: networkPolicy.bufferDeadline(base: bufferTimeout), token: token) }
-                let item = AVPlayerItem(url: resolved.url)
+                let item = buffered?.item ?? AVPlayerItem(url: resolved.url)
                 item.preferredForwardBufferDuration = networkPolicy.lean ? 6 : 3
                 observe(item, token: token)
                 engine.insert(item, after: nil)
@@ -229,6 +247,7 @@ final class PlaybackController: ObservableObject {
     }
     func toggle() { requestedPlayback ? pause() : resume() }
     func pause() {
+        cancelExtraPreparation()
         clock.tick(at: ProcessInfo.processInfo.systemUptime, playing: isPlaying, seeking: seeking)
         if isLoading, engine.currentItem == nil { generation = UUID(); task?.cancel() }
         stallTask?.cancel(); startWatchdog?.cancel(); cancelStartConfirmation(); startTiming = nil; requestedPlayback = false
@@ -284,6 +303,8 @@ final class PlaybackController: ObservableObject {
     }
 #if DEBUG && targetEnvironment(simulator)
     var debugPreparedTrackID: String? { prepared?.item.status == .readyToPlay ? prepared?.track.id : nil }
+    var debugBufferedTrackIDs: Set<String> { Set(bufferedItems.filter { $0.value.item.status == .readyToPlay && $0.value.audio.isFresh(margin: 45) }.keys) }
+    var debugExtraPlayersMuted: Bool { bufferedItems.values.allSatisfy { $0.player.isMuted && $0.player.rate == 0 } }
     var debugHasPlayerItem: Bool { engine.currentItem != nil }
     var debugPlaybackState: String { "loading=\(isLoading), playing=\(isPlaying), cursor=\(engine.currentTime().seconds), itemCursor=\(engine.currentItem?.currentTime().seconds ?? -1), itemStatus=\(engine.currentItem?.status.rawValue ?? -1)" }
     func debugAdvanceEngine() { engine.advanceToNextItem() }
@@ -374,6 +395,7 @@ final class PlaybackController: ObservableObject {
             engine.remove(ready.item); prepared = nil; prefetchedCurrent = nil
         }
         if isPlaying, prepared == nil, !preparing { prepareNext() }
+        if isPlaying { scheduleExtraPreparation() }
         if ProcessInfo.processInfo.systemUptime - lastNowPlayingUpdate >= 5 { updateNowPlaying() }
     }
     private func observe(_ item: AVPlayerItem, token: UUID) {
@@ -405,19 +427,23 @@ final class PlaybackController: ObservableObject {
     }
     private func prepareNext() {
         guard !networkRecovering, !preparing, prepared == nil, let next = candidate(), let active = engine.currentItem else { return }
+        cancelExtraPreparation()
         preparing = true
         prefetchedCurrent = next.id
         let token = generation, requestToken = UUID(); preparationToken = requestToken
         prefetch = Task { [weak self] in
             guard let self else { return }
             do {
-                let audio = try await resolver.resolve(videoID: next.id, forceRefresh: false)
+                let buffered = takeBufferedItem(next.id)
+                let audio: ResolvedAudio
+                if let buffered { audio = buffered.audio }
+                else { audio = try await resolver.resolve(videoID: next.id, forceRefresh: false) }
                 try Task.checkCancellation()
                 guard generation == token, preparationToken == requestToken, engine.currentItem === active else { return }
-                let item = AVPlayerItem(url: audio.url); item.preferredForwardBufferDuration = networkPolicy.lean ? 12 : 8
+                let item = buffered?.item ?? AVPlayerItem(url: audio.url); item.preferredForwardBufferDuration = networkPolicy.lean ? 12 : 8
                 guard engine.canInsert(item, after: active) else { preparing = false; return }
                 prepared = (next, item, audio); engine.insert(item, after: active); preparing = false
-                if networkPolicy.canPrewarmExtraTracks, let later = candidate(excluding: [next.id]) { await resolver.prewarm(videoIDs: [later.id]) }
+                scheduleExtraPreparation()
             } catch {
                 guard generation == token, preparationToken == requestToken else { return }
                 preparing = false
@@ -429,6 +455,7 @@ final class PlaybackController: ObservableObject {
     func refreshPreparedSelection() {
         adoptPreparedItem()
         guard let next = candidate() else {
+            clearBufferedItems()
             preparationToken = UUID(); prefetch?.cancel(); preparing = false
             if let ready = prepared, engine.currentItem !== ready.item { engine.remove(ready.item); prepared = nil }
             return
@@ -436,9 +463,72 @@ final class PlaybackController: ObservableObject {
         if preparing, prefetchedCurrent == next.id { return }
         if let ready = prepared, engine.currentItem !== ready.item, ready.track.id != next.id {
             engine.remove(ready.item); prepared = nil
-        } else if prepared != nil { return }
+        } else if prepared != nil { scheduleExtraPreparation(); return }
         preparationToken = UUID(); prefetch?.cancel(); preparing = false
         if isPlaying { prepareNext() }
+    }
+    func setPreparationDepth(_ depth: Int) {
+        preparationDepth = depth == 1 ? 1 : 3
+        UserDefaults.standard.set(preparationDepth, forKey: "forma.preparationDepth")
+        clearBufferedItems(); if isPlaying { scheduleExtraPreparation() }
+    }
+    private func cancelExtraPreparation() {
+        extraToken = UUID(); extraPrefetch?.cancel(); extraPrefetch = nil; extraDesired = []
+        extraPending?.player.cancelPendingPrerolls(); extraPending?.player.replaceCurrentItem(with: nil); extraPending = nil
+    }
+    private func clearBufferedItems() {
+        cancelExtraPreparation()
+        for entry in bufferedItems.values { entry.player.cancelPendingPrerolls(); entry.player.replaceCurrentItem(with: nil) }
+        bufferedItems.removeAll(); warmingFailures.removeAll()
+    }
+    private func takeBufferedItem(_ id: String) -> BufferedItem? {
+        guard let entry = bufferedItems.removeValue(forKey: id) else { return nil }
+        entry.player.pause(); entry.player.cancelPendingPrerolls(); entry.player.replaceCurrentItem(with: nil)
+        guard entry.audio.isFresh(margin: 45), entry.item.status == .readyToPlay else { return nil }
+        return entry
+    }
+    private func scheduleExtraPreparation() {
+        guard preparationDepth > 1, isPlaying, requestedPlayback, !isLoading, !interrupted, !mediaServicesLost,
+              !networkRecovering, networkPolicy.canPrewarmExtraTracks, let prepared, prepared.item.status == .readyToPlay else { return }
+        var exclude: Set<String> = [prepared.track.id], desired: [Track] = []
+        for _ in 1..<preparationDepth {
+            guard let track = candidate(excluding: exclude) else { break }
+            exclude.insert(track.id); desired.append(track)
+        }
+        let ids = desired.map(\.id), wanted = Set(ids), now = Date()
+        for (id, entry) in bufferedItems where !wanted.contains(id) || !entry.audio.isFresh(margin: 45) || entry.item.status == .failed {
+            entry.player.cancelPendingPrerolls(); entry.player.replaceCurrentItem(with: nil); bufferedItems[id] = nil
+        }
+        if extraDesired == ids, extraPrefetch != nil { return }
+        cancelExtraPreparation(); extraDesired = ids
+        let missing = desired.filter { bufferedItems[$0.id] == nil && now.timeIntervalSince(warmingFailures[$0.id] ?? .distantPast) > 30 }
+        guard !missing.isEmpty else { return }
+        let token = extraToken
+        extraPrefetch = Task(priority: .utility) { [weak self] in
+            do { try await Task.sleep(nanoseconds: 500_000_000) } catch { return }
+            for track in missing {
+                guard let self, !Task.isCancelled, extraToken == token, isPlaying else { return }
+                do {
+                    let audio = try await resolver.analysisAudio(videoID: track.id)
+                    try Task.checkCancellation(); guard extraToken == token, isPlaying else { return }
+                    let item = AVPlayerItem(url: audio.url); item.preferredForwardBufferDuration = 3
+                    item.canUseNetworkResourcesForLiveStreamingWhilePaused = false
+                    let warmer = AVPlayer(playerItem: item); warmer.isMuted = true; warmer.volume = 0; warmer.allowsExternalPlayback = false
+                    let entry = BufferedItem(track: track, item: item, audio: audio, player: warmer); extraPending = entry
+                    let ready = await AudioPreroll(warmer).wait(seconds: networkPolicy.lean ? 12 : 8)
+                    try Task.checkCancellation()
+                    guard extraToken == token, isPlaying else { warmer.replaceCurrentItem(with: nil); return }
+                    extraPending = nil
+                    if ready, item.status == .readyToPlay, audio.isFresh(margin: 45) { bufferedItems[track.id] = entry }
+                    else { warmer.replaceCurrentItem(with: nil); warmingFailures[track.id] = Date() }
+                } catch {
+                    guard extraToken == token else { return }
+                    extraPending?.player.cancelPendingPrerolls(); extraPending?.player.replaceCurrentItem(with: nil); extraPending = nil
+                    if !Task.isCancelled { warmingFailures[track.id] = Date() }
+                }
+            }
+            if let self, extraToken == token { extraPrefetch = nil }
+        }
     }
     private func armStartWatchdog(seconds: TimeInterval, token: UUID) {
         startWatchdog?.cancel()
@@ -456,6 +546,7 @@ final class PlaybackController: ObservableObject {
         try session.setActive(true)
     }
     private func fail(_ failure: Error) {
+        clearBufferedItems()
         startWatchdog?.cancel(); cancelStartConfirmation(); prefetch?.cancel(); preparationToken = UUID(); preparing = false
         if let ready = prepared, engine.currentItem !== ready.item { engine.remove(ready.item) }
         prepared = nil
@@ -510,6 +601,7 @@ final class PlaybackController: ObservableObject {
         if began {
             clock.tick(at: ProcessInfo.processInfo.systemUptime, playing: isPlaying, seeking: seeking)
             if isLoading, engine.currentItem == nil { generation = UUID(); task?.cancel() }
+            cancelExtraPreparation()
             interrupted = true; startWatchdog?.cancel(); cancelStartConfirmation(); stallTask?.cancel()
             engine.pause(); isPlaying = false; isLoading = false; updateNowPlaying()
         } else {
@@ -524,6 +616,7 @@ final class PlaybackController: ObservableObject {
     func debugMediaServicesLost() { suspendForMediaServicesLoss() }
 #endif
     private func suspendForMediaServicesLoss() {
+        clearBufferedItems()
         clock.tick(at: ProcessInfo.processInfo.systemUptime, playing: isPlaying, seeking: seeking)
         mediaServicesLost = true; generation = UUID(); preparationToken = UUID()
         task?.cancel(); prefetch?.cancel(); startWatchdog?.cancel(); cancelStartConfirmation(); stallTask?.cancel()
@@ -531,6 +624,7 @@ final class PlaybackController: ObservableObject {
         isPlaying = false; isLoading = false; updateNowPlaying()
     }
     private func resetMediaServices() {
+        clearBufferedItems()
         mediaServicesLost = false
         task?.cancel(); prefetch?.cancel(); startWatchdog?.cancel(); cancelStartConfirmation(); stallTask?.cancel()
         generation = UUID(); preparationToken = UUID(); prepared = nil; preparing = false

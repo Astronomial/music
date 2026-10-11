@@ -406,7 +406,7 @@ final class AppModel: ObservableObject {
         var seen = Set<String>(); let tracks = pool.filter { library.tracks[$0.id]?.soundProfile == nil && seen.insert($0.id).inserted }
         soundTask = Task(priority: .utility) {
             for track in tracks.prefix(3) {
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
                 guard !Task.isCancelled, !player.isLoading else { return }
                 if let profile = await soundAnalyzer.analyze(track, resolver: audioResolver), !Task.isCancelled, library.tracks[track.id] != nil {
                     library.tracks[track.id]?.soundProfile = profile; persist(); updateRecommendations()
