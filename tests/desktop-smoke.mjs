@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { _electron,expect } from '@playwright/test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -81,10 +82,8 @@ try{
   assert.equal(transferred.tracks[requested.trackIds[0]].source,'youtube');
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
   await page.getByRole('switch',{name:'Только скачанная музыка'}).click();
-  // Google is the primary UI. The old TLS backend remains a compatibility test,
-  // deliberately started by IPC rather than the removed Wi-Fi setup screen.
-  await expect(page.getByRole('heading',{name:/Google ·/})).toBeVisible();
-  assert.equal((await page.evaluate(()=>window.forma.googleStatus())).connected,false);
+  await expect(page.getByRole('heading',{name:'iPhone и ПК · Wi-Fi',exact:true})).toBeVisible();
+  assert.equal(await page.evaluate(()=>typeof window.forma.googleStatus),'undefined');
   await page.evaluate(()=>window.forma.syncStart());
   await expect.poll(async()=> (await page.evaluate(()=>window.forma.syncStatus())).enabled).toBe(true);
   const status=await page.evaluate(()=>window.forma.syncStatus());assert.equal(status.enabled,true);
@@ -93,7 +92,10 @@ try{
   const paired=await syncRequest('/pair',{code:pairing.searchParams.get('code'),name:'Integration iPhone'});
   const syncBase=portableLibrary(await page.evaluate(()=>window.forma.load())),phone=structuredClone(syncBase);
   phone.playlists.push({id:'phone-playlist',name:'С телефона 🎵',trackIDs:[yt[0].videoId]});phone.likedIDs=[yt[0].videoId];phone.settings.artistDiversity=1;
-  await syncRequest('/sync',{base:syncBase,library:phone},paired.token);
+  const draft=await syncRequest('/sync/prepare',{id:crypto.randomUUID(),base:syncBase,library:phone},paired.token);
+  assert.equal((await page.evaluate(()=>window.forma.load())).playlists.some(p=>p.id==='phone-playlist'),false);
+  await page.getByRole('button',{name:'Применить на обоих устройствах',exact:true}).click();
+  assert.equal((await syncRequest('/sync/status',{id:draft.id},paired.token)).status,'approved');
   await expect.poll(async()=>{const current=await page.evaluate(()=>window.forma.load());return current.playlists.some(p=>p.id==='phone-playlist');}).toBe(true);
   await expect(page.getByRole('button',{name:/^С телефона 🎵/})).toBeVisible();
   assert.equal(Object.keys(await page.evaluate(()=>window.forma.downloads())).length,2);
@@ -107,9 +109,9 @@ try{
   assert.ok(saved.playlists.some(p=>p.id==='phone-playlist'));assert.equal(saved.settings.artistDiversity,1);assert.ok(saved.likes.includes(yt[0].id));
   launched=await launch();app=launched.instance;page=launched.page;
   await expect.poll(async()=>{const s=await page.evaluate(()=>window.forma.load());return s.importRequests?.find(r=>r.id==='astronomial-favorites')?.status;}).toBe('complete');
-  assert.equal((await page.evaluate(()=>window.forma.syncStatus())).enabled,false);
+  assert.equal((await page.evaluate(()=>window.forma.syncStatus())).enabled,true);
   await page.evaluate(()=>window.forma.syncStart());
-  const afterRestart=await syncRequest('/sync',{base:syncBase,library:phone},paired.token);assert.ok(afterRestart.library.playlists.some(p=>p.id==='phone-playlist'));
+  const afterRestart=await syncRequest('/sync/status',{id:draft.id},paired.token);assert.ok(afterRestart.library.playlists.some(p=>p.id==='phone-playlist'));
   await page.getByRole('button',{name:'Скачанное',exact:true}).click();
   await page.waitForFunction(()=>document.querySelectorAll('.track-row').length===2);
   await page.locator('.track-name').first().click();
@@ -118,5 +120,5 @@ try{
   await page.locator('.track-row').first().locator('.track-actions button').last().click();
   await page.getByRole('button',{name:'Удалить скачанный файл',exact:true}).click();
   await expect.poll(async()=>Object.keys(await page.evaluate(()=>window.forma.downloads())).length).toBe(1);
-  console.log('PASS: real Electron sandbox/preload, native AAC decode and Google-first settings, compatibility TLS pairing/sync/renderer update/token persistence across restart, minimized playback (real local audio + mocked YouTube player), explicit pause, catalogue and Yandex IPC and automatic requested-playlist import across restart (mock transport), file import, IPC download, audio seeking, close-save, restart offline, deletion.');
+  console.log('PASS: real Electron sandbox/preload, native AAC decode and Wi-Fi settings and approval on PC, draft does not modify library, pinned TLS/token and approved receipt survive restart, minimized playback (real local audio + mocked YouTube player), explicit pause, catalogue and Yandex IPC and automatic requested-playlist import across restart (mock transport), file import, IPC download, audio seeking, close-save, restart offline, deletion.');
 }finally{if(app)await app.close();await fs.rm(dir,{recursive:true,force:true});}

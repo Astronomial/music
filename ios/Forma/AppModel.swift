@@ -14,7 +14,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var isSyncing = false
     @Published private(set) var isRestoringLibrary = true
     @Published private(set) var pcHost: String?
-    @Published private(set) var syncStatus = "Войди в Google, чтобы синхронизировать библиотеку"
+    @Published private(set) var syncStatus = "Подключи ПК по Wi-Fi. Каждый обмен требует подтверждения"
+    @Published private(set) var syncProposal: WiFiProposal?
+    private var pendingExchange: WiFiCheckpoint?
     @Published var message: String?
     @Published private(set) var localWiFiAvailable = false
     var canSynchronizePC: Bool { player.networkPolicy.canSyncPC(localWiFi: localWiFiAvailable) }
@@ -22,7 +24,6 @@ final class AppModel: ObservableObject {
     private var syncBackoff = SyncBackoff()
     private var syncRouteAllowed = false
     private var lastAutomaticRefresh = Date.distantPast
-    let google = GoogleAccount()
     let player: PlaybackController
     private let audioResolver: any StreamResolving
     private let catalog: any MusicCatalogProviding
@@ -103,8 +104,8 @@ final class AppModel: ObservableObject {
         }
                 Task {
             await restoreLibrary()
-            await google.restore()
-            if google.email != nil { scheduleSync() }
+            await sync.retireGoogleCredentials()
+            await restorePCConnection(epoch: connectionEpoch)
         }
     }
     deinit {
@@ -132,7 +133,7 @@ final class AppModel: ObservableObject {
     }
     func becameActive() async {
         if !isRestoringLibrary, !didLoadLibrary { await restoreLibrary() }
-        await google.restore()
+        await restorePCConnection(epoch: connectionEpoch)
         await synchronize()
     }
     private func restorePCConnection(epoch: UUID) async {
@@ -140,7 +141,8 @@ final class AppModel: ObservableObject {
         let base = await storage?.syncBase(peerID: connection.pin, allowLegacy: connection.baselineVersion == nil)
         guard connectionEpoch == epoch, pcHost == nil else { return }
         pcHost = connection.host; pcIdentity = connection.pin; syncBase = base
-        syncStatus = canSynchronizePC ? "ПК подключён. Синхронизируем в общей Wi-Fi сети" : "Синхронизация продолжится по Wi-Fi. Изменения сохранены"
+        pendingExchange = await storage?.pendingSync(peerID: connection.pin)
+        syncStatus = canSynchronizePC ? "ПК подключён. Подготовь обмен и подтверди изменения" : "Изменения сохранены. Для обмена нужна общая Wi-Fi сеть"
         scheduleSync()
     }
     private func localWiFiChanged(_ available: Bool) {
@@ -148,7 +150,7 @@ final class AppModel: ObservableObject {
         localWiFiAvailable = available; updateSyncRoute()
     }
     private func updateSyncRoute() {
-        let allowed = google.email != nil ? player.networkPolicy.reachable : canSynchronizePC
+        let allowed = canSynchronizePC
         guard allowed != syncRouteAllowed else { return }
         syncRouteAllowed = allowed; syncBackoff.reset()
         if allowed { scheduleSync() } else { stopSyncForNetwork() }
@@ -156,8 +158,7 @@ final class AppModel: ObservableObject {
     private func stopSyncForNetwork() {
         syncTask?.cancel(); syncEpoch = UUID(); isSyncing = false
         Task { await sync.cancelPendingRequests() }
-        if google.email != nil { syncStatus = "Нет соединения. Изменения сохранены на iPhone" }
-        else if pcHost != nil { syncStatus = "Синхронизация продолжится по Wi-Fi. Изменения сохранены" }
+        if pcHost != nil { syncStatus = "Синхронизация продолжится по Wi-Fi. Изменения сохранены" }
     }
     func prepareTracks(_ tracks: [Track]) async { guard player.networkPolicy.canPrewarmExtraTracks else { return }; await audioResolver.prewarm(videoIDs: Array(tracks.prefix(3).map(\.id))) }
     var liked: [Track] { library.likedIDs.compactMap { library.tracks[$0] } }
@@ -429,9 +430,10 @@ final class AppModel: ObservableObject {
         scheduleSync()
     }
     private func scheduleSync() {
-        guard didLoadLibrary, (google.email != nil ? player.networkPolicy.reachable : pcHost != nil && canSynchronizePC), syncBackoff.allows() else { return }
+        guard didLoadLibrary, pcHost != nil && canSynchronizePC && pendingExchange != nil else { return }
+        let delay = max(5, syncBackoff.nextAttempt.timeIntervalSinceNow)
         syncTask?.cancel(); syncTask = Task {
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             guard !Task.isCancelled else { return }; await synchronize()
         }
     }
@@ -448,6 +450,7 @@ final class AppModel: ObservableObject {
             guard connectionEpoch == epoch else { return }
             pcHost = connection?.host; pcIdentity = connection?.pin; syncBase = nil
             try await storage?.saveSyncBase(nil)
+            try await storage?.savePendingSync(nil); pendingExchange = nil; syncProposal = nil
             guard connectionEpoch == epoch else { return }
             isSyncing = false; await synchronize(showErrors: true)
         } catch { guard connectionEpoch == epoch else { return }; isSyncing = false; syncStatus = error.localizedDescription; message = error.localizedDescription }
@@ -455,70 +458,89 @@ final class AppModel: ObservableObject {
     func disconnectPC() async {
         connectionEpoch = UUID(); let epoch = connectionEpoch; syncEpoch = UUID(); isSyncing = false; syncTask?.cancel(); await sync.disconnect()
         guard connectionEpoch == epoch else { return }
-        pcHost = nil; pcIdentity = nil; syncBase = nil
+        pcHost = nil; pcIdentity = nil; syncBase = nil; pendingExchange = nil; syncProposal = nil
         try? await storage?.saveSyncBase(nil)
+        try? await storage?.savePendingSync(nil)
         if connectionEpoch == epoch { syncStatus = "ПК отключён" }
     }
-    func loginGoogle(_ clientID: String) async {
-        guard didLoadLibrary, !isSyncing else { return }
-        do { try await google.login(clientID); await disconnectPC(); syncBackoff.reset(); await synchronize(showErrors: true) }
-        catch { message = error.localizedDescription }
-    }
-    func logoutGoogle() async {
-        syncEpoch = UUID(); syncTask?.cancel(); isSyncing = false
-        do { try await google.logout(); syncStatus = "Google отключён. Библиотека сохранена на iPhone" }
-        catch { message = error.localizedDescription }
-    }
-    private func synchronizeGoogle(showErrors: Bool) async {
-        guard didLoadLibrary, !isSyncing, !player.isLoading, syncBackoff.allows(manual: showErrors) else { return }
-        let epoch = syncEpoch, sent = library; isSyncing = true
-        defer { if epoch == syncEpoch { isSyncing = false } }
+    func synchronize(showErrors: Bool = false) async {
+        guard didLoadLibrary, !isSyncing, pcHost != nil, let pcIdentity, let storage else { return }
+        guard canSynchronizePC else { stopSyncForNetwork(); if showErrors { message = "Для обмена нужна общая Wi-Fi сеть." }; return }
+        guard syncBackoff.allows(manual: showErrors) else { return }
+        if pendingExchange == nil && !showErrors { return }
+        let epoch = syncEpoch
+        isSyncing = true; defer { if syncEpoch == epoch { isSyncing = false; scheduleSync() } }
         do {
-            let exchange = try await google.client.exchange(sent)
+            if pendingExchange == nil {
+                let checkpoint = WiFiCheckpoint(peerID: pcIdentity, sent: library, base: syncBase)
+                try await storage.savePendingSync(checkpoint)
+                guard epoch == syncEpoch else { return }; pendingExchange = checkpoint
+            }
+            guard let checkpoint = pendingExchange else { return }
+            if checkpoint.applied { try await finishExchange(checkpoint, epoch: epoch); return }
+            let proposal = showErrors && syncProposal == nil ? try await sync.prepare(checkpoint) : try await sync.review(checkpoint.id)
             guard epoch == syncEpoch else { return }
-            let merged = LibrarySync.merge(current: exchange.library, base: sent, incoming: library)
-            persistTask?.cancel(); saveRevision += 1
-            library = merged; updateRecommendations()
-            guard let storage else { return }; try await storage.save(merged, revision: saveRevision)
-            guard epoch == syncEpoch else { return }
-            try await google.client.commit(exchange)
-            guard epoch == syncEpoch else { return }
-            syncBackoff.reset(); syncStatus = "Google · синхронизировано \(Date().formatted(date: .omitted, time: .shortened))"
+            syncProposal = proposal; syncBackoff.reset()
+            try await receiveProposal(proposal, checkpoint: checkpoint, epoch: epoch)
         } catch {
             guard epoch == syncEpoch else { return }; syncBackoff.failed()
-            syncStatus = "Облако недоступно. Изменения сохранены на iPhone"
+            syncStatus = "Обмен не завершён. Библиотека сохранена на iPhone"
             if showErrors { message = error.localizedDescription }
         }
     }
-    func synchronize(showErrors: Bool = false) async {
-        if google.email != nil { await synchronizeGoogle(showErrors: showErrors); return }
-        guard didLoadLibrary, !isSyncing, pcHost != nil, let pcIdentity else { return }
-        guard canSynchronizePC else { stopSyncForNetwork(); return }
-        guard syncBackoff.allows(manual: showErrors) else { return }
-        let epoch = syncEpoch
-        isSyncing = true; defer { if syncEpoch == epoch { isSyncing = false } }
-        let sent = library
+    func approveExchange() async {
+        guard let checkpoint = pendingExchange, syncProposal?.status == .pending, !isSyncing, canSynchronizePC else { return }
+        let epoch = syncEpoch; isSyncing = true
+        defer { if epoch == syncEpoch { isSyncing = false; scheduleSync() } }
         do {
-            let remote = try await sync.synchronize(library: sent, base: syncBase)
+            let proposal = try await sync.approve(checkpoint.id)
+            guard epoch == syncEpoch else { return }; syncProposal = proposal
+            try await receiveProposal(proposal, checkpoint: checkpoint, epoch: epoch)
+        } catch { if epoch == syncEpoch { syncStatus = "Не удалось подтвердить обмен"; message = error.localizedDescription; await refreshProposalAfterFailure(checkpoint.id) } }
+    }
+    private func refreshProposalAfterFailure(_ id: String) async {
+        let epoch = syncEpoch
+        if let proposal = try? await sync.review(id), epoch == syncEpoch { syncProposal = proposal }
+    }
+    func rejectExchange() async {
+        guard let checkpoint = pendingExchange, !isSyncing, canSynchronizePC else { return }
+        let epoch = syncEpoch; isSyncing = true
+        defer { if epoch == syncEpoch { isSyncing = false; scheduleSync() } }
+        do {
+            let proposal = try await sync.reject(checkpoint.id)
+            guard epoch == syncEpoch else { return }; syncProposal = proposal
+            try await receiveProposal(proposal, checkpoint: checkpoint, epoch: epoch)
+        } catch { if epoch == syncEpoch { message = error.localizedDescription; await refreshProposalAfterFailure(checkpoint.id) } }
+    }
+    private func receiveProposal(_ proposal: WiFiProposal, checkpoint: WiFiCheckpoint, epoch: UUID) async throws {
+        guard epoch == syncEpoch, let storage, let pcIdentity else { return }
+        switch proposal.status {
+        case .pending: syncStatus = "Ожидает подтверждения на iPhone или ПК. Библиотека не изменена"
+        case .committing: syncStatus = "ПК сохраняет подтверждённый обмен"
+        case .approved:
+            let merged = try checkpoint.mergingApproved(proposal, into: library)
+            guard let remote = proposal.library else { throw WiFiExchangeError.invalidProposal }
+            persistTask?.cancel(); saveRevision += 1; library = merged; updateRecommendations()
+            try await storage.saveSynchronized(merged, base: remote, peerID: pcIdentity, revision: saveRevision)
+            guard epoch == syncEpoch else { return }; syncBase = remote
+            var durable = checkpoint; durable.applied = true
+            try await storage.savePendingSync(durable)
+            guard epoch == syncEpoch else { return }; pendingExchange = durable
+            try await finishExchange(durable, epoch: epoch)
+        case .rejected, .stale:
+            try await sync.acknowledge(checkpoint.id)
             guard epoch == syncEpoch else { return }
-            persistTask?.cancel()
-            library = LibrarySync.merge(current: LibrarySync.preservingLearning(in: remote, from: sent), base: sent, incoming: library)
-            saveRevision += 1; let revision = saveRevision
-            do { try await storage?.saveSynchronized(library, base: remote, peerID: pcIdentity, revision: revision) }
-            catch {
-                syncBackoff.failed()
-                syncStatus = "Библиотека получена, но сохранить её не удалось"
-                message = "Не удалось сохранить библиотеку: \(error.localizedDescription)"; persist(immediately: true); return
-            }
-            guard epoch == syncEpoch else { return }
-            syncBase = remote
-            syncBackoff.reset(); updateRecommendations(); syncStatus = "Синхронизировано · \(Date().formatted(date: .omitted, time: .shortened))"
-        } catch {
-            guard epoch == syncEpoch else { return }
-            syncBackoff.failed()
-            syncStatus = "ПК недоступен. Изменения сохранены на iPhone"
-            if showErrors { message = error.localizedDescription }
+            try await storage.savePendingSync(nil)
+            guard epoch == syncEpoch else { return }; pendingExchange = nil; syncProposal = nil
+            syncStatus = proposal.status == .rejected ? "Обмен отклонён. Библиотеки не изменены" : "Просмотр устарел. Подготовь новый обмен"
         }
+    }
+    private func finishExchange(_ checkpoint: WiFiCheckpoint, epoch: UUID) async throws {
+        try await sync.acknowledge(checkpoint.id)
+        guard epoch == syncEpoch else { return }; try await storage?.savePendingSync(nil)
+        guard epoch == syncEpoch else { return }
+        pendingExchange = nil; syncProposal = nil; syncBackoff.reset()
+        syncStatus = "Подтверждённый обмен завершён · \(Date().formatted(date: .omitted, time: .shortened))"
     }
     func exportLibrary() throws -> URL {
         let destination = FileManager.default.temporaryDirectory.appendingPathComponent("Forma-iOS-library.json")

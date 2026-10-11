@@ -38,4 +38,19 @@ actor LibraryStorage {
         guard savedRevision >= revision else { throw SyncError.rejected("Новое сохранение библиотеки ещё не завершено.") }
         try saveSyncBase(base, peerID: peerID)
     }
+    func pendingSync(peerID: String) -> WiFiCheckpoint? {
+        guard let data = try? Data(contentsOf: url.appendingPathExtension("sync-pending")), data.count <= 8 * 1024 * 1024,
+              let checkpoint = try? JSONDecoder().decode(WiFiCheckpoint.self, from: data), checkpoint.peerID == peerID, UUID(uuidString: checkpoint.id) != nil else { return nil }
+        return checkpoint
+    }
+    func savePendingSync(_ checkpoint: WiFiCheckpoint?) throws {
+        let destination = url.appendingPathExtension("sync-pending")
+        if let checkpoint {
+            let data = try JSONEncoder().encode(checkpoint)
+            guard data.count <= 8 * 1024 * 1024 else { throw SyncError.tooLarge }
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: destination, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        } else if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
+    }
+
 }

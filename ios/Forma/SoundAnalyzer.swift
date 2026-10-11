@@ -35,7 +35,7 @@ actor SoundAnalyzer {
         output.alwaysCopiesSampleData = false
         guard reader.canAdd(output) else { return nil }; reader.add(output)
         reader.timeRange = CMTimeRange(start: .zero, duration: CMTime(seconds: 24, preferredTimescale: 16000))
-        guard reader.startReading() else { throw reader.error ?? GoogleError.message("Не удалось декодировать аудио для анализа") }
+        guard reader.startReading() else { throw reader.error ?? SyncError.rejected("Не удалось декодировать аудио для анализа") }
         defer { reader.cancelReading() }; var pcm: [Float] = []; pcm.reserveCapacity(384000)
         while let sample = output.copyNextSampleBuffer(), pcm.count < 384000 {
             try Task.checkCancellation()

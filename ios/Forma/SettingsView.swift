@@ -1,4 +1,5 @@
 import SwiftUI
+import FormaCore
 
 @MainActor
 struct SettingsView: View {
@@ -10,7 +11,7 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                GoogleSettingsView(model: model, account: model.google)
+                WiFiSettingsView(model: model)
                 GlassPanel {
                     VStack(alignment: .leading, spacing: 16) {
                         Text("Твой цвет").font(.headline)
@@ -32,7 +33,7 @@ struct SettingsView: View {
                 }
                 GlassPanel { DisclosureGroup("Скорость воспроизведения") { PlaybackPerformanceView(player: model.player) } }
                 NavigationLink { PulseSettingsView(model: model) } label: { Label("Настроить Пульс", systemImage: "slider.horizontal.3").font(.headline) }
-                Text("Forma 1.2.0 · iOS 17+\nВоспроизведение работает через нативный плеер. YouTube должен быть доступен в твоей сети.").font(.footnote).foregroundStyle(.secondary)
+                Text("Forma 1.3.0 · iOS 17+\nВоспроизведение работает через нативный плеер. YouTube должен быть доступен в твоей сети.").font(.footnote).foregroundStyle(.secondary)
             }.padding(20)
         }.background(FormaTheme.background).navigationTitle("Настройки")
     }
@@ -55,32 +56,49 @@ private struct PlaybackPerformanceView: View {
 }
 
 @MainActor
-private struct GoogleSettingsView: View {
+private struct WiFiSettingsView: View {
     @ObservedObject var model: AppModel
-    @ObservedObject var account: GoogleAccount
-    @AppStorage("forma.googleClientID") private var clientID = ""
+    @State private var code = ""
     var body: some View {
         GlassPanel {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Синхронизация через Google").font(.title2.bold())
-                Text("Один аккаунт на iPhone и Windows. Плейлисты, лайки, дизлайки, история, настройки Пульса и анализ звучания доступны через интернет. ПК может быть выключен.").foregroundStyle(.secondary)
-                if let email = account.email {
-                    Text(email).font(.headline)
-                    Button("Синхронизировать сейчас") { Task { await model.synchronize(showErrors: true) } }.buttonStyle(.borderedProminent).disabled(model.isSyncing)
-                    Button("Войти повторно") { Task { await model.loginGoogle(clientID) } }.disabled(account.busy || model.isSyncing)
-                    Button("Выйти из Google", role: .destructive) { Task { await model.logoutGoogle() } }.disabled(account.busy)
-                } else {
-                    DisclosureGroup("Настройка Google Cloud") {
-                        Text("Создай OAuth-клиенты Desktop и iOS в одном проекте и включи Google Drive API. На iPhone нужен iOS Client ID.").font(.subheadline)
-                        TextField("iOS Client ID", text: $clientID).textInputAutocapitalization(.never).autocorrectionDisabled().textFieldStyle(.roundedBorder)
-                        Link("Открыть инструкцию", destination: URL(string: "https://github.com/Astronomial/music/blob/main/docs/GOOGLE_SYNC.md")!)
+                Text("Синхронизация с ПК · Wi-Fi").font(.title2.bold())
+                Text("Подключи iPhone и ПК к одной домашней сети. На ПК: Настройки → Подключить iPhone. Каждый обмен требует подтверждения на одном из устройств.").foregroundStyle(.secondary)
+                TextField("Вставь код подключения", text: $code, axis: .vertical).textInputAutocapitalization(.never).autocorrectionDisabled().textFieldStyle(.roundedBorder)
+                Button("Подключить ПК") { Task { await model.pairPC(code) } }.buttonStyle(.borderedProminent).disabled(model.isSyncing || code.isEmpty || !model.canSynchronizePC)
+                if let host = model.pcHost {
+                    Text("ПК: \(host)").font(.subheadline)
+                    if let proposal = model.syncProposal {
+                        Text("Изменения перед обменом").font(.headline)
+                        WiFiChangesView(title: "На ПК", summary: proposal.summary.toPC)
+                        WiFiChangesView(title: "На iPhone", summary: proposal.summary.toPhone)
+                        if proposal.status == .pending {
+                            Button("Применить на обоих устройствах") { Task { await model.approveExchange() } }.buttonStyle(.borderedProminent).disabled(model.isSyncing || !model.canSynchronizePC)
+                        }
+                        Button("Отклонить обмен", role: .destructive) { Task { await model.rejectExchange() } }.disabled(model.isSyncing || !model.canSynchronizePC || proposal.status == .approved)
+                        Button("Проверить решение на ПК") { Task { await model.synchronize(showErrors: true) } }.disabled(model.isSyncing || !model.canSynchronizePC)
+                    } else {
+                        Button("Подготовить обмен") { Task { await model.synchronize(showErrors: true) } }.buttonStyle(.bordered).disabled(model.isSyncing || !model.canSynchronizePC)
                     }
-                    Button("Войти через Google") { Task { await model.loginGoogle(clientID) } }.buttonStyle(.borderedProminent).disabled(clientID.isEmpty || account.busy || model.isRestoringLibrary)
+                    Button("Отключить ПК", role: .destructive) { Task { await model.disconnectPC() } }.disabled(model.isSyncing)
                 }
-                if model.isSyncing || account.busy { ProgressView("Подключаемся…") }
-                if let error = account.error { Text(error).font(.footnote).foregroundStyle(.secondary) }
+                if model.isSyncing { ProgressView("Проверяем обмен…") }
                 Text(model.syncStatus).font(.footnote).foregroundStyle(.secondary)
-                Text("Файлы музыки не загружаются в Drive. Изменения без интернета сохраняются на устройстве и отправятся позже.").font(.footnote).foregroundStyle(.secondary)
+                Text("Локальные изменения сохраняются сразу. На другое устройство они переносятся только после подтверждения. Передаются лайки, дизлайки, плейлисты, история, настройки Пульса и признаки звучания; музыкальные файлы остаются на устройстве.").font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+private struct WiFiChangesView: View {
+    let title: String
+    let summary: SyncChangeSummary
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.headline)
+            if summary.rows.isEmpty { Text("Без изменений").foregroundStyle(.secondary) }
+            ForEach(0..<summary.rows.count, id: \.self) { index in Text("\(summary.rows[index].0): \(summary.rows[index].1)").font(.subheadline) }
+            if !summary.details.isEmpty {
+                DisclosureGroup("Какие треки и плейлисты") { ForEach(Array(summary.details.enumerated()), id: \.offset) { row in Text(row.element).font(.footnote) } }
             }
         }
     }

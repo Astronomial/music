@@ -41,7 +41,7 @@ test('each installation generates a distinct verifiable P-256 certificate',()=>{
 function request(server,route,body,{token,origin,chunks=false}={}){
  return new Promise((resolve,reject)=>{const bytes=Buffer.from(JSON.stringify(body));const req=https.request({hostname:'127.0.0.1',port:server.server.address().port,path:route,method:'POST',ca:server.testCertificate,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{}),...(origin?{Origin:origin}:{})}},res=>{const parts=[];res.on('data',b=>parts.push(b));res.on('end',()=>resolve({status:res.statusCode,body:JSON.parse(Buffer.concat(parts).toString())}));});req.on('error',reject);if(chunks){for(let i=0;i<bytes.length;i++)req.write(bytes.subarray(i,i+1));req.end();}else req.end(bytes);});
 }
-test('actual pinned TLS server pairs once, syncs Unicode data, persists credentials and rejects unauthorized/browser requests',async()=>{
+test('actual pinned TLS server pairs once, requires confirmation, syncs Unicode data, persists credentials and rejects unauthorized/browser requests',async()=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'forma-sync-')),store=new Store(dir);await store.write('library.json',library());let notifications=0;
  const server=new SyncServer({store,coordinator:new LibraryCoordinator(store),host:'127.0.0.1',port:0,onChange:()=>notifications++});
  try{
@@ -51,8 +51,11 @@ test('actual pinned TLS server pairs once, syncs Unicode data, persists credenti
   assert.equal((await request(server,'/pair',{code})).status,403);
   assert.equal((await request(server,'/sync',{}, {token,origin:'https://evil.example'})).status,403);
   const base=portableLibrary(library()),mobile=structuredClone(base);mobile.likedIDs=[];mobile.playlists.push({id:'phone',name:'Музыка 🎶 на iPhone',trackIDs:['00000000001']});
-  const response=await request(server,'/sync',{base,library:mobile},{token,chunks:true});assert.equal(response.status,200);assert.equal(response.body.library.playlists.at(-1).name,'Музыка 🎶 на iPhone');assert.deepEqual(response.body.library.likedIDs,[]);assert.equal(notifications,1);
-  await server.stop({persist:false});await server.start();assert.equal(server.pin,pin);assert.equal((await request(server,'/sync',{base:response.body.library,library:response.body.library},{token})).status,200);
+  assert.equal((await request(server,'/sync',{base,library:mobile},{token})).status,426);
+  const draft=await request(server,'/sync/prepare',{id:crypto.randomUUID(),base,library:mobile},{token,chunks:true});assert.equal(draft.status,200);assert.equal(draft.body.status,'pending');assert.equal(notifications,0);assert.deepEqual((await store.read('library.json')).likes,library().likes);
+  const response=await request(server,'/sync/approve',{id:draft.body.id},{token});assert.equal(response.status,200);assert.equal(response.body.library.playlists.at(-1).name,'Музыка 🎶 на iPhone');assert.deepEqual(response.body.library.likedIDs,[]);assert.equal(notifications,1);
+  await server.stop({persist:false});await server.start();assert.equal(server.pin,pin);const restored=await request(server,'/sync/status',{id:draft.body.id},{token});assert.equal(restored.status,200);assert.equal(restored.body.status,'approved');
+  assert.equal((await request(server,'/sync/ack',{id:draft.body.id},{token})).status,200);assert.equal((await request(server,'/sync/ack',{id:draft.body.id},{token})).status,200);
   await server.forget();assert.equal((await request(server,'/sync',{library:mobile},{token})).status,401);
  }finally{await server.stop();await fs.rm(dir,{recursive:true,force:true});}
 });

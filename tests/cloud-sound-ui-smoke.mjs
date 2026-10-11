@@ -4,10 +4,12 @@ const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];
 const source=await fs.readFile('tests/youtube-ui-smoke.mjs','utf8'),start=source.indexOf('await page.addInitScript(()=>{')+'await page.addInitScript(()=>{'.length,end=source.indexOf('\n});\ntry{',start);await page.addInitScript(source.slice(start,end));
 const bytes=[...await fs.readFile('tests/fixtures/acoustic-sample.m4a')];
 await page.addInitScript(({bytes})=>{
-  window.googleStatus={connected:false};window.forma.desktop=true;window.forma.soundAudio=async()=>bytes;window.forma.cancelSound=async()=>{};
-  window.forma.googleStatus=async()=>window.googleStatus;
-  window.forma.googleLogin=async config=>{window.lastGoogleConfig=config;window.googleStatus={connected:true,email:'owner@example.com',lastSync:Date.now()};return window.googleStatus;};
-  window.forma.googleLogout=async()=>window.googleStatus={connected:false};window.forma.googleSync=async()=>window.googleStatus;window.forma.onSync=()=>()=>{};
+  window.syncState={enabled:false,devices:[],pending:[]};window.forma.desktop=true;window.forma.soundAudio=async()=>bytes;window.forma.cancelSound=async()=>{};
+  window.forma.syncStatus=async()=>window.syncState;window.forma.onSync=()=>()=>{};
+  window.forma.syncStart=async()=>window.syncState={enabled:true,devices:[{id:'phone',name:'iPhone'}],pending:[],pairing:'forma://pair?host=192.168.1.2&code=123456'};
+  window.forma.syncStop=async()=>window.syncState={enabled:false,devices:[],pending:[]};
+  window.forma.syncApprove=async id=>{window.confirmedExchange=id;window.syncState.pending=[];return window.syncState;};
+  window.forma.syncReject=async id=>{window.rejectedExchange=id;window.syncState.pending=[];return window.syncState;};
   const old=window.forma.save;window.forma.save=async state=>{window.savedState=state;await old(state);};
 },{bytes});
 try{
@@ -17,6 +19,12 @@ try{
   const disliked=await page.evaluate(()=>window.savedState.dislikes[0]);assert.ok(disliked);await page.getByRole('button',{name:'Снять дизлайк',exact:true}).click();await page.waitForFunction(()=>window.savedState?.dislikes.length===0);
   await page.waitForFunction(()=>Object.values(window.savedState?.tracks||{}).some(t=>t.soundProfile?.version===1),{},{timeout:20000});
   const profile=await page.evaluate(()=>Object.values(window.savedState.tracks).find(t=>t.soundProfile)?.soundProfile);assert.ok(profile.seconds>=8);assert.ok(profile.brightness<.1);assert.ok(profile.tempoConfidence>.3);
-  await page.getByRole('button',{name:'Настройки',exact:true}).click();await page.getByText('Настройка проекта Google Cloud',{exact:true}).click();await page.getByRole('textbox',{name:'Desktop Client ID'}).fill('123456-test.apps.googleusercontent.com');await page.getByLabel('Desktop client secret').fill('local-only-test-secret');await page.getByRole('button',{name:'Войти через Google',exact:true}).click();await page.getByText('owner@example.com',{exact:true}).waitFor();await page.getByRole('button',{name:'Выйти из Google',exact:true}).click();await page.getByRole('button',{name:'Войти через Google',exact:true}).waitFor();assert.deepEqual(errors,[]);
-  console.log('PASS: reversible dislike, actual AAC decoding + PCM worker profile, Google configuration/login/logout UI (controlled account transport).');
+  await page.getByRole('button',{name:'Настройки',exact:true}).click();assert.equal(await page.getByRole('button',{name:'Войти через Google',exact:true}).count(),0);
+  await page.getByRole('button',{name:'Подключить iPhone',exact:true}).click();await page.getByRole('textbox',{name:'Код подключения iPhone'}).waitFor();
+  const draft={id:'preview-test',deviceName:'iPhone',summary:{toPC:{likesAdded:2,details:['Лайк: Артист — Трек']},toPhone:{playlistsAdded:1,details:['Добавить плейлист: Любимое']}}};
+  await page.evaluate(p=>window.syncState.pending=[p],draft);await page.getByRole('article',{name:'Обмен ожидает подтверждения'}).waitFor();assert.equal(await page.evaluate(()=>window.confirmedExchange),undefined);
+  await page.getByText('Новые лайки: 2',{exact:true}).waitFor();await page.getByRole('button',{name:'Отклонить обмен',exact:true}).click();assert.equal(await page.evaluate(()=>window.rejectedExchange),'preview-test');
+  await page.evaluate(p=>window.syncState.pending=[p],draft);await page.getByRole('button',{name:'Применить на обоих устройствах',exact:true}).click();assert.equal(await page.evaluate(()=>window.confirmedExchange),'preview-test');
+  assert.deepEqual(errors,[]);
+  console.log('PASS: reversible dislike, actual AAC decoding + PCM worker profile, Wi-Fi preview, explicit approval/rejection and absence of Google UI (controlled paired-device transport).');
 }finally{await browser.close();}

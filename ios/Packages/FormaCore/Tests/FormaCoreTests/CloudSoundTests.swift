@@ -4,41 +4,17 @@ import XCTest
 
 final class CloudSoundTests: XCTestCase {
     private let id = "abcdefghijk", other = "lmnopqrstuv"
-    private struct Fixture: Decodable { let warm: SoundProfile; let bright: SoundProfile; let document: CloudDocument; let library: Library }
+    private struct Fixture: Decodable { let warm: SoundProfile; let bright: SoundProfile; let library: Library }
     private func fixture() throws -> Fixture {
         let url = try XCTUnwrap(Bundle.module.url(forResource: "cloud-sound", withExtension: "json"))
         let d = JSONDecoder(); d.dateDecodingStrategy = .millisecondsSince1970
         return try d.decode(Fixture.self, from: Data(contentsOf: url))
     }
-    func testPCCloudDocumentKeepsDislikeSoundAndSelectionContext() throws {
-        let f = try fixture(), l = try f.document.library()
+    func testPCWireLibraryKeepsDislikeSoundAndSelectionContext() throws {
+        let f = try fixture(), l = f.library
         XCTAssertEqual(l.dislikedIDs, [id]); XCTAssertTrue(l.likedIDs.isEmpty)
-        XCTAssertEqual(l.tracks[id]?.soundProfile, f.warm)
-        XCTAssertEqual(l.events.first?.kind, .dislike); XCTAssertEqual(l.events.first?.recommendation?.features, f.library.events.first?.recommendation?.features)
+        XCTAssertEqual(l.tracks[id]?.soundProfile, f.warm); XCTAssertEqual(l.events.first?.kind, .dislike)
         XCTAssertEqual(l.settings.languagePreference, "ru"); XCTAssertEqual(l.playlists.first?.trackIDs, [id])
-    }
-    func testOfflineConcurrentEditsConvergeAndDeletionDoesNotResurrect() throws {
-        var base = Library(); base.merge([Track(videoID: id, title: "Track", artist: "Artist")]); base.likedIDs = [id]; base.playlists = [Playlist(id: "mix", name: "Тест", trackIDs: [id])]
-        let now = Date(); var a = try CloudDocument(actor: "desktop-device").capturing(base, base: nil).publishing(now: now)
-        var b = try CloudDocument(actor: "iphone-device").merging(a)
-        var pc = base, phone = base; pc.likedIDs = []; pc.dislikedIDs = [id]; phone.playlists[0].trackIDs.append(other)
-        a = try a.capturing(pc, base: base, now: now.addingTimeInterval(1)); b = try b.capturing(phone, base: base, now: now.addingTimeInterval(2))
-        let ab = try a.merging(b), ba = try b.merging(a)
-        XCTAssertEqual(ab.records, ba.records); let l = try ab.library(); XCTAssertEqual(l.dislikedIDs, [id]); XCTAssertEqual(l.playlists.first?.trackIDs, [id, other]); XCTAssertTrue(l.likedIDs.isEmpty)
-        var edited = l; edited.dislikedIDs = []; edited.likedIDs = [id]; edited.playlists = []
-        let updated = try ab.capturing(edited, base: l, now: now.addingTimeInterval(3)).merging(b).library()
-        XCTAssertEqual(updated.likedIDs, [id]); XCTAssertTrue(updated.dislikedIDs.isEmpty); XCTAssertTrue(updated.playlists.isEmpty)
-    }
-    func testConcurrentMemberPositionsUseSameASCIIOrderAsPC() throws {
-        var doc = try fixture().document
-        doc.records["member:mix:A0123456789"] = CloudRegister(stamp: CloudStamp(time: 1, counter: 0, actor: doc.actor), value: .number(0))
-        XCTAssertEqual(try doc.library().playlists.first?.trackIDs, ["A0123456789", id])
-    }
-    func testFirstLoginDoesNotReplaceExistingAccountSettings() throws {
-        var base = Library(); base.settings.discovery = 0.9
-        let published = try CloudDocument(actor: "first-device").capturing(base, base: nil).publishing()
-        let new = try CloudDocument(actor: "second-device").capturing(Library(), base: nil).merging(published).library()
-        XCTAssertEqual(new.settings.discovery, 0.9)
     }
     func testPCAndSwiftPCMDescriptorsAgreeAndSilenceIsNotInvented() throws {
         let f = try fixture()

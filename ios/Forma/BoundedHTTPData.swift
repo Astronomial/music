@@ -31,7 +31,7 @@ final class BoundedHTTPData: NSObject, URLSessionDataDelegate, @unchecked Sendab
     }
     func cancel() { lock.lock(); cancelled = true; lock.unlock(); finish(.failure(CancellationError())) }
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode), response.expectedContentLength <= limit else { failure = GoogleError.message("Google: \((response as? HTTPURLResponse)?.statusCode ?? 0). Запрос отклонён или ответ превышает лимит"); completionHandler(.cancel); return }
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode), response.expectedContentLength <= limit else { failure = SyncError.rejected("Загрузка аудио: \((response as? HTTPURLResponse)?.statusCode ?? 0). Запрос отклонён или ответ превышает лимит"); completionHandler(.cancel); return }
         completionHandler(.allow)
     }
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive incoming: Data) {

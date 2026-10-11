@@ -129,13 +129,23 @@ enum NativeSmoke {
             guard rejectedWrongPin else { throw SyncError.rejected("Wrong certificate pin was accepted") }
             try await sync.pair(args[index + 1])
             stage = "first-sync"
-            var library = try await sync.synchronize(library: Library(), base: nil)
+            guard let connection = await sync.connection else { throw SyncError.rejected("Connection missing") }
+            let firstCheckpoint = WiFiCheckpoint(peerID: connection.pin, sent: Library(), base: nil)
+            let firstPreview = try await sync.prepare(firstCheckpoint)
+            guard firstPreview.status == .pending, firstPreview.library == nil else { throw SyncError.rejected("Draft applied without approval") }
+            var library = try firstCheckpoint.mergingApproved(try await sync.approve(firstCheckpoint.id), into: Library())
+            try await sync.acknowledge(firstCheckpoint.id)
             guard library.tracks.count >= 4, library.likedIDs.count == 1 else { throw SyncError.rejected("Initial PC library failed") }
             let base = library
             stage = "second-sync"
             library.likedIDs = []; library.playlists.append(Playlist(id: "phone-playlist", name: "На iPhone", trackIDs: Array(library.tracks.keys.sorted().prefix(2))))
             library.settings.artistDiversity = 1
-            let merged = try await sync.synchronize(library: library, base: base)
+            let secondCheckpoint = WiFiCheckpoint(peerID: connection.pin, sent: library, base: base)
+            let secondPreview = try await sync.prepare(secondCheckpoint)
+            guard secondPreview.status == .pending, secondPreview.summary.toPC.playlistsAdded == 1 else { throw SyncError.rejected("Bidirectional preview failed") }
+            let merged = try secondCheckpoint.mergingApproved(try await sync.approve(secondCheckpoint.id), into: library)
+            try await sync.acknowledge(secondCheckpoint.id)
+            try await sync.acknowledge(secondCheckpoint.id)
             guard merged.likedIDs.isEmpty, merged.playlists.contains(where: { $0.id == "phone-playlist" }), merged.settings.artistDiversity == 1 else { throw SyncError.rejected("Bidirectional PC sync failed") }
             stage = "native-playback"
             let tracks = merged.tracks.values.sorted { $0.id < $1.id }.map { track -> Track in var next = track; next.duration = 5; return next }
@@ -294,7 +304,7 @@ enum NativeSmoke {
             guard !player.isPlaying else { throw SyncError.rejected("Explicit pause failed") }
             player.resume(); try await Task.sleep(nanoseconds: 500_000_000)
             guard player.isPlaying else { throw SyncError.rejected("Resume failed") }
-            var final: [String: Any] = ["status": "passed", "realPCMAnalysis": true, "nativeStarts": starts.count, "automaticTransitions": feedback.count, "background": background, "pinnedTLS": true, "wrongPinRejected": rejectedWrongPin, "bidirectionalSync": true, "pauseResume": true, "miniPlayerAboveTabs": true, "miniPlayerBottom": miniFrame.maxY, "tabBarTop": barFrame.minY, "preparedManualSwitchMilliseconds": switchDelay * 1000, "preparedStreamReused": true, "controlledColdStartMilliseconds": coldStartMilliseconds, "preparedPlayingMilliseconds": preparedPlayingMilliseconds, "startupTimeoutRecovered": true, "recommendationSnapshotCaptured": true, "explicitLearningFeedbackCaptured": true, "networkHandoffRecovered": true, "oldNetworkPreparedItemDiscarded": true, "networkRecoveryRespectsPause": true]
+            var final: [String: Any] = ["status": "passed", "realPCMAnalysis": true, "nativeStarts": starts.count, "automaticTransitions": feedback.count, "background": background, "pinnedTLS": true, "wrongPinRejected": rejectedWrongPin, "bidirectionalSync": true, "wifiApprovalRequired": true, "pauseResume": true, "miniPlayerAboveTabs": true, "miniPlayerBottom": miniFrame.maxY, "tabBarTop": barFrame.minY, "preparedManualSwitchMilliseconds": switchDelay * 1000, "preparedStreamReused": true, "controlledColdStartMilliseconds": coldStartMilliseconds, "preparedPlayingMilliseconds": preparedPlayingMilliseconds, "startupTimeoutRecovered": true, "recommendationSnapshotCaptured": true, "explicitLearningFeedbackCaptured": true, "networkHandoffRecovered": true, "oldNetworkPreparedItemDiscarded": true, "networkRecoveryRespectsPause": true]
             stability.forEach { final[$0.key] = $0.value }; write(final)
             player.pause()
         } catch { let failure = error as NSError; write(["status": "failed", "stage": stage, "error": error.localizedDescription, "domain": failure.domain, "code": failure.code, "taskCancelled": Task.isCancelled]) }

@@ -1,11 +1,11 @@
-const { app, BrowserWindow, ipcMain, protocol, net, shell, dialog, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net, shell, dialog } = require('electron');
 const path = require('node:path');
 const { startStaticServer } = require('./static.cjs');
 const { Store } = require('./storage.cjs');
 const { folderFiles, importLocalFile } = require('./local.cjs');
 const { OfflineLibrary, validId } = require('./offline.cjs');
 protocol.registerSchemesAsPrivileged([{scheme:'forma-audio', privileges:{standard:true,secure:true,stream:true,supportFetchAPI:true}}]);
-let window, store, offline, api, uiServer, syncServer, coordinator, desktopBaseline, googleSync, apiKey = '', closing = false, closeTimer;
+let window, store, offline, api, uiServer, syncServer, coordinator, desktopBaseline, apiKey = '', closing = false, closeTimer;
 // Dev smoke tests use an explicit temporary profile on all operating systems.
 const testDataArg = process.argv.find(arg=>arg.startsWith('--forma-test-data='));
 if(!app.isPackaged&&testDataArg) app.setPath('userData',path.resolve(testDataArg.slice('--forma-test-data='.length)));
@@ -28,29 +28,23 @@ app.whenReady().then(async () => {
   coordinator=new LibraryCoordinator(store);
   syncServer=new SyncServer({store,coordinator,onChange:state=>window?.webContents.send('sync:changed',{state,base:desktopBaseline})});
   handle('state:load',async()=>{desktopBaseline=await store.read('library.json',null);return desktopBaseline;});
-  const {GoogleAuth}=require('./google-auth.cjs');
-  const {GoogleSync}=require('./google-sync.cjs');
-  const googleAuth=new GoogleAuth({store,safeStorage,fetch:net.fetch,openExternal:url=>shell.openExternal(url)});
-  let googleRestoreError='';try{await googleAuth.restore();}catch(e){googleRestoreError=e.message;}
-  googleSync=new GoogleSync({auth:googleAuth,store,coordinator,onChange:(state,base)=>window?.webContents.send('sync:changed',{state,base})});
-  handle('google:guide',()=>shell.openExternal('https://github.com/Astronomial/music/blob/main/docs/GOOGLE_SYNC.md'));
-  handle('google:status',()=>({...googleSync.status(),error:googleSync.error||googleRestoreError}));
-  handle('google:login',async config=>{await googleAuth.login(String(config?.clientID||googleAuth.credentials?.clientID||'').trim(),String(config?.secret||googleAuth.credentials?.secret||'').trim());await googleSync.reset();await syncServer.stop();googleRestoreError='';return googleSync.run(true);});
-  handle('google:logout',async()=>{await googleSync.reset();await googleAuth.logout();return googleSync.status();});
-  handle('google:sync',()=>googleSync.run(true));
-  googleSync.schedule();
+  // Retire old OAuth credentials without ever restoring them or contacting Google.
+  await store.write('google-secure.json',null);await store.write('google-secure.json',null);
   handle('sync:status',()=>syncServer.status());
-  handle('sync:start',()=>{if(googleAuth.status().connected)throw new Error('Отключи Google перед использованием старой синхронизации');return syncServer.start();});
+  handle('sync:start',()=>syncServer.start());
   handle('sync:stop',()=>syncServer.stop());
   handle('sync:pair',()=>syncServer.newPairing());
   handle('sync:forget',()=>syncServer.forget());
+  handle('sync:approve',async id=>{await syncServer.approvals.approve(id);return syncServer.status();});
+  handle('sync:reject',async id=>{await syncServer.approvals.reject(id);return syncServer.status();});
   const saveState = async state => {
     if (!state || state.version!==1 || !state.tracks || !Array.isArray(state.likes) || !Array.isArray(state.events) || !Array.isArray(state.playlists) || JSON.stringify(state).length>25*1024**2) throw new Error('Некорректная библиотека');
     apiKey = String(state.settings?.apiKey || '').slice(0,250);
     const next=await coordinator.mutate(current=>mergeDesktop(current||state,desktopBaseline||state,state));
-    desktopBaseline=structuredClone(state);googleSync.schedule();
+    desktopBaseline=structuredClone(state);
     if(JSON.stringify(next)!==JSON.stringify(state))window?.webContents.send('sync:changed',{state:next,base:state});
   };
+  if((await store.read('sync-settings.json',{})).enabled)try{await syncServer.start();}catch{/* Retry from Settings when LAN becomes available. */}
   handle('state:save',saveState);
   handle('state:close',async state=> {
     await saveState(state);await coordinator.queue;await store.queue;clearTimeout(closeTimer);closing=true;window.close();

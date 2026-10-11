@@ -108,12 +108,13 @@ actor SyncClient {
         var (next, secret) = try PCConnection.parse(code)
         let generation = UUID(); pairingGeneration = generation
         struct Request: Encodable { let code: String; let name: String }
-        struct Reply: Decodable { let token: String }
+        struct Reply: Decodable { let token: String; let protocolVersion: Int? }
         let reply: Reply = try await request(next, path: "/pair", body: Request(code: secret, name: "iPhone · Forma"))
         try Task.checkCancellation()
+        guard reply.protocolVersion == 2 else { throw SyncError.rejected("Обнови Forma на ПК: нужен обмен с подтверждением.") }
         guard pairingGeneration == generation, !reply.token.isEmpty, reply.token.count <= 512 else { throw CancellationError() }
         next.token = reply.token
-        next.baselineVersion = 2
+        next.baselineVersion = 3
         let data = try JSONEncoder().encode(next)
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrAccount as String: account]
         let changes: [String: Any] = [kSecValueData as String: data, kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]
@@ -125,15 +126,31 @@ actor SyncClient {
         guard status == errSecSuccess else { throw SyncError.rejected("Не удалось сохранить подключение в защищённом хранилище.") }
         restored = true; connection = next
     }
+    func retireGoogleCredentials() {
+        SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "music.forma.google", kSecAttrAccount as String: "oauth"] as CFDictionary)
+    }
     func cancelPendingRequests() { pairingGeneration = UUID(); pendingSessions.values.forEach { $0.invalidateAndCancel() }; pendingSessions.removeAll() }
     func disconnect() { cancelPendingRequests(); restored = true; SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrAccount as String: account] as CFDictionary); connection = nil }
-    func synchronize(library: Library, base: Library?) async throws -> Library {
+    func prepare(_ checkpoint: WiFiCheckpoint) async throws -> WiFiProposal {
+        guard let connection, connection.pin == checkpoint.peerID else { throw SyncError.rejected("Сначала подключи ПК.") }
+        struct Request: Encodable { let id: String; let library: Library; let base: Library? }
+        let reply: WiFiProposal = try await request(connection, path: "/sync/prepare", body: Request(id: checkpoint.id, library: checkpoint.sent, base: checkpoint.base))
+        return try reply.validated(expectedID: checkpoint.id)
+    }
+    func review(_ id: String) async throws -> WiFiProposal { try await proposalRequest(id, path: "/sync/status") }
+    func approve(_ id: String) async throws -> WiFiProposal { try await proposalRequest(id, path: "/sync/approve") }
+    func reject(_ id: String) async throws -> WiFiProposal { try await proposalRequest(id, path: "/sync/reject") }
+    private func proposalRequest(_ id: String, path: String) async throws -> WiFiProposal {
         guard let connection else { throw SyncError.rejected("Сначала подключи ПК.") }
-        struct Request: Encodable { let library: Library; let base: Library? }
-        struct Reply: Decodable { let library: Library }
-        let reply: Reply = try await request(connection, path: "/sync", body: Request(library: library, base: base))
-        guard reply.library.version == 1, reply.library.tracks.count <= 6000, reply.library.tracks.allSatisfy({ VideoID.isValid($0.key) && $0.key == $0.value.id }) else { throw SyncError.rejected("ПК прислал несовместимую библиотеку.") }
-        return LibraryValidation.normalized(reply.library)
+        struct Request: Encodable { let id: String }
+        let reply: WiFiProposal = try await request(connection, path: path, body: Request(id: id))
+        return try reply.validated(expectedID: id)
+    }
+    func acknowledge(_ id: String) async throws {
+        guard let connection else { throw SyncError.rejected("Сначала подключи ПК.") }
+        struct Request: Encodable { let id: String }; struct Reply: Decodable { let protocolVersion: Int }
+        let reply: Reply = try await request(connection, path: "/sync/ack", body: Request(id: id))
+        guard reply.protocolVersion == 2 else { throw WiFiExchangeError.invalidProposal }
     }
     private func request<Body: Encodable, Reply: Decodable>(_ connection: PCConnection, path: String, body: Body) async throws -> Reply {
         let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .millisecondsSince1970

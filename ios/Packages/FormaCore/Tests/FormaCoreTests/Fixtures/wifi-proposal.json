@@ -1,0 +1,309 @@
+{
+  "sent": {
+    "version": 1,
+    "tracks": {
+      "abcdefghijk": {
+        "videoID": "abcdefghijk",
+        "title": "Песня abcdefghijk",
+        "artist": "Автор",
+        "duration": 0,
+        "genres": [],
+        "moodHints": [],
+        "relatedTo": [],
+        "directRelatedTo": [],
+        "discoveryLanguages": [],
+        "genre": "",
+        "mood": "",
+        "tags": [],
+        "language": ""
+      },
+      "lmnopqrstuv": {
+        "videoID": "lmnopqrstuv",
+        "title": "Песня lmnopqrstuv",
+        "artist": "Автор",
+        "duration": 0,
+        "genres": [],
+        "moodHints": [],
+        "relatedTo": [],
+        "directRelatedTo": [],
+        "discoveryLanguages": [],
+        "genre": "",
+        "mood": "",
+        "tags": [],
+        "language": ""
+      }
+    },
+    "likedIDs": [],
+    "hiddenIDs": [],
+    "dislikedIDs": [
+      "abcdefghijk"
+    ],
+    "playlists": [
+      {
+        "id": "mix",
+        "name": "Музыка 🎵",
+        "trackIDs": [
+          "abcdefghijk"
+        ]
+      }
+    ],
+    "events": [],
+    "settings": {
+      "genres": [],
+      "excludedArtists": [],
+      "excludedGenres": [],
+      "preferredArtists": [],
+      "seedPlaylistIDs": [],
+      "discovery": 0.7,
+      "repeatHours": 2,
+      "artistDiversity": 0.6,
+      "mood": "any",
+      "genreMode": "prefer",
+      "energy": "any",
+      "vocals": "any",
+      "includeLibrary": true,
+      "playlistSource": "all",
+      "explorationStyle": "nearby",
+      "languagePreference": "ru",
+      "skipSensitivity": "strict",
+      "sessionInfluence": 0.65,
+      "recommendationVersion": 2
+    }
+  },
+  "base": {
+    "version": 1,
+    "tracks": {
+      "abcdefghijk": {
+        "videoID": "abcdefghijk",
+        "title": "Песня abcdefghijk",
+        "artist": "Автор",
+        "duration": 0,
+        "genres": [],
+        "moodHints": [],
+        "relatedTo": [],
+        "directRelatedTo": [],
+        "discoveryLanguages": [],
+        "genre": "",
+        "mood": "",
+        "tags": [],
+        "language": ""
+      },
+      "lmnopqrstuv": {
+        "videoID": "lmnopqrstuv",
+        "title": "Песня lmnopqrstuv",
+        "artist": "Автор",
+        "duration": 0,
+        "genres": [],
+        "moodHints": [],
+        "relatedTo": [],
+        "directRelatedTo": [],
+        "discoveryLanguages": [],
+        "genre": "",
+        "mood": "",
+        "tags": [],
+        "language": ""
+      }
+    },
+    "likedIDs": [
+      "abcdefghijk"
+    ],
+    "hiddenIDs": [],
+    "dislikedIDs": [],
+    "playlists": [],
+    "events": [],
+    "settings": {
+      "genres": [],
+      "excludedArtists": [],
+      "excludedGenres": [],
+      "preferredArtists": [],
+      "seedPlaylistIDs": [],
+      "discovery": 0.7,
+      "repeatHours": 2,
+      "artistDiversity": 0.6,
+      "mood": "any",
+      "genreMode": "prefer",
+      "energy": "any",
+      "vocals": "any",
+      "includeLibrary": true,
+      "playlistSource": "all",
+      "explorationStyle": "nearby",
+      "languagePreference": "ru",
+      "skipSensitivity": "strict",
+      "sessionInfluence": 0.65,
+      "recommendationVersion": 2
+    }
+  },
+  "pending": {
+    "protocolVersion": 2,
+    "id": "00000000-0000-4000-8000-000000000001",
+    "deviceName": "iPhone",
+    "createdAt": 1800000000000,
+    "expiresAt": 1800000900000,
+    "summary": {
+      "toPC": {
+        "likesAdded": 0,
+        "likesRemoved": 1,
+        "dislikesAdded": 1,
+        "dislikesRemoved": 0,
+        "hiddenAdded": 0,
+        "hiddenRemoved": 0,
+        "playlistsAdded": 1,
+        "playlistsRemoved": 0,
+        "playlistsChanged": 0,
+        "tracksAdded": 0,
+        "settingsChanged": 0,
+        "soundProfilesChanged": 0,
+        "historyAdded": 0,
+        "historyRemoved": 0,
+        "details": [
+          "Снять лайк: Автор — Песня abcdefghijk",
+          "Дизлайк: Автор — Песня abcdefghijk",
+          "Добавить плейлист: Музыка 🎵"
+        ]
+      },
+      "toPhone": {
+        "likesAdded": 1,
+        "likesRemoved": 0,
+        "dislikesAdded": 0,
+        "dislikesRemoved": 0,
+        "hiddenAdded": 0,
+        "hiddenRemoved": 0,
+        "playlistsAdded": 0,
+        "playlistsRemoved": 0,
+        "playlistsChanged": 0,
+        "tracksAdded": 0,
+        "settingsChanged": 0,
+        "soundProfilesChanged": 0,
+        "historyAdded": 0,
+        "historyRemoved": 0,
+        "details": [
+          "Лайк: Автор — Песня lmnopqrstuv"
+        ]
+      }
+    },
+    "status": "pending"
+  },
+  "approved": {
+    "protocolVersion": 2,
+    "id": "00000000-0000-4000-8000-000000000001",
+    "deviceName": "iPhone",
+    "createdAt": 1800000000000,
+    "expiresAt": 1800000900000,
+    "summary": {
+      "toPC": {
+        "likesAdded": 0,
+        "likesRemoved": 1,
+        "dislikesAdded": 1,
+        "dislikesRemoved": 0,
+        "hiddenAdded": 0,
+        "hiddenRemoved": 0,
+        "playlistsAdded": 1,
+        "playlistsRemoved": 0,
+        "playlistsChanged": 0,
+        "tracksAdded": 0,
+        "settingsChanged": 0,
+        "soundProfilesChanged": 0,
+        "historyAdded": 0,
+        "historyRemoved": 0,
+        "details": [
+          "Снять лайк: Автор — Песня abcdefghijk",
+          "Дизлайк: Автор — Песня abcdefghijk",
+          "Добавить плейлист: Музыка 🎵"
+        ]
+      },
+      "toPhone": {
+        "likesAdded": 1,
+        "likesRemoved": 0,
+        "dislikesAdded": 0,
+        "dislikesRemoved": 0,
+        "hiddenAdded": 0,
+        "hiddenRemoved": 0,
+        "playlistsAdded": 0,
+        "playlistsRemoved": 0,
+        "playlistsChanged": 0,
+        "tracksAdded": 0,
+        "settingsChanged": 0,
+        "soundProfilesChanged": 0,
+        "historyAdded": 0,
+        "historyRemoved": 0,
+        "details": [
+          "Лайк: Автор — Песня lmnopqrstuv"
+        ]
+      }
+    },
+    "status": "approved",
+    "library": {
+      "version": 1,
+      "tracks": {
+        "abcdefghijk": {
+          "videoID": "abcdefghijk",
+          "title": "Песня abcdefghijk",
+          "artist": "Автор",
+          "duration": 0,
+          "genres": [],
+          "moodHints": [],
+          "relatedTo": [],
+          "directRelatedTo": [],
+          "discoveryLanguages": [],
+          "genre": "",
+          "mood": "",
+          "tags": [],
+          "language": ""
+        },
+        "lmnopqrstuv": {
+          "videoID": "lmnopqrstuv",
+          "title": "Песня lmnopqrstuv",
+          "artist": "Автор",
+          "duration": 0,
+          "genres": [],
+          "moodHints": [],
+          "relatedTo": [],
+          "directRelatedTo": [],
+          "discoveryLanguages": [],
+          "genre": "",
+          "mood": "",
+          "tags": [],
+          "language": ""
+        }
+      },
+      "likedIDs": [
+        "lmnopqrstuv"
+      ],
+      "hiddenIDs": [],
+      "dislikedIDs": [
+        "abcdefghijk"
+      ],
+      "playlists": [
+        {
+          "id": "mix",
+          "name": "Музыка 🎵",
+          "trackIDs": [
+            "abcdefghijk"
+          ]
+        }
+      ],
+      "events": [],
+      "settings": {
+        "genres": [],
+        "excludedArtists": [],
+        "excludedGenres": [],
+        "preferredArtists": [],
+        "seedPlaylistIDs": [],
+        "discovery": 0.7,
+        "repeatHours": 2,
+        "artistDiversity": 0.6,
+        "mood": "any",
+        "genreMode": "prefer",
+        "energy": "any",
+        "vocals": "any",
+        "includeLibrary": true,
+        "playlistSource": "all",
+        "explorationStyle": "nearby",
+        "languagePreference": "ru",
+        "skipSensitivity": "strict",
+        "sessionInfluence": 0.65,
+        "recommendationVersion": 2
+      }
+    }
+  }
+}
