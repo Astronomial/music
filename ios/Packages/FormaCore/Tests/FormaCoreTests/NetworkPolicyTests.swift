@@ -21,12 +21,13 @@ final class NetworkPolicyTests: XCTestCase {
         XCTAssertTrue(wifiVPN.canPrewarmExtraTracks)
         XCTAssertEqual(wifiVPN.extractionDeadline(base: 12), 12)
     }
-    func testLowDataAndUnknownPathsDoNotStartOptionalPrewarming() {
+    func testUnlimitedDataIgnoresLowDataFlagButRequiresReachableKnownPath() {
         XCTAssertFalse(NetworkPolicy.unknown.canPrewarmExtraTracks)
-        XCTAssertTrue(NetworkPolicy(reachable: true, constrained: true).lean)
-        XCTAssertFalse(NetworkPolicy(reachable: true, constrained: true).canPrewarmExtraTracks)
+        XCTAssertFalse(NetworkPolicy(reachable: true, constrained: true).lean)
+        XCTAssertTrue(NetworkPolicy(reachable: true, constrained: true).canPrewarmExtraTracks)
         XCTAssertFalse(NetworkPolicy(reachable: false).canPrewarmExtraTracks)
-        XCTAssertEqual(NetworkPolicy(reachable: true, constrained: true).automaticRefreshInterval, 120)
+        XCTAssertEqual(NetworkPolicy(reachable: true, constrained: true).automaticRefreshInterval, 30)
+        XCTAssertEqual(NetworkPolicy(reachable: true, constrained: true).catalogParallelism, 3)
     }
     func testUnreachablePCBackoffIsBoundedAndManualRetryIsAvailable() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)

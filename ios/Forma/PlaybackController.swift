@@ -230,7 +230,7 @@ final class PlaybackController: ObservableObject {
                     startTiming = timing
                 }
                 if requestedPlayback, !interrupted { armStartWatchdog(seconds: networkPolicy.bufferDeadline(base: bufferTimeout), token: token) }
-                let item = buffered?.item ?? AVPlayerItem(url: resolved.url)
+                let item = buffered?.item ?? makePlayerItem(resolved.url)
                 item.preferredForwardBufferDuration = networkPolicy.lean ? 6 : 3
                 observe(item, token: token)
                 engine.insert(item, after: nil)
@@ -440,7 +440,7 @@ final class PlaybackController: ObservableObject {
                 else { audio = try await resolver.resolve(videoID: next.id, forceRefresh: false) }
                 try Task.checkCancellation()
                 guard generation == token, preparationToken == requestToken, engine.currentItem === active else { return }
-                let item = buffered?.item ?? AVPlayerItem(url: audio.url); item.preferredForwardBufferDuration = networkPolicy.lean ? 12 : 8
+                let item = buffered?.item ?? makePlayerItem(audio.url); item.preferredForwardBufferDuration = networkPolicy.lean ? 12 : 8
                 guard engine.canInsert(item, after: active) else { preparing = false; return }
                 prepared = (next, item, audio); engine.insert(item, after: active); preparing = false
                 scheduleExtraPreparation()
@@ -466,6 +466,10 @@ final class PlaybackController: ObservableObject {
         } else if prepared != nil { scheduleExtraPreparation(); return }
         preparationToken = UUID(); prefetch?.cancel(); preparing = false
         if isPlaying { prepareNext() }
+    }
+    private func makePlayerItem(_ url: URL) -> AVPlayerItem {
+        let asset = AVURLAsset(url: url, options: [AVURLAssetAllowsCellularAccessKey: true, AVURLAssetAllowsExpensiveNetworkAccessKey: true, AVURLAssetAllowsConstrainedNetworkAccessKey: true])
+        return AVPlayerItem(asset: asset)
     }
     func setPreparationDepth(_ depth: Int) {
         preparationDepth = depth == 1 ? 1 : 3
@@ -511,7 +515,7 @@ final class PlaybackController: ObservableObject {
                 do {
                     let audio = try await resolver.analysisAudio(videoID: track.id)
                     try Task.checkCancellation(); guard extraToken == token, isPlaying else { return }
-                    let item = AVPlayerItem(url: audio.url); item.preferredForwardBufferDuration = 3
+                    let item = makePlayerItem(audio.url); item.preferredForwardBufferDuration = 3
                     item.canUseNetworkResourcesForLiveStreamingWhilePaused = false
                     let warmer = AVPlayer(playerItem: item); warmer.isMuted = true; warmer.volume = 0; warmer.allowsExternalPlayback = false
                     let entry = BufferedItem(track: track, item: item, audio: audio, player: warmer); extraPending = entry

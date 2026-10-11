@@ -12,8 +12,8 @@ public struct NetworkPolicy: Sendable, Equatable {
         self.known = known; self.reachable = reachable; self.cellular = cellular; self.expensive = expensive; self.constrained = constrained
     }
     public static let unknown = NetworkPolicy(known: false, reachable: false)
-    public var lean: Bool { !known || cellular || expensive || constrained }
-    public var canPrewarmExtraTracks: Bool { known && reachable && !constrained }
+    public var lean: Bool { !known || cellular || expensive }
+    public var canPrewarmExtraTracks: Bool { known && reachable }
     public var catalogParallelism: Int { lean ? 1 : 3 }
     public var automaticRefreshInterval: TimeInterval { lean ? 120 : 30 }
     public func canSyncPC(localWiFi: Bool) -> Bool { localWiFi && !cellular }

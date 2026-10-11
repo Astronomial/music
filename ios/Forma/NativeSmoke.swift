@@ -340,7 +340,7 @@ enum NativeSmoke {
         let resolver = PrerollFixtureResolver(urls: urls), player = PlaybackController(resolver: resolver)
         defer { player.pause() }
         for _ in 0..<100 { if player.networkPolicy.known { break }; try await Task.sleep(nanoseconds: 20_000_000) }
-        player.debugNetworkChanged(NetworkPolicy(reachable: true, cellular: true, expensive: true), signature: "preroll-cellular-VPN")
+        player.debugNetworkChanged(NetworkPolicy(reachable: true, cellular: true, expensive: true, constrained: true), signature: "preroll-cellular-VPN")
         try await Task.sleep(nanoseconds: 450_000_000)
         player.setPreparationDepth(3); player.play(tracks[0], list: tracks)
         for _ in 0..<1500 {

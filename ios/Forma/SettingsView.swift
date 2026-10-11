@@ -114,7 +114,7 @@ private struct PreparationSettingsView: View {
             Picker("Глубина подготовки", selection: Binding(get: { player.preparationDepth }, set: { player.setPreparationDepth($0) })) {
                 Text("Следующий").tag(1); Text("До трёх").tag(3)
             }.pickerStyle(.segmented)
-            Text("Подготовка начала следующих треков Пульса и очереди работает также по мобильной сети. Расход трафика увеличивается. В системном режиме экономии данных готовится только следующий трек.").font(.footnote).foregroundStyle(.secondary)
+            Text("Подготовка начала следующих треков Пульса и очереди работает также по мобильной сети. Расход трафика увеличивается. Режим экономии данных iOS не уменьшает выбранную глубину подготовки.").font(.footnote).foregroundStyle(.secondary)
         }
     }
 }
