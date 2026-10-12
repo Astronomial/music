@@ -541,12 +541,25 @@ final class PlaybackController: ObservableObject {
                     item.canUseNetworkResourcesForLiveStreamingWhilePaused = false
                     let warmer = AVQueuePlayer(items: [item]); warmer.isMuted = true; warmer.volume = 0; warmer.allowsExternalPlayback = false
                     let entry = BufferedItem(track: track, item: item, audio: audio, player: warmer); extraPending = entry
-                    let ready = await AudioPreroll(warmer).wait(seconds: networkPolicy.lean ? 12 : 8)
+                    let prerollDeadline: Double = networkPolicy.lean ? 12 : 8
+                    var ready = await AudioPreroll(warmer).wait(seconds: prerollDeadline)
+                    try Task.checkCancellation()
+                    // A slow range response can finish just after preroll times out.
+                    // Keep its downloaded bytes and owner, and retry once while
+                    // the current song plays; failed/expired items never retry.
+                    if !ready, extraToken == token, isPlaying, item.status != .failed, audio.isFresh(margin: 45) {
+                        ready = await AudioPreroll(warmer).wait(seconds: prerollDeadline)
+                    }
                     try Task.checkCancellation()
                     guard extraToken == token, isPlaying else { warmer.replaceCurrentItem(with: nil); return }
                     extraPending = nil
                     if ready, item.status == .readyToPlay, audio.isFresh(margin: 45) { bufferedItems[track.id] = entry }
-                    else { warmer.replaceCurrentItem(with: nil); warmingFailures[track.id] = Date() }
+                    else {
+#if DEBUG
+                        print("Preroll preparation failed: \(track.id), player=\(warmer.status.rawValue), item=\(item.status.rawValue), ranges=\(item.loadedTimeRanges), error=\(item.error?.localizedDescription ?? warmer.error?.localizedDescription ?? "no AVFoundation error")")
+#endif
+                        warmer.replaceCurrentItem(with: nil); warmingFailures[track.id] = Date()
+                    }
                 } catch {
                     guard extraToken == token else { return }
                     extraPending?.player.cancelPendingPrerolls(); extraPending?.player.replaceCurrentItem(with: nil); extraPending = nil
