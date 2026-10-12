@@ -293,20 +293,27 @@ export function rankTracks(candidates, state, options = {}) {
     let pool=ranked.map((_,i)=>i);
     const preferred=pool.filter(i=>!disliked.has(ranked[i].track.id));
     if(preferred.length)pool=preferred;
+    // Reserve the requested language before novelty/artist filters narrow the
+    // pool. Weak search genres must not erase supported Russian discoveries.
+    if(settings.languagePreference!=='any'&&.75*(policy.exposureCount+result.length+1)-languageCount>=.5){
+      const languagePool=pool.filter(i=>ranked[i].languageFit>=.6&&relevant(ranked[i])&&(ranked[i].nearby||ranked[i].signals.neighbourhood>=.15||!anchors.length));
+      if(languagePool.length)pool=languagePool;
+    }
     // Discovery of new artists and distance from taste are independent. Most
     // slots use a supported neighbourhood; occasional stretch slots are budgeted
     // against real started playback so repeated single-track ranking cannot reset it.
     const mayStretch=policy.surpriseRate*(policy.exposureCount+result.length+1)-surprises>=1;
-    if(anchors.length&&!mayStretch){const close=pool.filter(i=>ranked[i].nearby);if(close.length)pool=close;}
+    if(anchors.length&&!mayStretch){
+      const close=pool.filter(i=>ranked[i].nearby),spacedClose=close.filter(i=>relevant(ranked[i])&&withinGap(ranked[i])&&withinCap(ranked[i]));
+      const supported=pool.filter(i=>relevant(ranked[i])&&ranked[i].signals.neighbourhood>=.15);
+      if(close.length)pool=settings.artistDiversity&&!spacedClose.length&&supported.length?supported:close;
+    }
     if(settings.artistDiversity){
       const diverse=pool.filter(i=>relevant(ranked[i])&&withinGap(ranked[i])&&withinCap(ranked[i]));
       const spaced=pool.filter(i=>relevant(ranked[i])&&withinGap(ranked[i]));
       const belowCap=pool.filter(i=>relevant(ranked[i])&&withinCap(ranked[i]));
     pool=diverse.length?diverse:spaced.length?spaced:belowCap.length?belowCap:pool;
       if(freshDeficit>=.5&&discoveryDeficit>=.5){const fresh=pool.filter(i=>ranked[i].newArtist&&relevant(ranked[i]));if(fresh.length)pool=fresh;}
-    }
-    if(settings.languagePreference!=='any'&&.75*(policy.exposureCount+result.length+1)-languageCount>=.5){
-      const preferred=pool.filter(i=>ranked[i].languageFit>=.6&&ranked[i].nearby&&relevant(ranked[i]));if(preferred.length)pool=preferred;
     }
     // Calibrate novelty after relevance, language and spacing: never fill a quota
     // with an excluded or unrelated song. Keep the selection-time classification.

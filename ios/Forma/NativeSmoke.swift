@@ -447,6 +447,14 @@ enum NativeSmoke {
         try await Task.sleep(nanoseconds: 200_000_000)
         guard model.player.current?.id == tracks[2].id, model.player.selectionSurface == "manual" else { throw SyncError.rejected("Delayed Pulse ranking overrode manual playback") }
         model.player.pause(); model.deletePlaylist(playlist.id)
+        model.playRecommendation(tracks[0])
+        try await until("home-recommendation-playing") { model.player.isPlaying }
+        guard model.player.current?.id == tracks[0].id, model.player.selectionSurface == "pulse", model.player.selectionMood == nil else { throw SyncError.rejected("Home recommendation row lost adaptive Pulse context") }
+        model.playRecommendation(tracks[1], mood: "calm")
+        try await until("mood-recommendation-playing") { model.player.isPlaying }
+        guard model.player.current?.id == tracks[1].id, model.player.selectionSurface == "mood", model.player.selectionMood == "calm" else { throw SyncError.rejected("Mood recommendation row lost adaptive mood context") }
+        model.player.pause()
+
         let storageURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("library.json")
         defer { try? FileManager.default.removeItem(at: storageURL.deletingLastPathComponent()) }
         let storage = LibraryStorage(url: storageURL)
@@ -466,7 +474,7 @@ enum NativeSmoke {
         guard unavailable == nil, restored?.host == "10.0.0.2", cached?.host == restored?.host, keychain.count == 2 else { throw SyncError.rejected("Temporary Keychain failure permanently lost the paired PC") }
         return ["resumeBufferDeadlineRearmed": true, "pausedLoadingNoSpinner": true, "interruptionRecovered": true,
                 "interruptionRespectsPause": true, "mediaServicesResetRecovered": true, "mediaServicesLossRecovered": true, "recoveryNoDuplicateFeedback": true,
-                "rapidSelectionCancelsOldLoad": true, "staleSearchIgnored": true, "staleLinkIgnored": true, "stalePulseIgnored": true,
+                "rapidSelectionCancelsOldLoad": true, "staleSearchIgnored": true, "staleLinkIgnored": true, "stalePulseIgnored": true, "homeRowsStartAdaptivePulse": true, "moodRowsKeepAdaptiveContext": true,
                 "oldSaveCannotOverwriteNewerLibrary": true, "syncBaselineBoundToPairedPC": true, "legacyBaselineMigratedSafely": true,
                 "advancedQueueMatchesNewList": true, "keychainRestoreRetriesTransientFailure": true, "cancelledSearchClearsSpinner": true]
     }

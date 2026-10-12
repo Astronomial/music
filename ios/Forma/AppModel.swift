@@ -23,6 +23,7 @@ final class AppModel: ObservableObject {
     private let localWiFiMonitor = NWPathMonitor(requiredInterfaceType: .wifi)
     private var syncBackoff = SyncBackoff()
     private var syncRouteAllowed = false
+    private var pendingCatalogRefresh = false
     private var lastAutomaticRefresh = Date.distantPast
     let player: PlaybackController
     private let audioResolver: any StreamResolving
@@ -97,7 +98,7 @@ final class AppModel: ObservableObject {
         player.pulseNext = { [weak self] excluded, mood in
             guard let self else { return nil }
             if let id = self.pulsePlaylistID, !self.library.playlists.contains(where: { $0.id == id }) { return nil }
-            let source = mood.flatMap { self.moodCache[$0] } ?? self.pulseCache
+            let source = mood.flatMap { self.moodCache[$0] } ?? (self.pulseCachePlaylistID == self.pulsePlaylistID ? self.pulseCache : self.recommendations)
             guard let choice = PulseEngine.selectCached(source, library: self.selectionLibrary(), exclude: excluded, currentID: self.player.current?.id, index: self.playbackIndex, mood: mood) else { return nil }
             if let exposure = choice.exposure { self.selectedContexts[choice.id] = exposure }
             return choice.track
@@ -239,6 +240,16 @@ final class AppModel: ObservableObject {
         player.play(track, list: list, context: context)
         if hadPlaylist { updateRecommendations() }
     }
+    func playRecommendation(_ track: Track, mood: String? = nil) {
+        guard !isRestoringLibrary else { return }
+        pulseGeneration = UUID(); pulseWork?.cancel(); linkTask?.cancel(); soundTask?.cancel()
+        let source = mood.flatMap { moodCache[$0] } ?? recommendations
+        selectedContexts.removeAll()
+        if let exposure = source.first(where: { $0.id == track.id })?.exposure { selectedContexts[track.id] = exposure }
+        let hadPlaylist = pulsePlaylistID != nil; pulsePlaylistID = nil
+        player.play(track, list: [track], asPulse: true, context: mood)
+        if hadPlaylist { updateRecommendations() }
+    }
     func startPulse(mood: String? = nil, playlistID: String? = nil) {
         guard !isRestoringLibrary else { return }
         pulseWork?.cancel(); linkTask?.cancel(); soundTask?.cancel()
@@ -278,21 +289,32 @@ final class AppModel: ObservableObject {
         // The native smoke uses controlled audio/catalogue data, never live discovery.
         if automatic && ProcessInfo.processInfo.arguments.contains("--forma-smoke") { return }
 #endif
-        guard !isRefreshing else { return }
+        guard !isRefreshing else { if !automatic { pendingCatalogRefresh = true }; return }
         let networkPolicy = player.networkPolicy
         if automatic {
             guard networkPolicy.reachable, !player.isLoading,
                   Date().timeIntervalSince(lastAutomaticRefresh) >= networkPolicy.automaticRefreshInterval else { return }
             lastAutomaticRefresh = Date()
         }
-        isRefreshing = true; defer { isRefreshing = false }
+        isRefreshing = true
+        defer {
+            isRefreshing = false
+            if pendingCatalogRefresh {
+                pendingCatalogRefresh = false
+                Task { [weak self] in await self?.refresh() }
+            }
+        }
         let settings = library.settings
-        let genres = (settings.genres.isEmpty ? ["Pop"] : settings.genres).filter { !settings.excludedGenres.contains($0) }
         let suffix = PulseDirections.suffix(settings), hints = PulseDirections.hints(settings)
-        let anchors = PulseEngine.anchors(in: contextualLibrary(), limit: 6)
+        let anchors = PulseEngine.anchors(in: contextualLibrary(), limit: 12)
+        let genres = BilingualDiscovery.tasteGenres(anchors: anchors, settings: settings)
+        var seenArtists = Set<String>()
+        let artists = (settings.preferredArtists + anchors.map(\.artist)).filter { artist in
+            !artist.isEmpty && artist != "Неизвестный исполнитель" && !settings.excludedArtists.contains(where: { PulseEngine.fold(artist).contains(PulseEngine.fold($0)) }) && seenArtists.insert(PulseEngine.fold(artist)).inserted
+        }
         let catalog = self.catalog
         enum Request: Sendable { case search(BilingualDiscovery.Search), related(Track), artist(String) }
-        let searches = BilingualDiscovery.searches(genres: genres, suffix: suffix, hints: hints, language: settings.languagePreference)
+        let searches = BilingualDiscovery.searches(genres: genres, suffix: suffix, hints: hints, language: settings.languagePreference, artists: Array(artists.prefix(6)))
         let selectedSearches: [BilingualDiscovery.Search]
         if automatic && networkPolicy.lean {
             // Keep all six moods and the preferred language, without starting
@@ -302,7 +324,7 @@ final class AppModel: ObservableObject {
                 return settings.languagePreference == "ru" ? choices.first(where: { $0.hints.contains("discovery:ru") }) : choices.last
             }
         } else { selectedSearches = searches }
-        let requests: [Request] = anchors.prefix(networkPolicy.lean ? 2 : 6).map { .related($0) } + settings.preferredArtists.prefix(networkPolicy.lean ? 1 : 3).map { .artist($0) } + selectedSearches.map { .search($0) }
+        let requests: [Request] = anchors.prefix(networkPolicy.lean ? 2 : 6).map { .related($0) } + artists.prefix(networkPolicy.lean ? 1 : 3).map { .artist($0) } + selectedSearches.map { .search($0) }
         let parallelism = min(networkPolicy.catalogParallelism, player.current == nil ? 3 : 2)
         var index = 0, successes = 0, failure: String?, collected: [Track] = []
         // Bound parallelism to three network requests; show completed batches immediately.
@@ -337,7 +359,7 @@ final class AppModel: ObservableObject {
                     merge(next)
                 }
             }
-            UserDefaults.standard.set(4, forKey: "forma.discoveryRevision")
+            UserDefaults.standard.set(5, forKey: "forma.discoveryRevision")
         }
         if successes == 0, !Task.isCancelled, !automatic { message = failure ?? "Каталог пока недоступен. Попробуй ссылку на конкретный трек." }
     }

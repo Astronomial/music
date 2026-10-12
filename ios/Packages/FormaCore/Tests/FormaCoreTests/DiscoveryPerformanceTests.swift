@@ -4,13 +4,60 @@ import XCTest
 
 final class DiscoveryPerformanceTests: XCTestCase {
     func testEveryMoodGetsRegionalAndInternationalSearches() {
-        let queries = BilingualDiscovery.searches(genres: ["Pop", "Rock"], suffix: "vocal", hints: ["vocals:vocal"])
+        let queries = BilingualDiscovery.searches(genres: ["Pop", "Rock"], suffix: "vocal", hints: ["vocals:vocal"], language: "any")
         for mix in MoodMix.all {
             let searches = queries.filter { $0.mood == mix.id }
             XCTAssertEqual(searches.count, 2)
             XCTAssertTrue(searches.contains { $0.query.contains("русская музыка") })
             XCTAssertTrue(searches.contains { $0.query.contains(mix.query) })
             XCTAssertTrue(searches.allSatisfy { $0.hints.contains("vocals:vocal") })
+        }
+    }
+    func testRussianHomeAndEveryMoodKeepWeakMetadataNeighbours() {
+        let tracks = (0..<62).map { i in Track(videoID: String(format: "%011d", i), title: i < 30 ? "Song \(i)" : "Песня \(i)", artist: "Artist \(i)", genres: i < 30 ? [] : ["Pop"], moodHints: MoodMix.all.map(\.id), genre: i < 30 ? "Pop" : "") }
+        var library = Library(); library.merge(tracks)
+        library.settings.genres = ["Pop"]; library.settings.languagePreference = "ru"
+        library.settings.repeatHours = 0; library.settings.artistDiversity = 0.8
+        library.likedIDs = [tracks[0].id, tracks[30].id]
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        for mood in [nil] + MoodMix.all.map({ Optional($0.id) }) {
+            let result = PulseEngine.rank(tracks, library: library, limit: 12, mood: mood, now: now)
+            XCTAssertEqual(result.count, 12)
+            XCTAssertGreaterThanOrEqual(result.filter { $0.track.title.hasPrefix("Песня") }.count, 8, "Home/mood language preference was lost before diversity selection")
+            XCTAssertEqual(Set(result.map { $0.track.artist }).count, 12)
+        }
+        library.settings.genreMode = "strict"; library.hiddenIDs = [tracks[31].id]
+        library.settings.excludedArtists = [tracks[32].artist]
+        let jazz = Track(videoID: "jazz0000001", title: "Чужой джаз", artist: "Other", genres: ["Jazz"], genre: "Jazz")
+        let result = PulseEngine.rank(tracks + [jazz], library: library, limit: 20, now: now)
+        XCTAssertFalse(result.contains { $0.id == jazz.id || $0.id == tracks[31].id || $0.id == tracks[32].id })
+    }
+    func testRussianSearchesFollowTasteWithoutInventingLanguageEvidence() {
+        let anchor = Track(videoID: "anchor00001", title: "Любимое", artist: "Мой артист", genres: ["Rock"])
+        var settings = PulseSettings(); settings.genres = []; settings.excludedGenres = ["Jazz"]
+        let genres = BilingualDiscovery.tasteGenres(anchors: [anchor], settings: settings)
+        XCTAssertEqual(genres, ["Rock"])
+        let queries = BilingualDiscovery.searches(genres: genres, suffix: "vocal", hints: ["vocals:vocal"], language: "ru", artists: [anchor.artist])
+        for mood in MoodMix.all {
+            let searches = queries.filter { $0.mood == mood.id }
+            XCTAssertEqual(searches.count, 2)
+            XCTAssertTrue(searches.allSatisfy { $0.query.contains("русская музыка") && $0.query.contains("рок") && !$0.query.contains("vocal") })
+            XCTAssertTrue(searches.contains { $0.query.contains(anchor.artist) })
+            XCTAssertTrue(searches.allSatisfy { $0.hints.contains("discovery:ru") })
+        }
+        let english = BilingualDiscovery.searches(genres: genres, suffix: "", hints: [], language: "en", artists: [anchor.artist])
+        XCTAssertTrue(english.allSatisfy { $0.hints.contains("discovery:en") && !$0.hints.contains("discovery:ru") })
+    }
+    func testHomeAndAllMoodsRespondToLibraryTasteWithoutExplicitGenres() {
+        let tracks = (0..<60).map { i in Track(videoID: String(format: "%011d", i), title: "Песня \(i)", artist: "Артист \(i)", moodHints: MoodMix.all.map(\.id), genre: i < 30 ? "Rock" : "Jazz") }
+        for (anchor, genre) in [(tracks[0], "Rock"), (tracks[30], "Jazz")] {
+            var library = Library(); library.merge(tracks); library.settings.genres = []; library.settings.repeatHours = 0
+            library.likedIDs = [anchor.id]
+            for mood in [nil] + MoodMix.all.map({ Optional($0.id) }) {
+                let result = PulseEngine.rank(tracks, library: library, limit: 12, mood: mood)
+                XCTAssertEqual(result.count, 12)
+                XCTAssertGreaterThanOrEqual(result.filter { $0.track.genre == genre }.count, 10, "Mood must refine actual library taste")
+            }
         }
     }
     func testRegionalSlotsExistEvenWhenEnglishCandidatesRankFirst() {

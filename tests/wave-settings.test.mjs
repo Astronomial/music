@@ -60,7 +60,7 @@ test('artist variety control trades repetition for more different performers',()
   assert.equal(new Set(low.map(r=>r.track.artistId)).size,1);assert.ok(new Set(high.map(r=>r.track.artistId)).size>=4);
 });
 test('YouTube retrieval uses every chosen direction and combines character preferences',async()=>{
-  const s=initialState();s.settings={...s.settings,genres:['House','Jazz','Rock','Techno','Pop'],excludedGenres:['Rock'],genreMode:'strict',mood:'focus',energy:'low',vocals:'instrumental',preferredArtists:['Björk','Blocked'],blockedArtists:['Blocked']};
+  const s=initialState();s.settings={...s.settings,languagePreference:'any',genres:['House','Jazz','Rock','Techno','Pop'],excludedGenres:['Rock'],genreMode:'strict',mood:'focus',energy:'low',vocals:'instrumental',preferredArtists:['Björk','Blocked'],blockedArtists:['Blocked']};
   const queries=[];const candidates=await collectYouTubeCandidates(s,async(route,p)=>{assert.equal(route,'/tracks/search');queries.push(p.query);return [track('yt_abcdefghijk','',undefined,{source:'youtube',videoId:'abcdefghijk'})];});
   for(const g of ['House','Jazz','Techno','Pop'])assert.ok(queries.some(q=>q.startsWith(g+' ')));
   assert.equal(queries.some(q=>q.includes('Rock')||q.includes('Blocked')||q.startsWith('Ambient')),false);assert.ok(queries.some(q=>q.startsWith('Björk')));

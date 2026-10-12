@@ -8,21 +8,37 @@ public enum BilingualDiscovery {
         public let mood: String?
         public let hints: [String]
     }
-    public static func searches(genres: [String], suffix: String, hints: [String], language: String = "ru") -> [Search] {
-        let ruGenres = ["Pop": "поп", "Rock": "рок", "Hip-Hop": "хип-хоп", "Electronic": "электронная", "Indie": "инди", "Jazz": "джаз", "Classical": "классическая"]
-        let ruMoods = ["calm": "спокойная", "bright": "радостная", "melancholic": "грустная", "energetic": "энергичная", "focus": "инструментальная для работы", "night": "ночная"]
+    public static func tasteGenres(anchors: [Track], settings: PulseSettings) -> [String] {
+        let learned = anchors.filter { !PulseDiversity.blocked($0, settings: settings) }.flatMap { $0.genre.isEmpty ? $0.genres : [$0.genre] + $0.genres }
+        var seen = Set<String>()
+        let values = settings.genreMode == "strict" ? settings.genres : settings.genres + learned
+        let defaults = values.isEmpty ? ["Pop", "Alternative", "Electronic"] : values
+        return Array(defaults.filter { !settings.excludedGenres.contains($0) && seen.insert($0).inserted }.prefix(12))
+    }
+    public static func searches(genres: [String], suffix: String, hints: [String], language: String = "ru", artists: [String] = []) -> [Search] {
+        let ruGenres = ["Pop": "поп", "Rock": "рок", "Hip-Hop": "хип-хоп", "Hip-Hop/Rap": "рэп хип-хоп", "Electronic": "электронная", "Indie": "инди", "Alternative": "альтернатива", "Jazz": "джаз", "Classical": "классическая", "House": "хаус", "Techno": "техно", "Ambient": "эмбиент", "R&B/Soul": "соул ритм-н-блюз", "Lo-Fi": "лоу-фай", "Drum & Bass": "драм-н-бейс"]
+        let ruMoods = ["calm": "спокойная", "bright": "радостная", "melancholic": "грустная", "energetic": "энергичная", "focus": "для концентрации", "night": "ночная"]
+        let ruSuffix = hints.compactMap { hint in
+            ["energy:low": "медленная", "energy:medium": "средний темп", "energy:high": "быстрая", "vocals:instrumental": "без вокала", "vocals:vocal": "с вокалом"][hint]
+        }.joined(separator: " ")
+        func query(_ words: [String]) -> String { words.filter { !$0.isEmpty }.joined(separator: " ") }
         var result: [Search] = []
         for (index, mix) in MoodMix.all.enumerated() {
             let genre = genres.isEmpty ? nil : genres[index % genres.count]
-            let ru = genre.map { ruGenres[$0] ?? $0 } ?? ""
-            result.append(Search(query: "\(ru) \(ruMoods[mix.id] ?? "") русская музыка \(suffix)", genre: genre, mood: mix.id, hints: hints + ["discovery:ru"]))
-            result.append(Search(query: "\(genre ?? "") \(mix.query) \(suffix)", genre: genre, mood: mix.id, hints: hints))
+            let artist = artists.isEmpty ? "" : artists[index % artists.count]
+            if language != "en" {
+                let words = [genre.map { ruGenres[$0] ?? $0 } ?? "", ruMoods[mix.id] ?? "", "русская музыка", ruSuffix]
+                result.append(Search(query: query([artist] + words), genre: genre, mood: mix.id, hints: hints + ["discovery:ru"]))
+                if language == "ru", !artist.isEmpty { result.append(Search(query: query(words), genre: genre, mood: mix.id, hints: hints + ["discovery:ru"])) }
+            }
+            if language != "ru" {
+                result.append(Search(query: query([artist, genre ?? "", mix.query, suffix, language == "en" ? "english songs" : ""]), genre: genre, mood: mix.id, hints: hints + (language == "en" ? ["discovery:en"] : [])))
+            }
         }
-        for genre in genres.prefix(12) {
-            result.append(Search(query: "\(ruGenres[genre] ?? genre) русская музыка \(suffix)", genre: genre, mood: nil, hints: hints + ["discovery:ru"]))
-            result.append(Search(query: "\(genre) music \(suffix)", genre: genre, mood: nil, hints: hints))
+        for (index, genre) in genres.prefix(12).enumerated() {
+            if language != "en" { result.append(Search(query: query([ruGenres[genre] ?? genre, "русская музыка", ruSuffix]), genre: genre, mood: nil, hints: hints + ["discovery:ru"])) }
+            if language != "ru" || index < 2 { result.append(Search(query: query([genre, "music", suffix, language == "en" ? "english songs" : ""]), genre: genre, mood: nil, hints: hints + (language == "en" ? ["discovery:en"] : []))) }
         }
-        if language == "en" { return result.filter { !$0.hints.contains("discovery:ru") }.map { Search(query: $0.query + " english songs", genre: $0.genre, mood: $0.mood, hints: $0.hints + ["discovery:en"]) } }
         return result
     }
     public static func rankHome(_ candidates: [Track], library: Library, limit: Int, mood: String? = nil, allowRecent: Bool = false, index: PulseEngine.RankingIndex? = nil) -> [Recommendation] {

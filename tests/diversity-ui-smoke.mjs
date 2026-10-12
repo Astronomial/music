@@ -16,7 +16,7 @@ await page.addInitScript(()=>{
 });
 try{
   await page.goto(process.env.FORMA_TEST_URL||'http://localhost:5173');
-  await page.getByRole('button',{name:'Слушать Пульс',exact:true}).click();
+  await page.locator('.for-you .track-name').first().click();
   await page.waitForFunction(()=>window.fixturePlayer?.state===1&&!!window.fixturePlayer.id);
   const sequence=[];
   for(let i=0;i<18;i++){
@@ -27,7 +27,9 @@ try{
   assert.ok(new Set(sequence.map(t=>t.artist)).size>=14);
   for(let i=1;i<sequence.length;i++)assert.ok(!sequence.slice(Math.max(0,i-3),i).some(t=>t.artist===sequence[i].artist));
   await page.waitForFunction(()=>window.savedState.events.filter(e=>e.type==='play').length===18);
-  assert.ok((await page.evaluate(()=>window.savedState.events)).some(e=>e.newArtist===true));
+  const events=await page.evaluate(()=>window.savedState.events);
+  assert.ok(events.some(e=>e.newArtist===true));
+  assert.ok(events.filter(e=>e.type==='play').every(e=>e.surface==='pulse'),'Home row must start adaptive Pulse');
   assert.deepEqual(errors,[]);
   console.log(`PASS: actual Pulse worker + 18 Next clicks: ${new Set(sequence.map(t=>t.artist)).size} artists, no nearby artist repeats, unique recordings and persisted discovery exposure (mocked YouTube transport).`);
 }finally{await browser.close();}

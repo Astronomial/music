@@ -247,6 +247,7 @@ public enum PulseEngine {
         var rolling = PulseDiversity.history(library, now: now, currentID: currentID).map { index.artists[$0.id] ?? PulseDiversity.artists($0) }
         let spacing = PulseDiversity.limits(library.settings.artistDiversity), history = DiscoveryPolicy.history(library, now: now)
         let discovery = min(1, max(0, library.settings.discovery))
+        let hasTasteAnchors = !anchors(in: library, limit: 1, now: now).isEmpty
         var newTracks = history.newTracks, surprises = history.surprises, languageCount = history.preferredLanguage
         while !ranked.isEmpty, result.count < limit {
             if Task.isCancelled { return [] }
@@ -256,6 +257,11 @@ public enum PulseEngine {
             let relevant: (Recommendation) -> Bool = { $0.taste >= floor }
             var pool = Array(ranked.indices)
             let normal = pool.filter { !library.dislikedIDs.contains(ranked[$0].id) }; if !normal.isEmpty { pool = normal }
+            let languageDeficit = 0.75 * Double(history.exposureCount + result.count + 1) - Double(languageCount)
+            if library.settings.languagePreference != "any", languageDeficit >= 0.5 {
+                let preferred = pool.filter { ranked[$0].languageFit >= 0.6 && relevant(ranked[$0]) && (ranked[$0].nearby || (ranked[$0].exposure?.features[2] ?? 0) >= 0.15 || !hasTasteAnchors) }
+                if !preferred.isEmpty { pool = preferred }
+            }
             let stretchBudget = history.surpriseRate * Double(history.exposureCount + result.count + 1) - Double(surprises)
             if stretchBudget < 1 {
                 let close = pool.filter { ranked[$0].nearby }
@@ -275,10 +281,6 @@ public enum PulseEngine {
             let deficit = discovery * Double(history.classifiedCount + result.count + 1) - Double(newTracks)
             if deficit >= 0.5 && library.settings.artistDiversity > 0 {
                 let fresh = pool.filter { ranked[$0].newArtist && relevant(ranked[$0]) }; if !fresh.isEmpty { pool = fresh }
-            }
-            let languageDeficit = 0.75 * Double(history.exposureCount + result.count + 1) - Double(languageCount)
-            if library.settings.languagePreference != "any", languageDeficit >= 0.5 {
-                let preferred = pool.filter { ranked[$0].languageFit >= 0.6 && ranked[$0].nearby && relevant(ranked[$0]) }; if !preferred.isEmpty { pool = preferred }
             }
             let novelty = pool.filter { ranked[$0].known != (deficit >= 0.5) && ranked[$0].nearby && relevant(ranked[$0]) }
             if !novelty.isEmpty { pool = novelty }

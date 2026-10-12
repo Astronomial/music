@@ -24,7 +24,7 @@ struct ContentView: View {
         .task {
             guard !ProcessInfo.processInfo.arguments.contains("--forma-smoke") else { return }
             while (!model.player.networkPolicy.known || model.isRestoringLibrary), !Task.isCancelled { try? await Task.sleep(nanoseconds: 50_000_000) }
-            if model.library.tracks.isEmpty || UserDefaults.standard.integer(forKey: "forma.discoveryRevision") < 4 { await model.refresh(automatic: true) }
+            if model.library.tracks.isEmpty || UserDefaults.standard.integer(forKey: "forma.discoveryRevision") < 5 { await model.refresh(automatic: true) }
             while !Task.isCancelled {
                 if scenePhase == .active { await model.synchronize() }
                 try? await Task.sleep(nanoseconds: 30_000_000_000)
@@ -88,7 +88,7 @@ struct HomeView: View {
                 }
                 Text("Следующее любимое").font(.title2.bold())
                 if model.recommendations.isEmpty { EmptyState(title: "Начни со своей музыки", text: "Найди любимые треки в поиске. Пульс будет учиться на сохранениях и прослушиваниях.") }
-                ForEach(model.recommendations.prefix(12)) { item in TrackRow(model: model, track: item.track, reason: item.reason) { model.play(item.track, list: model.recommendations.map(\.track)) } }
+                ForEach(model.recommendations.prefix(12)) { item in TrackRow(model: model, track: item.track, reason: item.reason) { model.playRecommendation(item.track) } }
             }.padding(20)
         }.background(FormaTheme.background).navigationTitle("forma.").navigationBarTitleDisplayMode(.inline)
             .toolbar { Button { Task { await model.refresh() } } label: { Image(systemName: "arrow.clockwise") }.disabled(model.isRefreshing).accessibilityLabel("Обновить подборки") }
@@ -135,7 +135,7 @@ struct MoodView: View {
                 Text("Собрано под твой вкус и настроение").foregroundStyle(.secondary)
                 Button { model.startPulse(mood: mix.id) } label: { Label("Слушать подборку", systemImage: "play.fill") }.buttonStyle(.borderedProminent).disabled(tracks.isEmpty)
                 if tracks.isEmpty { EmptyState(title: "Подборка ещё впереди", text: "Обнови каталог. Мы покажем музыку, когда найдём подходящие треки.") }
-                ForEach(tracks) { track in TrackRow(model: model, track: track) { model.play(track, list: tracks, context: mix.id) } }
+                ForEach(tracks) { track in TrackRow(model: model, track: track) { model.playRecommendation(track, mood: mix.id) } }
             }.padding(20)
         }.background(FormaTheme.background).navigationBarTitleDisplayMode(.inline)
             .task { await model.prepareTracks(tracks) }
