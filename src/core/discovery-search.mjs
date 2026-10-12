@@ -8,6 +8,6 @@ export function tasteGenres(anchors,settings){
   return (genres.length?genres:['Pop','Alternative','Electronic']).filter(g=>!settings.excludedGenres.includes(g)).slice(0,12);
 }
 export function discoveryQuery(genre,settings,artist=''){
-  if(settings.languagePreference!=='ru')return [artist,waveQuery(genre,settings),settings.languagePreference==='en'?'english songs':''].filter(Boolean).join(' ');
+  if(settings.languagePreference!=='ru')return [artist,waveQuery(genre,settings),settings.mood==='night'?'late night':'',settings.languagePreference==='en'?'english songs':''].filter(Boolean).join(' ');
   return [artist,ruGenres[genre]||genre,ruMoods[settings.mood],{low:'медленная',medium:'средний темп',high:'быстрая'}[settings.energy],{instrumental:'без вокала',vocal:'с вокалом'}[settings.vocals],'русская музыка'].filter(Boolean).join(' ');
 }
