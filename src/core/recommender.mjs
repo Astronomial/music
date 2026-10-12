@@ -297,7 +297,8 @@ export function rankTracks(candidates, state, options = {}) {
     // pool. Weak search genres must not erase supported Russian discoveries.
     if(settings.languagePreference!=='any'&&.75*(policy.exposureCount+result.length+1)-languageCount>=.5){
       const languagePool=pool.filter(i=>ranked[i].languageFit>=.6&&relevant(ranked[i])&&(ranked[i].nearby||ranked[i].signals.neighbourhood>=.15||!anchors.length));
-      if(languagePool.length)pool=languagePool;
+      const spaced=i=>relevant(ranked[i])&&withinGap(ranked[i])&&withinCap(ranked[i]);
+      if(languagePool.length&&(!settings.artistDiversity||languagePool.some(spaced)||!pool.some(spaced)))pool=languagePool;
     }
     // Discovery of new artists and distance from taste are independent. Most
     // slots use a supported neighbourhood; occasional stretch slots are budgeted

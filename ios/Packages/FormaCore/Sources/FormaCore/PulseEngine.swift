@@ -260,7 +260,8 @@ public enum PulseEngine {
             let languageDeficit = 0.75 * Double(history.exposureCount + result.count + 1) - Double(languageCount)
             if library.settings.languagePreference != "any", languageDeficit >= 0.5 {
                 let preferred = pool.filter { ranked[$0].languageFit >= 0.6 && relevant(ranked[$0]) && (ranked[$0].nearby || (ranked[$0].exposure?.features[2] ?? 0) >= 0.15 || !hasTasteAnchors) }
-                if !preferred.isEmpty { pool = preferred }
+                let spaced: (Int) -> Bool = { relevant(ranked[$0]) && (index.artists[ranked[$0].id] ?? []).isDisjoint(with: lastArtists) && (index.artists[ranked[$0].id] ?? []).allSatisfy { (counts[$0] ?? 0) < spacing.count } }
+                if !preferred.isEmpty && (library.settings.artistDiversity == 0 || preferred.contains(where: spaced) || !pool.contains(where: spaced)) { pool = preferred }
             }
             let stretchBudget = history.surpriseRate * Double(history.exposureCount + result.count + 1) - Double(surprises)
             if stretchBudget < 1 {

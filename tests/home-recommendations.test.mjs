@@ -41,3 +41,13 @@ test('home and every mood change with library taste even without explicit genre 
   for(const result of [rankTracks(tracks,s,{now,limit:12}),...moodRecommendations(tracks,s,{now,limit:12}).map(m=>m.items)])assert.ok(result.filter(r=>r.track.genre===genre).length>=10,genre);
  }
 });
+
+test('language preference cannot force repeats when its only supported artist is already spaced out',()=>{
+ const {s,tracks}=catalogue();for(let i=0;i<tracks.length;i++){
+  tracks[i].title=i<20?'Песня '+i:'Song '+i;tracks[i].genre='Pop';tracks[i].artist=i<20?'Любимый':'New '+i;tracks[i].artistId=i<20?'fav':'new'+i;
+ }
+ s.likes=tracks.slice(0,20).map(t=>t.id);
+ const result=rankTracks(tracks,s,{now,limit:18}).map(r=>r.track);
+ assert.ok(result.filter(t=>t.artist==='Любимый').length<=2);
+ for(let i=1;i<result.length;i++)assert.ok(!result.slice(Math.max(0,i-4),i).some(t=>t.artist===result[i].artist));
+});

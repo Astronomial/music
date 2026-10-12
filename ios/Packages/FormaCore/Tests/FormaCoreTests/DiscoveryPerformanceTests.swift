@@ -60,6 +60,17 @@ final class DiscoveryPerformanceTests: XCTestCase {
             }
         }
     }
+    func testLanguagePreferenceCannotForceAnArtistRepeat() {
+        let tracks = (0..<60).map { i in Track(videoID: String(format: "%011d", i), title: i < 20 ? "Песня \(i)" : "Song \(i)", artist: i < 20 ? "Любимый" : "New \(i)", genre: "Pop") }
+        var library = Library(); library.merge(tracks); library.settings.genres = ["Pop"]
+        library.settings.artistDiversity = 0.8; library.settings.repeatHours = 0
+        library.likedIDs = tracks.prefix(20).map(\.id)
+        let result = PulseEngine.rank(tracks, library: library, limit: 18)
+        XCTAssertLessThanOrEqual(result.filter { $0.track.artist == "Любимый" }.count, 2)
+        for i in 1..<result.count {
+            XCTAssertFalse(result[max(0, i - 4)..<i].contains { $0.track.artist == result[i].track.artist })
+        }
+    }
     func testRegionalSlotsExistEvenWhenEnglishCandidatesRankFirst() {
         let tracks = (0..<30).map { i in Track(videoID: String(format: "%011d", i), title: i >= 24 ? "Песня \(i)" : "Song \(i)", artist: "Artist \(i)") }
         var library = Library(); library.merge(tracks)
