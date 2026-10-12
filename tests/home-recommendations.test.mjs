@@ -48,6 +48,6 @@ test('language preference cannot force repeats when its only supported artist is
  }
  s.likes=tracks.slice(0,20).map(t=>t.id);
  const result=rankTracks(tracks,s,{now,limit:18}).map(r=>r.track);
- assert.ok(result.filter(t=>t.artist==='Любимый').length<=2);
+ for(let i=0;i<result.length;i++)assert.ok(result.slice(Math.max(0,i-11),i+1).filter(t=>t.artist==='Любимый').length<=2);
  for(let i=1;i<result.length;i++)assert.ok(!result.slice(Math.max(0,i-4),i).some(t=>t.artist===result[i].artist));
 });

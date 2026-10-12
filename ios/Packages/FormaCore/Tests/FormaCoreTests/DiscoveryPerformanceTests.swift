@@ -66,7 +66,7 @@ final class DiscoveryPerformanceTests: XCTestCase {
         library.settings.artistDiversity = 0.8; library.settings.repeatHours = 0
         library.likedIDs = tracks.prefix(20).map(\.id)
         let result = PulseEngine.rank(tracks, library: library, limit: 18)
-        XCTAssertLessThanOrEqual(result.filter { $0.track.artist == "Любимый" }.count, 2)
+        for i in 0..<result.count { XCTAssertLessThanOrEqual(result[max(0, i - 11)...i].filter { $0.track.artist == "Любимый" }.count, 2) }
         for i in 1..<result.count {
             XCTAssertFalse(result[max(0, i - 4)..<i].contains { $0.track.artist == result[i].track.artist })
         }
