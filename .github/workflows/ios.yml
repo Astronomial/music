@@ -60,6 +60,7 @@ jobs:
         if: always() && steps.package.conclusion == 'success'
         with:
           name: Forma-iOS-1.4.1
+          overwrite: true
           path: |
             ios/Forma-iOS-1.4.1-unsigned.ipa
             ios/Forma-iOS-SHA256SUMS.txt
