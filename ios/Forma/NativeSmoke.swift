@@ -447,12 +447,16 @@ enum NativeSmoke {
         try await Task.sleep(nanoseconds: 200_000_000)
         guard model.player.current?.id == tracks[2].id, model.player.selectionSurface == "manual" else { throw SyncError.rejected("Delayed Pulse ranking overrode manual playback") }
         model.player.pause(); model.deletePlaylist(playlist.id)
-        model.playRecommendation(tracks[0])
+        // Independent recordings keep this scenario from consuming the cold-start
+        // fixture's repeat-cooldown slot used later by the learning assertion.
+        let homeProbe = Track(videoID: "homeprobe01", title: "Проверка главной", artist: "Home probe", duration: 5, genres: ["House"])
+        let moodProbe = Track(videoID: "moodprobe01", title: "Проверка настроения", artist: "Mood probe", duration: 5, genres: ["House"])
+        model.playRecommendation(homeProbe)
         try await until("home-recommendation-playing") { model.player.isPlaying }
-        guard model.player.current?.id == tracks[0].id, model.player.selectionSurface == "pulse", model.player.selectionMood == nil else { throw SyncError.rejected("Home recommendation row lost adaptive Pulse context") }
-        model.playRecommendation(tracks[1], mood: "calm")
+        guard model.player.current?.id == homeProbe.id, model.player.selectionSurface == "pulse", model.player.selectionMood == nil else { throw SyncError.rejected("Home recommendation row lost adaptive Pulse context") }
+        model.playRecommendation(moodProbe, mood: "calm")
         try await until("mood-recommendation-playing") { model.player.isPlaying }
-        guard model.player.current?.id == tracks[1].id, model.player.selectionSurface == "mood", model.player.selectionMood == "calm" else { throw SyncError.rejected("Mood recommendation row lost adaptive mood context") }
+        guard model.player.current?.id == moodProbe.id, model.player.selectionSurface == "mood", model.player.selectionMood == "calm" else { throw SyncError.rejected("Mood recommendation row lost adaptive mood context") }
         model.player.pause()
 
         let storageURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("library.json")
