@@ -1,5 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {ExternalLink,LoaderCircle} from 'lucide-react';
+import {youtubePlayerError} from '../core/youtube-player-errors.mjs';
 let scriptPromise;
 function loadAPI(){
   if(window.YT?.Player)return Promise.resolve(window.YT);
@@ -16,6 +17,12 @@ export default function YouTubePlayer({track,playbackId,onReady,onPlaying,onPaus
   callbacks.current={onReady,onPlaying,onPaused,onBuffering,onEnded,onTime,onError};target.current=track;liveVolume.current=volume;
   const [error,setError]=useState(''),[loaded,setLoaded]=useState(false),[apiAttempt,setApiAttempt]=useState(0);
   function matches(){return target.current&&player.current?.getVideoData?.().video_id===target.current.videoId;}
+  function retry(){
+    if(!target.current)return;
+    setError('');intent.current=true;
+    if(player.current)loadCurrent();
+    else {setLoaded(false);setApiAttempt(a=>a+1);}
+  }
   function loadCurrent(){
     const p=player.current,t=target.current;if(!p)return;
     if(!t){p.pauseVideo();return;}
@@ -41,7 +48,7 @@ export default function YouTubePlayer({track,playbackId,onReady,onPlaying,onPaus
     const node=document.createElement('div');container.current.replaceChildren(node);
     loadAPI().then(YT=>{
       if(!alive)return;
-      instance=new YT.Player(node,{width:'100%',height:'220',playerVars:{autoplay:0,playsinline:1,enablejsapi:1,origin:location.origin,widget_referrer:'https://music.forma.desktop/',rel:0},events:{
+      instance=new YT.Player(node,{width:'100%',height:'220',playerVars:{autoplay:0,playsinline:1,enablejsapi:1,origin:location.origin,widget_referrer:location.href,rel:0},events:{
         onReady:event=>{if(!alive)return;player.current=event.target;setLoaded(true);loadCurrent();},
         onStateChange:event=>{
           if(!alive||!matches())return;
@@ -50,7 +57,7 @@ export default function YouTubePlayer({track,playbackId,onReady,onPlaying,onPaus
           else if(event.data===3&&intent.current)callbacks.current.onBuffering();
           else if(event.data===0&&intent.current&&player.current.getPlayerState()===0)callbacks.current.onEnded();
         },
-        onError:event=>{if(!alive||!target.current)return;const videoId=player.current?.getVideoData?.().video_id;if(videoId&&videoId!==target.current.videoId)return;const message=[101,150].includes(event.data)?'Автор запретил встроенное воспроизведение. Можно открыть трек на YouTube.':event.data===153?'YouTube не разрешил воспроизведение в приложении. Открой трек на YouTube.':'Трек недоступен в YouTube или в твоём регионе.';intent.current=false;setError(message);callbacks.current.onError(message);}
+        onError:event=>{if(!alive||!target.current)return;const videoId=player.current?.getVideoData?.().video_id;if(videoId&&videoId!==target.current.videoId)return;const message=youtubePlayerError(event.data);intent.current=false;setError(message);callbacks.current.onError(message);}
       }});
     }).catch(e=>{if(alive&&target.current){setError(e.message);callbacks.current.onError(e.message);}});
     const timer=setInterval(()=>{const p=player.current;if(alive&&matches())callbacks.current.onTime(p.getCurrentTime(),p.getDuration());},500);
@@ -61,5 +68,5 @@ export default function YouTubePlayer({track,playbackId,onReady,onPlaying,onPaus
     loadedRequest.current=playbackId;intent.current=Boolean(track);if(track&&error&&!loaded)setApiAttempt(a=>a+1);setError('');loadCurrent();
   },[track?.videoId,playbackId]);
   useEffect(()=>{player.current?.setVolume?.(volume*100);},[volume]);
-  return <aside className="youtube-panel" hidden={!track}><span className="eyebrow">СЕЙЧАС ИГРАЕТ · YOUTUBE</span><div className="youtube-frame" ref={container}/>{!loaded&&!error&&<p className="search-loading"><LoaderCircle size={17} className="spin"/>Подключаем плеер…</p>}{error&&<p className="player-error" role="alert">{error}</p>}<div className="youtube-details"><h2>{track?.title}</h2><p>{track?.artist}</p><button className="text-link" onClick={()=>onOpen(track.videoId)}>Открыть на YouTube <ExternalLink size={15}/></button></div><p className="settings-note">Можно свернуть Forma — музыка продолжит играть. Для прослушивания без интернета добавь свои файлы.</p></aside>;
+  return <aside className="youtube-panel" hidden={!track}><span className="eyebrow">СЕЙЧАС ИГРАЕТ · YOUTUBE</span><div className="youtube-frame" ref={container}/>{!loaded&&!error&&<p className="search-loading"><LoaderCircle size={17} className="spin"/>Подключаем плеер…</p>}{error&&<><p className="player-error" role="alert">{error}</p><button className="text-link" onClick={retry}>Повторить воспроизведение</button></>}<div className="youtube-details"><h2>{track?.title}</h2><p>{track?.artist}</p><button className="text-link" onClick={()=>onOpen(track.videoId)}>Открыть на YouTube <ExternalLink size={15}/></button></div><p className="settings-note">Можно свернуть Forma — музыка продолжит играть. Для прослушивания без интернета добавь свои файлы.</p></aside>;
 }

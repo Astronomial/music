@@ -32,6 +32,17 @@ try{
     };
   },{track,audio:wav().toString('base64'),youtubeFixture:musicSearchResponse()});
   assert.equal(await page.evaluate(()=>window.forma.desktop),true);
+  await app.evaluate(({shell})=>{globalThis.playerBrowserCalls=[];shell.openExternal=async url=>{globalThis.playerBrowserCalls.push(url);};});
+  for(const url of ['https://accounts.google.com/ServiceLogin?service=youtube','https://www.youtube.com/watch?v=abcdefghijk']){
+    await page.evaluate(url=>window.open(url,'_blank'),url);
+    await expect.poll(async()=>await app.evaluate((_electron,url)=>globalThis.playerBrowserCalls.includes(url),url)).toBe(true);
+  }
+  const browserCalls=await app.evaluate(()=>globalThis.playerBrowserCalls.length);
+  for(const url of ['https://accounts.google.com.evil.test/','file:///etc/passwd','javascript:alert(1)'])await page.evaluate(url=>window.open(url,'_blank'),url);
+  await page.waitForTimeout(100);
+  assert.equal(await app.evaluate(()=>globalThis.playerBrowserCalls.length),browserCalls);
+  assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().length),1);
+
   const sample=[...await fs.readFile(path.join(project,'tests/fixtures/acoustic-sample.m4a'))];
   const decoded=await page.evaluate(async bytes=>{const c=new OfflineAudioContext(1,1,16000),audio=await c.decodeAudioData(new Uint8Array(bytes).buffer);return {duration:audio.duration,rate:audio.sampleRate};},sample);
   assert.ok(decoded.duration>=12);assert.equal(decoded.rate,16000);

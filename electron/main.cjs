@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, protocol, net, shell, dialog } = require('electron');
 const path = require('node:path');
 const { startStaticServer } = require('./static.cjs');
+const { playerBrowserURL, playerRequestHeaders } = require('./player-links.cjs');
 const { Store } = require('./storage.cjs');
 const { folderFiles, importLocalFile } = require('./local.cjs');
 const { OfflineLibrary, validId } = require('./offline.cjs');
@@ -120,16 +121,20 @@ app.whenReady().then(async () => {
     event.preventDefault();window.webContents.send('app:closing');
     clearTimeout(closeTimer);closeTimer=setTimeout(async()=>{await store.queue.catch(()=>{});closing=true;window.close();},3000);
   });
-  window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+  const openPlayerLink = url => {
+    const target = playerBrowserURL(url);
+    if(target) shell.openExternal(target).catch(()=>console.error('Не удалось открыть браузер для YouTube.'));
+  };
+  window.webContents.setWindowOpenHandler(({url})=>{openPlayerLink(url);return {action:'deny'};});
   const localUI=await startStaticServer(path.join(__dirname,'../dist'));uiServer=localUI.server;const entry=localUI.url;
-  window.webContents.on('will-navigate',(e,url)=>{if(url!==entry)e.preventDefault();});
+  window.webContents.on('will-navigate',(e,url)=>{if(url!==entry){e.preventDefault();openPlayerLink(url);}});
   window.webContents.session.setPermissionRequestHandler((_wc,_permission,cb)=>cb(false));
   window.webContents.session.webRequest.onHeadersReceived((details,callback)=> {
     if(details.url===entry) callback({responseHeaders:{...details.responseHeaders,'Content-Security-Policy':["default-src 'self'; script-src 'self' https://www.youtube.com https://s.ytimg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob: forma-audio:; media-src 'self' https: forma-audio: blob:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; frame-src https://www.youtube.com https://www.youtube-nocookie.com"]}});
     else callback({responseHeaders:details.responseHeaders});
   });
   app.setAppUserModelId('music.forma.desktop');
-  window.webContents.session.webRequest.onBeforeSendHeaders({urls:['https://www.youtube.com/*','https://www.youtube-nocookie.com/*']},(details,callback)=>callback({requestHeaders:{...details.requestHeaders,Referer:'https://music.forma.desktop/'}}));
+  window.webContents.session.webRequest.onBeforeSendHeaders({urls:['https://www.youtube.com/*','https://www.youtube-nocookie.com/*']},(details,callback)=>callback({requestHeaders:playerRequestHeaders(details,entry)}));
   await window.loadURL(entry);
 });
 app.on('window-all-closed',()=>app.quit());

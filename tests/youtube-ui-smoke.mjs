@@ -18,6 +18,8 @@ await page.addInitScript(()=>{
 try{
  await page.goto(process.env.FORMA_TEST_URL||'http://localhost:5173');await page.locator('.track-row').first().waitFor();
  await page.getByRole('button',{name:'Слушать Пульс',exact:true}).click();await page.locator('.youtube-frame iframe').waitFor();await page.waitForFunction(()=>window.testYTPlayer?.getCurrentTime()>1);
+ const source=await page.evaluate(()=>({origin:location.origin,url:location.href,vars:window.testYTPlayer.options.playerVars}));
+ assert.equal(source.vars.origin,source.origin);assert.equal(source.vars.widget_referrer,source.url);
  assert.equal(await page.locator('audio').evaluate(a=>a.getAttribute('src')),null);assert.equal(await page.locator('.youtube-panel').isVisible(),true);
  const initialVideo=await page.evaluate(()=>window.testYTPlayer.id);
  const volume=page.getByRole('slider',{name:'Громкость',exact:true});
@@ -32,6 +34,15 @@ try{
  await page.evaluate(()=>{delete document.hidden;document.dispatchEvent(new Event('visibilitychange'));});
  await page.getByRole('button',{name:'Пауза',exact:true}).click();assert.equal(await page.evaluate(()=>window.testYTPlayer.getPlayerState()),2);
  await page.getByRole('slider',{name:'Позиция воспроизведения'}).fill('45');assert.equal(await page.evaluate(()=>window.testYTPlayer.getCurrentTime()),45);
+ await page.evaluate(()=>window.testYTPlayer.options.events.onError({data:101}));
+ await page.getByRole('alert').filter({hasText:'код 101'}).waitFor();
+ assert.ok(!(await page.getByRole('alert').innerText()).includes('Автор запретил'));
+ assert.ok((await page.getByRole('alert').innerText()).includes('Вход в Chrome/Edge не переносится'));
+ await page.getByRole('button',{name:'Повторить воспроизведение',exact:true}).click();
+ await page.waitForFunction(()=>window.testYTPlayer.getPlayerState()===1&&window.testYTPlayer.getCurrentTime()>.25);
+ assert.equal(await page.locator('.player-error').count(),0);assert.equal(await page.evaluate(()=>window.ytPlayerCreations),1);
+ await page.getByRole('button',{name:'Пауза',exact:true}).click();
+
  await page.getByRole('textbox',{name:'Поиск треков и исполнителей'}).fill('Slow');await page.waitForTimeout(350);await page.getByRole('textbox',{name:'Поиск треков и исполнителей'}).fill('Night');await page.locator('.best-match h2').filter({hasText:'Night Current'}).waitFor();await page.waitForTimeout(800);assert.equal(await page.locator('.best-match h2').innerText(),'Night Current');
  await page.screenshot({path:'artifacts/forma-youtube.png',fullPage:true});
  for(const width of [1024,600]){await page.setViewportSize({width,height:800});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.ok((await page.locator('.youtube-frame').boundingBox()).width>=200);}
