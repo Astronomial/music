@@ -200,7 +200,7 @@ final class PlaybackController: ObservableObject {
             pulseMode = asPulse; mood = context; playedInRun = []
         }
         if alreadyAdvanced { refreshPreparedSelection(); resume(); return }
-        if bufferedItems[track.id]?.audio.isFresh(margin: 45) == true || extraPending[track.id]?.audio.isFresh(margin: 45) == true { start(track); return }
+        if bufferedItems[track.id]?.audio.isFresh(margin: 45) == true { start(track); return }
         if let ready = prepared, ready.track.id == track.id, ready.audio.isFresh(margin: 15), ready.item.status != .failed, engine.items().contains(ready.item) {
             beginTiming(source: "prepared")
             requestedPlayback = true; engine.advanceToNextItem(); adoptPreparedItem()
@@ -287,7 +287,7 @@ final class PlaybackController: ObservableObject {
         if let current { playedInRun.insert(current.id) }
         if pulseMode { refreshPreparedSelection() }
         if let ready = prepared, ready.audio.isFresh(margin: 15), ready.item.status != .failed, engine.items().contains(ready.item) {
-            if bufferedItems[ready.track.id]?.audio.isFresh(margin: 45) == true || extraPending[ready.track.id]?.audio.isFresh(margin: 45) == true {
+            if bufferedItems[ready.track.id]?.audio.isFresh(margin: 45) == true {
                 if !pulseMode { queue.removeAll { $0.id == ready.track.id } }
                 start(ready.track); return
             }
@@ -311,7 +311,7 @@ final class PlaybackController: ObservableObject {
         current = ready.track; startedID = nil; prepared = nil; position = 0; duration = ready.track.duration
         clock.reset(); retryCount = 0; artworkTask?.cancel(); artworkTask = nil; artwork = nil; error = nil
         generation = UUID(); prefetchedCurrent = nil; failedCandidates = []
-        if let buffered = takeBufferedItem(ready.track.id) {
+        if let buffered = takeBufferedItem(ready.track.id, allowPending: false) {
             promote(buffered.player)
             observe(buffered.item, token: generation)
             if requestedPlayback, !interrupted, !mediaServicesLost { engine.play() }
@@ -511,9 +511,11 @@ final class PlaybackController: ObservableObject {
         for entry in bufferedItems.values { entry.player.cancelPendingPrerolls(); entry.player.replaceCurrentItem(with: nil) }
         bufferedItems.removeAll(); warmingFailures.removeAll()
     }
-    private func takeBufferedItem(_ id: String) -> BufferedItem? {
+    private func takeBufferedItem(_ id: String, allowPending: Bool = true) -> BufferedItem? {
         let ready = bufferedItems.removeValue(forKey: id)
-        guard let entry = ready ?? extraPending.removeValue(forKey: id) else { return nil }
+        // An automatic transition already owns a prepared main-queue item.
+        // Replace that item only with a completed, preroll-ready warmer.
+        guard let entry = ready ?? (allowPending ? extraPending.removeValue(forKey: id) : nil) else { return nil }
         guard entry.audio.isFresh(margin: 45), entry.item.status != .failed else { entry.player.removeAllItems(); return nil }
         // Transfer the existing AVPlayer/asset, including partially downloaded
         // bytes. The old warm task no longer owns this entry and cannot clear it.
