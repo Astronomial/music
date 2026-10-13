@@ -1,0 +1,234 @@
+[
+  {
+    "id": "calm",
+    "title": "Спокойствие",
+    "label": "СПОКОЙСТВИЕ",
+    "headline": "Тише.\nМягче.",
+    "subtitle": "Мягкая музыка без резкого ритма",
+    "query": "calm relaxing music",
+    "genres": [
+      "Ambient",
+      "Lo-Fi",
+      "Jazz",
+      "R&B/Soul"
+    ],
+    "positive": [
+      "calm",
+      "peaceful",
+      "relaxing",
+      "relaxed",
+      "mellow",
+      "soothing",
+      "gentle",
+      "ambient",
+      "спокойная",
+      "спокойный",
+      "спокойное",
+      "умиротворяющая",
+      "расслабляющая",
+      "нежная"
+    ],
+    "titleSignals": [
+      "calm music",
+      "relaxing music",
+      "relaxing piano",
+      "спокойная музыка",
+      "музыка для сна",
+      "расслабляющая музыка",
+      "тихое фортепиано"
+    ],
+    "conflicts": [
+      "energetic"
+    ],
+    "maxEnergy": 0.58,
+    "minEnergy": null
+  },
+  {
+    "id": "bright",
+    "title": "Хорошее настроение",
+    "label": "РАДОСТЬ",
+    "headline": "Светлее\nна душе",
+    "subtitle": "Радость и лёгкость, а не просто быстрый темп",
+    "query": "happy uplifting music",
+    "genres": [
+      "Pop",
+      "House",
+      "Electronic"
+    ],
+    "positive": [
+      "bright",
+      "happy",
+      "cheerful",
+      "joyful",
+      "uplifting",
+      "радостная",
+      "веселая",
+      "позитивная",
+      "счастливая",
+      "светлое"
+    ],
+    "titleSignals": [
+      "happy music",
+      "happy song",
+      "uplifting music",
+      "радостная музыка",
+      "веселая песня",
+      "позитивная музыка"
+    ],
+    "conflicts": [
+      "melancholic"
+    ],
+    "maxEnergy": null,
+    "minEnergy": null
+  },
+  {
+    "id": "melancholic",
+    "title": "Можно погрустить",
+    "label": "ГРУСТЬ",
+    "headline": "Побыть\nс собой",
+    "subtitle": "Грустные и задумчивые песни, в том числе с ритмом",
+    "query": "melancholic sad music",
+    "genres": [
+      "Alternative",
+      "R&B/Soul",
+      "Lo-Fi"
+    ],
+    "positive": [
+      "melancholic",
+      "melancholy",
+      "sad",
+      "sentimental",
+      "heartbreak",
+      "brooding",
+      "грустная",
+      "грустный",
+      "печальная",
+      "печальный",
+      "меланхоличная",
+      "тоскливая"
+    ],
+    "titleSignals": [
+      "sad music",
+      "sad ballad",
+      "melancholic music",
+      "грустная песня",
+      "грустная музыка",
+      "печальная музыка",
+      "меланхоличная музыка"
+    ],
+    "conflicts": [
+      "bright"
+    ],
+    "maxEnergy": null,
+    "minEnergy": null
+  },
+  {
+    "id": "energetic",
+    "title": "Заряд энергии",
+    "label": "ЭНЕРГИЯ",
+    "headline": "Добавь\nэнергии",
+    "subtitle": "Активный ритм и напор для движения",
+    "query": "energetic workout music",
+    "genres": [
+      "Rock",
+      "Hip-Hop/Rap",
+      "Drum & Bass",
+      "Techno"
+    ],
+    "positive": [
+      "energetic",
+      "excited",
+      "powerful",
+      "aggressive",
+      "workout",
+      "энергичная",
+      "энергичный",
+      "заряженная",
+      "агрессивная",
+      "бодрая"
+    ],
+    "titleSignals": [
+      "energetic music",
+      "workout music",
+      "энергичная музыка",
+      "музыка для тренировки",
+      "заряд энергии"
+    ],
+    "conflicts": [
+      "calm"
+    ],
+    "maxEnergy": null,
+    "minEnergy": 0.45
+  },
+  {
+    "id": "focus",
+    "title": "Для концентрации",
+    "label": "ВНИМАНИЕ",
+    "headline": "Собраться\nс мыслями",
+    "subtitle": "Спокойный инструментал без отвлекающего вокала",
+    "query": "relaxing instrumental focus music",
+    "genres": [
+      "Ambient",
+      "Lo-Fi",
+      "Jazz"
+    ],
+    "positive": [
+      "focus",
+      "focused",
+      "study",
+      "concentration",
+      "концентрация",
+      "для учебы",
+      "для работы"
+    ],
+    "titleSignals": [
+      "focus music",
+      "study music",
+      "музыка для концентрации",
+      "музыка для учебы",
+      "музыка для работы"
+    ],
+    "conflicts": [
+      "energetic"
+    ],
+    "maxEnergy": 0.58,
+    "minEnergy": null
+  },
+  {
+    "id": "night",
+    "title": "После полуночи",
+    "label": "НОЧЬ",
+    "headline": "После\nполуночи",
+    "subtitle": "Мягкое и глубокое звучание без резкого напора",
+    "query": "mellow downtempo late night music",
+    "genres": [
+      "House",
+      "Electronic",
+      "R&B/Soul",
+      "Ambient",
+      "Lo-Fi"
+    ],
+    "positive": [
+      "night",
+      "nocturnal",
+      "downtempo",
+      "late night",
+      "dark",
+      "ночная",
+      "ночное",
+      "после полуночи"
+    ],
+    "titleSignals": [
+      "late night music",
+      "downtempo",
+      "ночной эмбиент",
+      "ночная музыка",
+      "после полуночи"
+    ],
+    "conflicts": [
+      "energetic"
+    ],
+    "maxEnergy": 0.64,
+    "minEnergy": null
+  }
+]

@@ -1,0 +1,637 @@
+[
+  {
+    "name": "query_labels_only",
+    "track": {
+      "videoID": "00000000000",
+      "artist": "Артист",
+      "title": "Обычная песня",
+      "genres": [
+        "Pop"
+      ],
+      "moodHints": [
+        "calm",
+        "bright",
+        "melancholic",
+        "energetic",
+        "focus",
+        "night"
+      ]
+    },
+    "accept": [],
+    "reject": [
+      "calm",
+      "bright",
+      "melancholic",
+      "energetic",
+      "focus",
+      "night"
+    ]
+  },
+  {
+    "name": "genre_alone",
+    "track": {
+      "videoID": "00000000001",
+      "artist": "Артист",
+      "title": "Обычная песня",
+      "genre": "Ambient"
+    },
+    "accept": [],
+    "reject": [
+      "calm",
+      "bright",
+      "melancholic",
+      "energetic",
+      "focus",
+      "night"
+    ]
+  },
+  {
+    "name": "quiet_vocal",
+    "track": {
+      "videoID": "00000000002",
+      "artist": "Артист",
+      "title": "Песня",
+      "mood": "Peaceful",
+      "tags": [
+        "vocals"
+      ],
+      "soundProfile": {
+        "version": 1,
+        "seconds": 20,
+        "bands": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "tempo": 70,
+        "tempoConfidence": 0.8,
+        "dynamicRange": 0.3,
+        "brightness": 0,
+        "onsetRate": 0.05
+      }
+    },
+    "accept": [
+      "calm"
+    ],
+    "reject": [
+      "focus",
+      "energetic"
+    ]
+  },
+  {
+    "name": "instrumental_focus",
+    "track": {
+      "videoID": "00000000003",
+      "artist": "Артист",
+      "title": "Песня без слов",
+      "mood": "Calm",
+      "soundProfile": {
+        "version": 1,
+        "seconds": 20,
+        "bands": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "tempo": 70,
+        "tempoConfidence": 0.8,
+        "dynamicRange": 0.3,
+        "brightness": 0,
+        "onsetRate": 0.05
+      }
+    },
+    "accept": [
+      "focus",
+      "calm"
+    ],
+    "reject": [
+      "energetic"
+    ]
+  },
+  {
+    "name": "busy_instrumental",
+    "track": {
+      "videoID": "00000000004",
+      "artist": "Артист",
+      "title": "Instrumental",
+      "mood": "Energetic",
+      "tags": [
+        "workout"
+      ],
+      "soundProfile": {
+        "version": 1,
+        "seconds": 20,
+        "bands": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        "tempo": 160,
+        "tempoConfidence": 0.8,
+        "dynamicRange": 0.3,
+        "brightness": 1,
+        "onsetRate": 0.9
+      }
+    },
+    "accept": [
+      "energetic"
+    ],
+    "reject": [
+      "calm",
+      "focus",
+      "night"
+    ]
+  },
+  {
+    "name": "sad_dance",
+    "track": {
+      "videoID": "00000000005",
+      "artist": "Артист",
+      "title": "Песня",
+      "mood": "Sad",
+      "soundProfile": {
+        "version": 1,
+        "seconds": 20,
+        "bands": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        "tempo": 160,
+        "tempoConfidence": 0.8,
+        "dynamicRange": 0.3,
+        "brightness": 1,
+        "onsetRate": 0.9
+      }
+    },
+    "accept": [
+      "melancholic",
+      "energetic"
+    ],
+    "reject": [
+      "bright",
+      "calm",
+      "focus",
+      "night"
+    ]
+  },
+  {
+    "name": "tempo_not_joy",
+    "track": {
+      "videoID": "00000000006",
+      "artist": "Артист",
+      "title": "Танец",
+      "soundProfile": {
+        "version": 1,
+        "seconds": 20,
+        "bands": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        "tempo": 160,
+        "tempoConfidence": 0.8,
+        "dynamicRange": 0.3,
+        "brightness": 1,
+        "onsetRate": 0.9
+      }
+    },
+    "accept": [
+      "energetic"
+    ],
+    "reject": [
+      "bright",
+      "melancholic"
+    ]
+  },
+  {
+    "name": "title_not_emotion",
+    "track": {
+      "videoID": "00000000007",
+      "artist": "Артист",
+      "title": "Солнце",
+      "moodHints": [
+        "bright"
+      ]
+    },
+    "accept": [],
+    "reject": [
+      "bright"
+    ]
+  },
+  {
+    "name": "metaphorical_title",
+    "track": {
+      "videoID": "00000000008",
+      "artist": "Артист",
+      "title": "Ночь",
+      "moodHints": [
+        "night"
+      ]
+    },
+    "accept": [],
+    "reject": [
+      "night"
+    ]
+  },
+  {
+    "name": "contradictory_calm_audio",
+    "track": {
+      "videoID": "00000000009",
+      "artist": "Артист",
+      "title": "Песня",
+      "mood": "Calm",
+      "soundProfile": {
+        "version": 1,
+        "seconds": 20,
+        "bands": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        "tempo": 160,
+        "tempoConfidence": 0.8,
+        "dynamicRange": 0.3,
+        "brightness": 1,
+        "onsetRate": 0.9
+      }
+    },
+    "accept": [],
+    "reject": [
+      "calm",
+      "focus",
+      "night"
+    ]
+  },
+  {
+    "name": "wrong_query_vs_track",
+    "track": {
+      "videoID": "00000000010",
+      "artist": "Артист",
+      "title": "Песня",
+      "mood": "Sad",
+      "moodHints": [
+        "bright"
+      ]
+    },
+    "accept": [
+      "melancholic"
+    ],
+    "reject": [
+      "bright"
+    ]
+  },
+  {
+    "name": "title_cannot_override_tags",
+    "track": {
+      "videoID": "00000000011",
+      "artist": "Артист",
+      "title": "Happy Song",
+      "tags": [
+        "sad"
+      ]
+    },
+    "accept": [
+      "melancholic"
+    ],
+    "reject": [
+      "bright"
+    ]
+  },
+  {
+    "name": "vocal_overrides_instrumental",
+    "track": {
+      "videoID": "00000000012",
+      "artist": "Артист",
+      "title": "Instrumental with vocals",
+      "mood": "Focus",
+      "soundProfile": {
+        "version": 1,
+        "seconds": 20,
+        "bands": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "tempo": 70,
+        "tempoConfidence": 0.8,
+        "dynamicRange": 0.3,
+        "brightness": 0,
+        "onsetRate": 0.05
+      }
+    },
+    "accept": [],
+    "reject": [
+      "focus"
+    ]
+  },
+  {
+    "name": "russian_relaxation",
+    "track": {
+      "videoID": "00000000013",
+      "artist": "Артист",
+      "title": "Спокойная музыка",
+      "mood": "Спокойное",
+      "tags": [
+        "инструментал"
+      ]
+    },
+    "accept": [
+      "calm",
+      "focus"
+    ],
+    "reject": [
+      "energetic"
+    ]
+  },
+  {
+    "name": "negated_descriptor",
+    "track": {
+      "videoID": "00000000014",
+      "artist": "Артист",
+      "title": "Не спокойная музыка",
+      "moodHints": [
+        "calm"
+      ]
+    },
+    "accept": [],
+    "reject": [
+      "calm"
+    ]
+  },
+  {
+    "name": "no_vocals_is_instrumental",
+    "track": {
+      "videoID": "00000000015",
+      "artist": "Артист",
+      "title": "Relaxing piano without vocals"
+    },
+    "accept": [
+      "calm",
+      "focus"
+    ],
+    "reject": [
+      "energetic"
+    ]
+  },
+  {
+    "name": "dark_night",
+    "track": {
+      "videoID": "00000000016",
+      "artist": "Артист",
+      "title": "Песня",
+      "mood": "Night",
+      "soundProfile": {
+        "version": 1,
+        "seconds": 20,
+        "bands": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "tempo": 70,
+        "tempoConfidence": 0.8,
+        "dynamicRange": 0.3,
+        "brightness": 0,
+        "onsetRate": 0.05
+      }
+    },
+    "accept": [
+      "night"
+    ],
+    "reject": [
+      "energetic"
+    ]
+  },
+  {
+    "name": "energetic_night_conflict",
+    "track": {
+      "videoID": "00000000017",
+      "artist": "Артист",
+      "title": "Песня",
+      "mood": "Night",
+      "tags": [
+        "energetic"
+      ],
+      "soundProfile": {
+        "version": 1,
+        "seconds": 20,
+        "bands": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        "tempo": 160,
+        "tempoConfidence": 0.8,
+        "dynamicRange": 0.3,
+        "brightness": 1,
+        "onsetRate": 0.9
+      }
+    },
+    "accept": [
+      "energetic"
+    ],
+    "reject": [
+      "night"
+    ]
+  },
+  {
+    "name": "bright_not_sad",
+    "track": {
+      "videoID": "00000000018",
+      "artist": "Артист",
+      "title": "Песня",
+      "mood": "Happy",
+      "soundProfile": {
+        "version": 1,
+        "seconds": 20,
+        "bands": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "tempo": 70,
+        "tempoConfidence": 0.8,
+        "dynamicRange": 0.3,
+        "brightness": 0,
+        "onsetRate": 0.05
+      }
+    },
+    "accept": [
+      "bright"
+    ],
+    "reject": [
+      "melancholic"
+    ]
+  },
+  {
+    "name": "curated_sad_original",
+    "track": {
+      "videoID": "00000000019",
+      "title": "Выхода нет",
+      "artist": "Сплин",
+      "tags": []
+    },
+    "accept": [
+      "melancholic"
+    ],
+    "reject": [
+      "bright",
+      "focus"
+    ]
+  },
+  {
+    "name": "curated_exact_recording",
+    "track": {
+      "videoID": "00000000020",
+      "title": "Прованс (Official Video)",
+      "artist": "Ёлка - Topic",
+      "tags": []
+    },
+    "accept": [
+      "bright"
+    ],
+    "reject": [
+      "melancholic"
+    ]
+  },
+  {
+    "name": "curated_wrong_artist",
+    "track": {
+      "videoID": "00000000021",
+      "title": "Прованс",
+      "artist": "Другой исполнитель",
+      "tags": []
+    },
+    "accept": [],
+    "reject": [
+      "bright",
+      "melancholic"
+    ]
+  },
+  {
+    "name": "curated_remix",
+    "track": {
+      "videoID": "00000000022",
+      "title": "Прованс (Hardstyle Remix)",
+      "artist": "Ёлка",
+      "tags": []
+    },
+    "accept": [],
+    "reject": [
+      "bright",
+      "calm"
+    ]
+  },
+  {
+    "name": "curated_cover",
+    "track": {
+      "videoID": "00000000023",
+      "title": "Выхода нет (Cover)",
+      "artist": "Сплин",
+      "tags": []
+    },
+    "accept": [],
+    "reject": [
+      "melancholic"
+    ]
+  },
+  {
+    "name": "curated_instrumental",
+    "track": {
+      "videoID": "00000000024",
+      "title": "Una Mattina",
+      "artist": "Ludovico Einaudi",
+      "tags": []
+    },
+    "accept": [
+      "focus",
+      "calm"
+    ],
+    "reject": [
+      "energetic"
+    ]
+  },
+  {
+    "name": "curated_vocal_conflict",
+    "track": {
+      "videoID": "00000000025",
+      "title": "Una Mattina",
+      "artist": "Ludovico Einaudi",
+      "tags": [
+        "vocals"
+      ]
+    },
+    "accept": [],
+    "reject": [
+      "focus"
+    ]
+  },
+  {
+    "name": "curated_evidence_conflict",
+    "track": {
+      "videoID": "00000000026",
+      "title": "Прованс",
+      "artist": "Ёлка",
+      "tags": [
+        "sad"
+      ]
+    },
+    "accept": [
+      "melancholic"
+    ],
+    "reject": [
+      "bright"
+    ]
+  }
+]

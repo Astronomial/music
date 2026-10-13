@@ -2,7 +2,7 @@ import {tasteGenres,discoveryQuery} from './discovery-search.mjs';
 import {normalizeTrack} from './model.mjs';
 import {selectRetrievalAnchors,playlistSeedState,rankTracks} from './recommender.mjs';
 import {artistIndex} from './diversity.mjs';
-import {MOOD_MIXES} from './mood-mixes.mjs';
+import {MOOD_MIXES,moodSeedQuery} from './mood-mixes.mjs';
 import {waveSettings,waveQuery,retrievalContext,matchesArtist,genresOf,blockedByPreferences} from './wave-settings.mjs';
 export async function collectYouTubeCandidates(state,request,{context=null,onBatch,round=0}={}){
   const source=playlistSeedState(state,context),settings=waveSettings(state.settings),anchors=selectRetrievalAnchors(source,{limit:12});
@@ -26,6 +26,8 @@ export async function collectYouTubeCandidates(state,request,{context=null,onBat
   }
   for(const genre of permitted.slice(0,2))jobs.push({route:'/tracks/search',params:{query:discoveryQuery(genre,settings),offset:40*(1+(Math.max(0,round)%3))},context:{...retrievalContext(settings,genre),...languageContext,retrievalSources:['discovery-page']}});
   if(!jobs.length)jobs.push({route:'/tracks/search',params:{query:waveQuery('',settings)},context:retrievalContext(settings)});
+  // Start recording-specific mood discovery early; streamed batches can populate cards before broad searches finish.
+  if(language!=='en'&&!context?.playlistId)jobs.unshift(...MOOD_MIXES.map(mix=>({route:'/tracks/search',params:{query:moodSeedQuery(mix.id,Math.floor(Date.now()/86400000)+round)},context:{retrievalSources:['mood-reference']}})));
   const found=new Map();let successes=0;
   let expanded=false;const primaryCount=jobs.length;
   for(let i=0;i<jobs.length;){

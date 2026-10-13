@@ -58,8 +58,8 @@ try{
   await page.locator('.track-row').first().waitFor();
   await page.getByRole('button',{name:'Главная',exact:true}).click();
   assert.equal(await page.locator('.mix-card').count(),6);
-  await page.locator('.mix-card').filter({hasText:'Тише внутри'}).click();
-  await page.getByRole('heading',{name:'Тише внутри',exact:true}).waitFor();
+  await page.locator('.mix-card').filter({hasText:'Спокойствие'}).click();
+  await page.getByRole('heading',{name:'Спокойствие',exact:true}).waitFor();
   await page.locator('.track-name').first().click();
   await page.waitForFunction(()=>document.querySelector('audio').currentTime>3.2);
   await page.getByRole('button',{name:'Следующий трек',exact:true}).click();

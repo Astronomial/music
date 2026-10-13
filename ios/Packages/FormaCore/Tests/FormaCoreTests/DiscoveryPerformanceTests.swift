@@ -6,15 +6,24 @@ final class DiscoveryPerformanceTests: XCTestCase {
     func testEveryMoodGetsRegionalAndInternationalSearches() {
         let queries = BilingualDiscovery.searches(genres: ["Pop", "Rock"], suffix: "vocal", hints: ["vocals:vocal"], language: "any")
         for mix in MoodMix.all {
-            let searches = queries.filter { $0.mood == mix.id }
+            let searches = queries.filter { $0.mood == mix.id && !$0.hints.contains("mood:reference") }
             XCTAssertEqual(searches.count, 2)
             XCTAssertTrue(searches.contains { $0.query.contains("русская музыка") })
             XCTAssertTrue(searches.contains { $0.query.contains(mix.query) })
-            XCTAssertTrue(searches.allSatisfy { $0.hints.contains("vocals:vocal") })
+            XCTAssertTrue(searches.allSatisfy { $0.hints.contains(mix.id == "focus" ? "vocals:instrumental" : "vocals:vocal") })
         }
     }
+    func testMoodCharacterOverridesGlobalVocalAndHighEnergySearches() {
+        let searches = BilingualDiscovery.searches(genres: ["Pop"], suffix: "upbeat vocal", hints: ["energy:high", "vocals:vocal"], language: "any")
+        let focus = searches.filter { $0.mood == "focus" && !$0.hints.contains("mood:reference") }
+        XCTAssertTrue(focus.allSatisfy { $0.hints.contains("vocals:instrumental") && $0.hints.contains("energy:low") && !$0.hints.contains("energy:high") && !$0.hints.contains("vocals:vocal") })
+        XCTAssertTrue(focus.contains { $0.query.contains("без вокала") })
+        XCTAssertTrue(searches.contains { $0.hints.contains("mood:reference") && $0.genre == nil && !$0.hints.contains("discovery:ru") })
+    }
     func testRussianHomeAndEveryMoodKeepWeakMetadataNeighbours() {
-        let tracks = (0..<62).map { i in Track(videoID: String(format: "%011d", i), title: i < 30 ? "Song \(i)" : "Песня \(i)", artist: "Artist \(i)", genres: i < 30 ? [] : ["Pop"], moodHints: MoodMix.all.map(\.id), genre: i < 30 ? "Pop" : "") }
+        let tracks = MoodMix.all.enumerated().flatMap { j, mix in
+            (0..<62).map { i in Track(videoID: String(format: "%011d", j * 62 + i), title: (i < 30 ? "Song " + mix.id : "Песня " + mix.title) + " \(i)", artist: "Artist \(i)", genres: i < 30 ? [] : ["Pop"], genre: i < 30 ? "Pop" : "", mood: mix.id, tags: mix.id == "focus" ? ["instrumental"] : []) }
+        }
         var library = Library(); library.merge(tracks)
         library.settings.genres = ["Pop"]; library.settings.languagePreference = "ru"
         library.settings.repeatHours = 0; library.settings.artistDiversity = 0.8
@@ -39,7 +48,7 @@ final class DiscoveryPerformanceTests: XCTestCase {
         XCTAssertEqual(genres, ["Rock"])
         let queries = BilingualDiscovery.searches(genres: genres, suffix: "vocal", hints: ["vocals:vocal"], language: "ru", artists: [anchor.artist])
         for mood in MoodMix.all {
-            let searches = queries.filter { $0.mood == mood.id }
+            let searches = queries.filter { $0.mood == mood.id && !$0.hints.contains("mood:reference") }
             XCTAssertEqual(searches.count, 2)
             XCTAssertTrue(searches.allSatisfy { $0.query.contains("русская музыка") && $0.query.contains("рок") && !$0.query.contains("vocal") })
             XCTAssertTrue(searches.contains { $0.query.contains(anchor.artist) })
@@ -49,7 +58,9 @@ final class DiscoveryPerformanceTests: XCTestCase {
         XCTAssertTrue(english.allSatisfy { $0.hints.contains("discovery:en") && !$0.hints.contains("discovery:ru") })
     }
     func testHomeAndAllMoodsRespondToLibraryTasteWithoutExplicitGenres() {
-        let tracks = (0..<60).map { i in Track(videoID: String(format: "%011d", i), title: "Песня \(i)", artist: "Артист \(i)", moodHints: MoodMix.all.map(\.id), genre: i < 30 ? "Rock" : "Jazz") }
+        let tracks = MoodMix.all.enumerated().flatMap { j, mix in
+            (0..<60).map { i in Track(videoID: String(format: "%011d", j * 60 + i), title: "Песня " + mix.title + " \(i)", artist: "Артист \(i)", genre: i < 30 ? "Rock" : "Jazz", mood: mix.id, tags: mix.id == "focus" ? ["instrumental"] : []) }
+        }
         for (anchor, genre) in [(tracks[0], "Rock"), (tracks[30], "Jazz")] {
             var library = Library(); library.merge(tracks); library.settings.genres = []; library.settings.repeatHours = 0
             library.likedIDs = [anchor.id]
@@ -80,7 +91,7 @@ final class DiscoveryPerformanceTests: XCTestCase {
         XCTAssertEqual(result.prefix(12).filter { BilingualDiscovery.regional($0.track) }.count, 4)
     }
     func testRegionalDiscoverySurvivesAStrongEnglishLibraryAndHonorsHiddenTracks() {
-        let tracks = (0..<90).map { i in Track(videoID: String(format: "%011d", i), title: i >= 70 ? "Песня \(i)" : "Song \(i)", artist: "Artist \(i)", genres: ["Pop"], moodHints: ["calm"], genre: "Pop") }
+        let tracks = (0..<90).map { i in Track(videoID: String(format: "%011d", i), title: i >= 70 ? "Песня \(i)" : "Song \(i)", artist: "Artist \(i)", genres: ["Pop"], moodHints: ["calm"], genre: "Pop", mood: "calm") }
         var library = Library(); library.merge(tracks); library.likedIDs = Array(tracks.prefix(70).map(\.id)); library.settings.artistDiversity = 0
         library.hiddenIDs = [tracks[70].id]
         let result = BilingualDiscovery.rankHome(tracks, library: library, limit: 30, mood: "calm")
@@ -99,7 +110,7 @@ final class DiscoveryPerformanceTests: XCTestCase {
         XCTAssertFalse(changed.contains { library.hiddenIDs.contains($0.id) })
     }
     func testThreeThousandTracksAndSixMoodsHaveBoundedRankingCost() {
-        let tracks = (0..<3000).map { i in Track(videoID: String(format: "%011d", i), title: i % 3 == 2 ? "Песня \(i)" : "Song \(i)", artist: "Artist \(i % 500)", genres: ["Pop"], moodHints: [MoodMix.all[i % 6].id]) }
+        let tracks = (0..<3000).map { i in Track(videoID: String(format: "%011d", i), title: i % 3 == 2 ? "Песня \(i)" : "Song \(i)", artist: "Artist \(i % 500)", genres: ["Pop"], mood: MoodMix.all[i % 6].id, tags: i % 6 == 4 ? ["instrumental"] : []) }
         var library = Library(); library.merge(tracks); library.likedIDs = Array(tracks.prefix(10).map(\.id))
         let start = Date(), index = PulseEngine.makeIndex(tracks, library: library)
         XCTAssertEqual(BilingualDiscovery.rankHome(tracks, library: library, limit: 40, index: index).count, 40)

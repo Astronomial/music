@@ -1,0 +1,247 @@
+[
+  {
+    "artist": "Земфира",
+    "title": "Хочешь",
+    "moods": [
+      "calm",
+      "melancholic"
+    ],
+    "instrumental": false
+  },
+  {
+    "artist": "Сплин",
+    "title": "Романс",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false
+  },
+  {
+    "artist": "Кино",
+    "title": "Спокойная ночь",
+    "moods": [
+      "calm",
+      "night"
+    ],
+    "instrumental": false
+  },
+  {
+    "artist": "Мельница",
+    "title": "Дорога сна",
+    "moods": [
+      "calm"
+    ],
+    "instrumental": false
+  },
+  {
+    "artist": "HammAli & Navai",
+    "title": "Птичка",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false
+  },
+  {
+    "artist": "Ёлка",
+    "title": "Прованс",
+    "moods": [
+      "bright"
+    ],
+    "instrumental": false
+  },
+  {
+    "artist": "Ёлка",
+    "title": "На большом воздушном шаре",
+    "moods": [
+      "bright"
+    ],
+    "instrumental": false
+  },
+  {
+    "artist": "IOWA",
+    "title": "Улыбайся",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false
+  },
+  {
+    "artist": "IOWA",
+    "title": "Маршрутка",
+    "moods": [
+      "bright"
+    ],
+    "instrumental": false
+  },
+  {
+    "artist": "Моя Мишель",
+    "title": "Химия",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false
+  },
+  {
+    "artist": "Сплин",
+    "title": "Выхода нет",
+    "moods": [
+      "melancholic"
+    ],
+    "instrumental": false
+  },
+  {
+    "artist": "Noize MC",
+    "title": "Выдыхай",
+    "moods": [
+      "melancholic"
+    ],
+    "instrumental": false
+  },
+  {
+    "artist": "Три дня дождя",
+    "title": "Где ты",
+    "moods": [
+      "melancholic",
+      "energetic"
+    ],
+    "instrumental": false
+  },
+  {
+    "artist": "Моя Мишель",
+    "title": "Зима в сердце",
+    "moods": [
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false
+  },
+  {
+    "artist": "МакSим",
+    "title": "Отпускаю",
+    "moods": [
+      "melancholic"
+    ],
+    "instrumental": false
+  },
+  {
+    "artist": "Ленинград",
+    "title": "Экспонат",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false
+  },
+  {
+    "artist": "Король и Шут",
+    "title": "Лесник",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false
+  },
+  {
+    "artist": "Кино",
+    "title": "Группа крови",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false
+  },
+  {
+    "artist": "Мумий Тролль",
+    "title": "Утекай",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false
+  },
+  {
+    "artist": "кис-кис",
+    "title": "молчи",
+    "moods": [
+      "melancholic",
+      "energetic"
+    ],
+    "instrumental": false
+  },
+  {
+    "artist": "Дмитрий Маликов",
+    "title": "Бисер",
+    "moods": [
+      "calm",
+      "focus"
+    ],
+    "instrumental": true
+  },
+  {
+    "artist": "Ludovico Einaudi",
+    "title": "Una Mattina",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true
+  },
+  {
+    "artist": "Yiruma",
+    "title": "River Flows in You",
+    "moods": [
+      "calm",
+      "focus"
+    ],
+    "instrumental": true
+  },
+  {
+    "artist": "Ólafur Arnalds",
+    "title": "Saman",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true
+  },
+  {
+    "artist": "Nils Frahm",
+    "title": "Ambre",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true
+  },
+  {
+    "artist": "Max Richter",
+    "title": "Vladimir’s Blues",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true
+  },
+  {
+    "artist": "polnalyubvi",
+    "title": "Кометы",
+    "moods": [
+      "night"
+    ],
+    "instrumental": false
+  },
+  {
+    "artist": "Скриптонит",
+    "title": "Это любовь",
+    "moods": [
+      "night"
+    ],
+    "instrumental": false
+  }
+]

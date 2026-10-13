@@ -321,7 +321,7 @@ final class AppModel: ObservableObject {
             // two searches per mood plus every genre while audio needs the VPN.
             selectedSearches = MoodMix.all.compactMap { mood in
                 let choices = searches.filter { $0.mood == mood.id }
-                return settings.languagePreference == "ru" ? choices.first(where: { $0.hints.contains("discovery:ru") }) : choices.last
+                return settings.languagePreference == "ru" ? choices.first : choices.last
             }
         } else { selectedSearches = searches }
         let requests: [Request] = anchors.prefix(networkPolicy.lean ? 2 : 6).map { .related($0) } + artists.prefix(networkPolicy.lean ? 1 : 3).map { .artist($0) } + selectedSearches.map { .search($0) }
@@ -359,7 +359,7 @@ final class AppModel: ObservableObject {
                     merge(next)
                 }
             }
-            UserDefaults.standard.set(5, forKey: "forma.discoveryRevision")
+            UserDefaults.standard.set(6, forKey: "forma.discoveryRevision")
         }
         if successes == 0, !Task.isCancelled, !automatic { message = failure ?? "Каталог пока недоступен. Попробуй ссылку на конкретный трек." }
     }

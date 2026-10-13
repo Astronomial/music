@@ -250,7 +250,7 @@ export function rankTracks(candidates, state, options = {}) {
     if(session>.35)reason='В ритме твоих последних прослушиваний';
     if(predicted.mean>.6&&predicted.evidence>=2)reason='Ты часто дослушиваешь похожую музыку';
     if(preference.reason)reason=preference.reason;
-    if(context?.mood)reason=moodEvidence(track,context)>=1?'Под настроение · и в твоём вкусе':'В направлении этой подборки';
+    if(context?.mood)reason=moodEvidence(track,context)>=.8?'Под настроение · и в твоём вкусе':'В направлении этой подборки';
     if(context?.playlistId&&affinity>.1)reason=`По мотивам «${context.playlistName||'плейлиста'}»`;
     if(newArtist&&affinity>.1&&!context?.playlistId&&!context?.mood)reason=`Новый исполнитель · ${genresOf(track).values.find(g=>settings.genres.includes(g))||'в твоём вкусе'}`;
     if(audioAffinity!==null&&audioAffinity>=.78)reason='Похожее звучание · анализ аудио';

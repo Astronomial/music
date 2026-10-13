@@ -18,21 +18,32 @@ public enum BilingualDiscovery {
     public static func searches(genres: [String], suffix: String, hints: [String], language: String = "ru", artists: [String] = []) -> [Search] {
         let ruGenres = ["Pop": "поп", "Rock": "рок", "Hip-Hop": "хип-хоп", "Hip-Hop/Rap": "рэп хип-хоп", "Electronic": "электронная", "Indie": "инди", "Alternative": "альтернатива", "Jazz": "джаз", "Classical": "классическая", "House": "хаус", "Techno": "техно", "Ambient": "эмбиент", "R&B/Soul": "соул ритм-н-блюз", "Lo-Fi": "лоу-фай", "Drum & Bass": "драм-н-бейс"]
         let ruMoods = ["calm": "спокойная", "bright": "радостная", "melancholic": "грустная", "energetic": "энергичная", "focus": "для концентрации", "night": "ночная"]
-        let ruSuffix = hints.compactMap { hint in
+        func regionalSuffix(_ hints: [String]) -> String { hints.compactMap { hint in
             ["energy:low": "медленная", "energy:medium": "средний темп", "energy:high": "быстрая", "vocals:instrumental": "без вокала", "vocals:vocal": "с вокалом"][hint]
-        }.joined(separator: " ")
+        }.joined(separator: " ") }
+        let ruSuffix = regionalSuffix(hints)
         func query(_ words: [String]) -> String { words.filter { !$0.isEmpty }.joined(separator: " ") }
         var result: [Search] = []
         for (index, mix) in MoodMix.all.enumerated() {
             let genre = genres.isEmpty ? nil : genres[index % genres.count]
             let artist = artists.isEmpty ? "" : artists[index % artists.count]
+            // A shelf's character takes precedence over global energy/vocal search filters.
+            var moodHints = hints
+            if ["calm", "focus", "night", "energetic"].contains(mix.id) {
+                moodHints.removeAll { $0.hasPrefix("energy:") }; moodHints.append("energy:" + (mix.id == "energetic" ? "high" : "low"))
+            }
+            if mix.id == "focus" { moodHints.removeAll { $0.hasPrefix("vocals:") }; moodHints.append("vocals:instrumental") }
+            let moodSuffix = moodHints.compactMap { ["energy:low": "slow", "energy:medium": "medium tempo", "energy:high": "upbeat", "vocals:instrumental": "instrumental", "vocals:vocal": "vocal"][$0] }.joined(separator: " ")
+            if language != "en", let seed = MoodFitness.seedQuery(mix.id) {
+                result.append(Search(query: seed, genre: nil, mood: mix.id, hints: ["mood:reference"]))
+            }
             if language != "en" {
-                let words = [genre.map { ruGenres[$0] ?? $0 } ?? "", ruMoods[mix.id] ?? "", "русская музыка", ruSuffix]
-                result.append(Search(query: query([artist] + words), genre: genre, mood: mix.id, hints: hints + ["discovery:ru"]))
-                if language == "ru", !artist.isEmpty { result.append(Search(query: query(words), genre: genre, mood: mix.id, hints: hints + ["discovery:ru"])) }
+                let words = [genre.map { ruGenres[$0] ?? $0 } ?? "", ruMoods[mix.id] ?? "", "русская музыка", regionalSuffix(moodHints)]
+                result.append(Search(query: query([artist] + words), genre: genre, mood: mix.id, hints: moodHints + ["discovery:ru"]))
+                if language == "ru", !artist.isEmpty { result.append(Search(query: query(words), genre: genre, mood: mix.id, hints: moodHints + ["discovery:ru"])) }
             }
             if language != "ru" {
-                result.append(Search(query: query([artist, genre ?? "", mix.query, suffix, language == "en" ? "english songs" : ""]), genre: genre, mood: mix.id, hints: hints + (language == "en" ? ["discovery:en"] : [])))
+                result.append(Search(query: query([artist, genre ?? "", mix.query, moodSuffix, language == "en" ? "english songs" : ""]), genre: genre, mood: mix.id, hints: moodHints + (language == "en" ? ["discovery:en"] : [])))
             }
         }
         for (index, genre) in genres.prefix(12).enumerated() {

@@ -53,7 +53,7 @@ test('queue diversity keeps taste relevance and relaxes gracefully when only one
 test('playlist and mood recommendations share the same artist spacing across recalculations',()=>{
   const s=biasedLibrary();s.playlists=[{id:'p',name:'My House',trackIds:s.likes}];
   s.events=[{trackId:'liked0',type:'play',at:now-1000}];
-  const pool=Object.values(s.tracks).map(t=>({...t,discoveryMoods:['energetic']}));
+  const pool=Object.values(s.tracks).map(t=>({...t,mood:'Energetic'}));
   for(const context of [playlistPulseContext(s,'p'),{mood:'energetic'}])assert.notEqual(rankTracks(pool,s,{now,context,limit:1})[0].track.artist,'Favourite');
 });
 test('retrieval anchors cover minority artists before second songs of a dominant artist',()=>{

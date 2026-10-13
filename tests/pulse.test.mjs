@@ -36,7 +36,7 @@ test('current session adds context that fades without discarding permanent favor
   const later=rankTracks([track('h','New','House')],s,{now:now+3*3600000});assert.equal(later[0].signals.session,0);assert.equal(buildProfile(s,now+90*86400000).weights.get('rock'),5);
 });
 test('mood playlists use mood evidence and taste, enforce exclusions and preserve different contents',()=>{
-  const s=initialState();const tracks=[track('calm','One','Ambient',{mood:'Peaceful'}),track('happy','Two','Pop',{mood:'Upbeat'}),track('sad','Three','Alternative',{mood:'Sad'}),track('energy','Four','Rock',{mood:'Energetic'}),track('night','Five','House',{mood:'Brooding'}),track('unknown','Six','')];s.settings.excludedGenres=['Rock'];
+  const s=initialState();const tracks=[track('calm','One','Ambient',{mood:'Peaceful'}),track('happy','Two','Pop',{mood:'Happy'}),track('sad','Three','Alternative',{mood:'Sad'}),track('energy','Four','Rock',{mood:'Energetic'}),track('night','Five','House',{mood:'Night'}),track('unknown','Six','')];s.settings.excludedGenres=['Rock'];
   const mixes=moodRecommendations(tracks,s,{now});assert.equal(mixes.length,6);assert.equal(mixes.find(m=>m.id==='calm').items[0].track.id,'calm');assert.equal(mixes.find(m=>m.id==='bright').items[0].track.id,'happy');assert.ok(mixes.find(m=>m.id==='melancholic').items.some(r=>r.track.id==='sad'));assert.equal(mixes.find(m=>m.id==='night').items[0].track.id,'night');assert.equal(mixes.some(m=>m.items.some(r=>r.track.id==='unknown'||r.track.id==='energy')),false);
   s.tracks=Object.fromEntries(tracks.map(t=>[t.id,t]));s.likes=['happy'];assert.equal(buildProfile(s,now).weights.get('happy'),5);
 });

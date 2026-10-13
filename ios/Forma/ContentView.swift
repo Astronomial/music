@@ -24,7 +24,7 @@ struct ContentView: View {
         .task {
             guard !ProcessInfo.processInfo.arguments.contains("--forma-smoke") else { return }
             while (!model.player.networkPolicy.known || model.isRestoringLibrary), !Task.isCancelled { try? await Task.sleep(nanoseconds: 50_000_000) }
-            if model.library.tracks.isEmpty || UserDefaults.standard.integer(forKey: "forma.discoveryRevision") < 5 { await model.refresh(automatic: true) }
+            if model.library.tracks.isEmpty || UserDefaults.standard.integer(forKey: "forma.discoveryRevision") < 6 { await model.refresh(automatic: true) }
             while !Task.isCancelled {
                 if scenePhase == .active { await model.synchronize() }
                 try? await Task.sleep(nanoseconds: 30_000_000_000)
@@ -80,6 +80,7 @@ struct HomeView: View {
                                 Image(systemName: ["leaf", "sun.max", "moon", "bolt", "sparkles", "moon.stars"][index]).font(.title)
                                 Spacer(minLength: 12)
                                 Text(mix.title).font(.headline).multilineTextAlignment(.leading)
+                                Text(mix.subtitle).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading)
                                 Text("\(model.moodTracks(mix).count) треков").font(.caption).foregroundStyle(.secondary)
                             }.frame(maxWidth: .infinity, minHeight: 122, alignment: .leading).padding(16)
                                 .background(LinearGradient(colors: [FormaTheme.colors[index].opacity(0.2), .white.opacity(0.03)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 20))
@@ -132,9 +133,10 @@ struct MoodView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 Text(mix.title).font(.largeTitle.bold())
+                Text(mix.subtitle).foregroundStyle(.secondary)
                 Text("Собрано под твой вкус и настроение").foregroundStyle(.secondary)
                 Button { model.startPulse(mood: mix.id) } label: { Label("Слушать подборку", systemImage: "play.fill") }.buttonStyle(.borderedProminent).disabled(tracks.isEmpty)
-                if tracks.isEmpty { EmptyState(title: "Подборка ещё впереди", text: "Обнови каталог. Мы покажем музыку, когда найдём подходящие треки.") }
+                if tracks.isEmpty { EmptyState(title: "Ищем музыку под это настроение", text: "Добавим треки, когда найдём подходящее звучание. Любимая песня не попадёт сюда только ради заполнения подборки.") }
                 ForEach(tracks) { track in TrackRow(model: model, track: track) { model.playRecommendation(track, mood: mix.id) } }
             }.padding(20)
         }.background(FormaTheme.background).navigationBarTitleDisplayMode(.inline)

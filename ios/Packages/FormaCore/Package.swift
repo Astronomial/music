@@ -5,7 +5,7 @@ let package = Package(
     platforms: [.iOS(.v17), .macOS(.v14)],
     products: [.library(name: "FormaCore", targets: ["FormaCore"])],
     targets: [
-        .target(name: "FormaCore"),
+        .target(name: "FormaCore", resources: [.process("Resources")]),
         .testTarget(name: "FormaCoreTests", dependencies: ["FormaCore"], resources: [.process("Fixtures")])
     ]
 )
