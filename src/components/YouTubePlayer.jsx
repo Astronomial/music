@@ -1,6 +1,7 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {ExternalLink,LoaderCircle} from 'lucide-react';
 import {youtubePlayerError} from '../core/youtube-player-errors.mjs';
+import {youtubePlayerVars} from '../core/youtube-player-config.mjs';
 let scriptPromise;
 function loadAPI(){
   if(window.YT?.Player)return Promise.resolve(window.YT);
@@ -48,7 +49,7 @@ export default function YouTubePlayer({track,playbackId,onReady,onPlaying,onPaus
     const node=document.createElement('div');container.current.replaceChildren(node);
     loadAPI().then(YT=>{
       if(!alive)return;
-      instance=new YT.Player(node,{width:'100%',height:'220',playerVars:{autoplay:0,playsinline:1,enablejsapi:1,origin:location.origin,widget_referrer:location.href,rel:0},events:{
+      instance=new YT.Player(node,{width:'100%',height:'220',playerVars:youtubePlayerVars(location.href,window.forma?.desktop===true),events:{
         onReady:event=>{if(!alive)return;player.current=event.target;setLoaded(true);loadCurrent();},
         onStateChange:event=>{
           if(!alive||!matches())return;

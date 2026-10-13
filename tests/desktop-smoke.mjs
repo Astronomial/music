@@ -80,6 +80,9 @@ try{
   await page.getByRole('textbox',{name:'Поиск треков и исполнителей',exact:true}).fill('Soft Focus');
   await page.locator('.track-name').filter({hasText:'Soft Focus'}).first().click();
   await page.waitForFunction(()=>window.testYTPlayer?.getCurrentTime()>.5);
+  const playerIdentity=await page.evaluate(()=>({origin:location.origin,vars:window.testYTPlayer.options.playerVars}));
+  assert.equal(playerIdentity.vars.origin,playerIdentity.origin);
+  assert.equal(playerIdentity.vars.widget_referrer,'https://music.forma.desktop/');
   const youtubeTime=await page.evaluate(()=>window.testYTPlayer.getCurrentTime());
   await page.getByRole('button',{name:'Свернуть',exact:true}).click();
   await page.waitForFunction(t=>window.testYTPlayer.getPlayerState()===1&&window.testYTPlayer.getCurrentTime()>t+.8,youtubeTime);

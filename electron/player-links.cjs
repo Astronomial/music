@@ -9,14 +9,18 @@ function playerBrowserURL(value) {
     return url.href;
   } catch { return null; }
 }
-function playerRequestHeaders(details, entry) {
+function playerRequestHeaders(details, entry, identity) {
   const headers=details.requestHeaders;
-  // Preserve YouTube's own Origin/Referer and the browser's normal navigation
-  // headers. Only fill a missing identity on the actual embedded video request.
-  if(details.resourceType !== 'subFrame' || Object.keys(headers).some(key=>key.toLowerCase()==='referer'&&headers[key]))return headers;
+  // Only the initial embed request identifies the desktop app. YouTube's own
+  // nested navigation/API/media requests retain their real Origin and Referer.
+  if(details.resourceType !== 'subFrame')return headers;
   try {
-    const url=new URL(details.url), source=new URL(entry);
-    if(url.protocol==='https:' && ['www.youtube.com','youtube.com','www.youtube-nocookie.com','youtube-nocookie.com'].includes(url.hostname) && url.pathname.startsWith('/embed/'))return {...headers,Referer:source.origin+'/'};
+    const url=new URL(details.url),source=new URL(entry),app=new URL(identity);
+    if(url.protocol!=='https:'||!['www.youtube.com','youtube.com','www.youtube-nocookie.com','youtube-nocookie.com'].includes(url.hostname)||!/^\/embed\/[\w-]{11}$/.test(url.pathname)||app.protocol!=='https:'||app.username||app.password||app.port)return headers;
+    const refs=Object.entries(headers).filter(([key])=>key.toLowerCase()==='referer');
+    if(refs.some(([,value])=>value&&new URL(value).origin!==source.origin))return headers;
+    const next={...headers};for(const [key] of refs)delete next[key];
+    return {...next,Referer:app.origin+'/'};
   } catch { }
   return headers;
 }

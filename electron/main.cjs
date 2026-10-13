@@ -13,6 +13,7 @@ if(!app.isPackaged&&testDataArg) app.setPath('userData',path.resolve(testDataArg
 if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance',()=>{ window?.restore(); window?.focus(); });
 app.whenReady().then(async () => {
+  const {desktopAppID,desktopPlayerIdentity}=await import('../src/core/youtube-player-config.mjs');
   api = await import('../src/core/audius.mjs');
   const { normalizeTrack } = await import('../src/core/model.mjs');
   store = new Store(app.getPath('userData'));
@@ -133,8 +134,8 @@ app.whenReady().then(async () => {
     if(details.url===entry) callback({responseHeaders:{...details.responseHeaders,'Content-Security-Policy':["default-src 'self'; script-src 'self' https://www.youtube.com https://s.ytimg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob: forma-audio:; media-src 'self' https: forma-audio: blob:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; frame-src https://www.youtube.com https://www.youtube-nocookie.com"]}});
     else callback({responseHeaders:details.responseHeaders});
   });
-  app.setAppUserModelId('music.forma.desktop');
-  window.webContents.session.webRequest.onBeforeSendHeaders({urls:['https://www.youtube.com/*','https://www.youtube-nocookie.com/*']},(details,callback)=>callback({requestHeaders:playerRequestHeaders(details,entry)}));
+  app.setAppUserModelId(desktopAppID);
+  window.webContents.session.webRequest.onBeforeSendHeaders({urls:['https://www.youtube.com/*','https://www.youtube-nocookie.com/*']},(details,callback)=>callback({requestHeaders:playerRequestHeaders(details,entry,desktopPlayerIdentity)}));
   await window.loadURL(entry);
 });
 app.on('window-all-closed',()=>app.quit());
