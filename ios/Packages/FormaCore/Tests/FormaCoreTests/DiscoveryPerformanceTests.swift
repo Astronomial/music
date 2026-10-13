@@ -21,8 +21,15 @@ final class DiscoveryPerformanceTests: XCTestCase {
         XCTAssertTrue(searches.contains { $0.hints.contains("mood:reference") && $0.genre == nil && !$0.hints.contains("discovery:ru") })
     }
     func testRussianHomeAndEveryMoodKeepWeakMetadataNeighbours() {
-        let tracks = MoodMix.all.enumerated().flatMap { j, mix in
-            (0..<62).map { i in Track(videoID: String(format: "%011d", j * 62 + i), title: (i < 30 ? "Song " + mix.id : "Песня " + mix.title) + " \(i)", artist: "Artist \(i)", genres: i < 30 ? [] : ["Pop"], genre: i < 30 ? "Pop" : "", mood: mix.id, tags: mix.id == "focus" ? ["instrumental"] : []) }
+        var tracks: [Track] = []
+        for (j, mix) in MoodMix.all.enumerated() {
+            for i in 0..<62 {
+                let title = (i < 30 ? "Song " + mix.id : "Песня " + mix.title) + " \(i)"
+                var track = Track(videoID: String(format: "%011d", j * 62 + i), title: title, artist: "Artist \(i)")
+                track.genres = i < 30 ? [] : ["Pop"]; track.genre = i < 30 ? "Pop" : ""
+                track.mood = mix.id; track.tags = mix.id == "focus" ? ["instrumental"] : []
+                tracks.append(track)
+            }
         }
         var library = Library(); library.merge(tracks)
         library.settings.genres = ["Pop"]; library.settings.languagePreference = "ru"
@@ -58,8 +65,13 @@ final class DiscoveryPerformanceTests: XCTestCase {
         XCTAssertTrue(english.allSatisfy { $0.hints.contains("discovery:en") && !$0.hints.contains("discovery:ru") })
     }
     func testHomeAndAllMoodsRespondToLibraryTasteWithoutExplicitGenres() {
-        let tracks = MoodMix.all.enumerated().flatMap { j, mix in
-            (0..<60).map { i in Track(videoID: String(format: "%011d", j * 60 + i), title: "Песня " + mix.title + " \(i)", artist: "Артист \(i)", genre: i < 30 ? "Rock" : "Jazz", mood: mix.id, tags: mix.id == "focus" ? ["instrumental"] : []) }
+        var tracks: [Track] = []
+        for (j, mix) in MoodMix.all.enumerated() {
+            for i in 0..<60 {
+                var track = Track(videoID: String(format: "%011d", j * 60 + i), title: "Песня " + mix.title + " \(i)", artist: "Артист \(i)")
+                track.genre = i < 30 ? "Rock" : "Jazz"; track.mood = mix.id
+                track.tags = mix.id == "focus" ? ["instrumental"] : []; tracks.append(track)
+            }
         }
         for (anchor, genre) in [(tracks[0], "Rock"), (tracks[30], "Jazz")] {
             var library = Library(); library.merge(tracks); library.settings.genres = []; library.settings.repeatHours = 0
