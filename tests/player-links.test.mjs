@@ -17,6 +17,7 @@ test('initial desktop embed uses the HTTPS app ID instead of a loopback identity
   const apply=details=>playerRequestHeaders(details,'http://127.0.0.1:4123/index.html',desktopPlayerIdentity);
   for(const requestHeaders of [{},{Referer:'http://127.0.0.1:4123/'},{referer:'http://127.0.0.1:4123/index.html'},{referer:'',REFErer:''}])assert.deepEqual(apply({...details,requestHeaders}),{Referer:desktopPlayerIdentity});
   assert.deepEqual(apply({...details,url:'https://www.youtube-nocookie.com/embed/abcdefghijk'}),{Referer:desktopPlayerIdentity});
+  assert.deepEqual(apply({...details,url:'https://www.youtube.com/embed/?enablejsapi=1'}),{Referer:desktopPlayerIdentity});
   const real={referer:'https://www.youtube.com/previous'};
   assert.deepEqual(apply({...details,requestHeaders:real}),real);
   for(const url of ['https://www.youtube.com/youtubei/v1/player','https://www.youtube.com/embed/not-valid','https://www.youtube.com.evil.test/embed/abcdefghijk','http://www.youtube.com/embed/abcdefghijk'])assert.deepEqual(apply({...details,url}),{});

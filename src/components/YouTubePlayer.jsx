@@ -49,7 +49,7 @@ export default function YouTubePlayer({track,playbackId,onReady,onPlaying,onPaus
     const node=document.createElement('div');container.current.replaceChildren(node);
     loadAPI().then(YT=>{
       if(!alive)return;
-      instance=new YT.Player(node,{width:'100%',height:'220',playerVars:youtubePlayerVars(location.href,window.forma?.desktop===true),events:{
+      instance=new YT.Player(node,{width:'100%',height:'220',videoId:target.current?.videoId,playerVars:youtubePlayerVars(location.href,window.forma?.desktop===true),events:{
         onReady:event=>{if(!alive)return;player.current=event.target;setLoaded(true);loadCurrent();},
         onStateChange:event=>{
           if(!alive||!matches())return;

@@ -22,6 +22,7 @@ try{
  assert.equal(source.vars.origin,source.origin);assert.equal(source.vars.widget_referrer,source.url);
  assert.equal(await page.locator('audio').evaluate(a=>a.getAttribute('src')),null);assert.equal(await page.locator('.youtube-panel').isVisible(),true);
  const initialVideo=await page.evaluate(()=>window.testYTPlayer.id);
+ assert.equal(await page.evaluate(()=>window.testYTPlayer.options.videoId),initialVideo);
  const volume=page.getByRole('slider',{name:'Громкость',exact:true});
  await volume.fill('0.337');assert.ok(Math.abs(await page.evaluate(()=>window.testYTPlayer.volume)-33.7)<.01);
  await volume.press('ArrowRight');await page.waitForTimeout(400);

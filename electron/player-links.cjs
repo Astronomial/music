@@ -16,7 +16,9 @@ function playerRequestHeaders(details, entry, identity) {
   if(details.resourceType !== 'subFrame')return headers;
   try {
     const url=new URL(details.url),source=new URL(entry),app=new URL(identity);
-    if(url.protocol!=='https:'||!['www.youtube.com','youtube.com','www.youtube-nocookie.com','youtube-nocookie.com'].includes(url.hostname)||!/^\/embed\/[\w-]{11}$/.test(url.pathname)||app.protocol!=='https:'||app.username||app.password||app.port)return headers;
+    // YT.Player may initialize an empty /embed/ before loadVideoById. That
+    // initial document must carry the app identity too.
+    if(url.protocol!=='https:'||!['www.youtube.com','youtube.com','www.youtube-nocookie.com','youtube-nocookie.com'].includes(url.hostname)||!/^\/embed\/(?:[\w-]{11})?$/.test(url.pathname)||app.protocol!=='https:'||app.username||app.password||app.port)return headers;
     const refs=Object.entries(headers).filter(([key])=>key.toLowerCase()==='referer');
     if(refs.some(([,value])=>value&&new URL(value).origin!==source.origin))return headers;
     const next={...headers};for(const [key] of refs)delete next[key];

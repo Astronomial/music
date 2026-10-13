@@ -83,6 +83,7 @@ try{
   const playerIdentity=await page.evaluate(()=>({origin:location.origin,vars:window.testYTPlayer.options.playerVars}));
   assert.equal(playerIdentity.vars.origin,playerIdentity.origin);
   assert.equal(playerIdentity.vars.widget_referrer,'https://music.forma.desktop/');
+  assert.equal(await page.evaluate(()=>window.testYTPlayer.options.videoId),yt[0].videoId);
   const youtubeTime=await page.evaluate(()=>window.testYTPlayer.getCurrentTime());
   await page.getByRole('button',{name:'Свернуть',exact:true}).click();
   await page.waitForFunction(t=>window.testYTPlayer.getPlayerState()===1&&window.testYTPlayer.getCurrentTime()>t+.8,youtubeTime);
