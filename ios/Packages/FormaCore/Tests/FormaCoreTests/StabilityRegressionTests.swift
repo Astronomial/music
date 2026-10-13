@@ -42,8 +42,8 @@ final class StabilityRegressionTests: XCTestCase {
         XCTAssertEqual(library.tracks[a]?.duration, 200); XCTAssertEqual(library.tracks[a]?.artist, "Corrected artist")
     }
     func testCachedSelectionAppliesNewMoodBeforeBackgroundRankingFinishes() {
-        let calm = Track(videoID: a, title: "Тихо", artist: "A", moodHints: ["calm"])
-        let energy = Track(videoID: b, title: "Громко", artist: "B", moodHints: ["energetic"])
+        let calm = Track(videoID: a, title: "Тихо", artist: "A", moodHints: ["calm"], mood: "calm")
+        let energy = Track(videoID: b, title: "Громко", artist: "B", moodHints: ["energetic"], mood: "energetic")
         var library = Library(); library.settings.genres = []; library.merge([energy, calm])
         let cached = PulseEngine.rank([energy, calm], library: library)
         library.settings.mood = "calm"

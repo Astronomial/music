@@ -73,14 +73,18 @@ final class FormaCoreTests: XCTestCase {
         library.merge(tracks); library.likedIDs = tracks.map(\.id)
         XCTAssertTrue(PulseEngine.anchors(in: library, limit: 4, now: now).contains { $0.artist == "Minority" })
     }
-    func testMoodPlaylistsShareLikesAndConsumedFeedback() {
+    func testMoodPlaylistsShareLikesAndConsumedFeedback() throws {
         var library = Library(); let seed = track(1, artist: "Mine", mood: "calm"), good = track(2, artist: "Mine", mood: "calm"), other = track(3, artist: "Other", mood: "calm"), wrong = track(4, mood: "energetic")
         library.merge([seed, good, other, wrong]); library.likedIDs = [seed.id]
         let before = library.events.count
         let shelf = PulseEngine.rank([other, good, wrong], library: library, mood: "calm", now: now)
-        XCTAssertEqual(shelf.first?.id, good.id); XCTAssertFalse(shelf.contains { $0.id == wrong.id }); XCTAssertEqual(library.events.count, before)
+        // The discovery quota may lead with a supported new artist. Compare
+        // taste scores rather than requiring a familiar artist in the first slot.
+        XCTAssertGreaterThan(try XCTUnwrap(shelf.first { $0.id == good.id }?.score), try XCTUnwrap(shelf.first { $0.id == other.id }?.score))
+        XCTAssertFalse(shelf.contains { $0.id == wrong.id }); XCTAssertEqual(library.events.count, before)
         library.likedIDs = []; library.record(.init(trackID: good.id, kind: .listen, at: now, seconds: 190, ratio: 0.95, mood: "calm"))
-        XCTAssertEqual(PulseEngine.rank([other, seed], library: library, now: now).first?.id, seed.id)
+        let learned = PulseEngine.rank([other, seed], library: library, now: now)
+        XCTAssertGreaterThan(try XCTUnwrap(learned.first { $0.id == seed.id }?.score), try XCTUnwrap(learned.first { $0.id == other.id }?.score))
     }
     func testArtistDiversityAndSeedRelations() {
         var library = Library(); let seed = track(1, artist: "Saved", genre: "")
