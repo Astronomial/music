@@ -147,7 +147,7 @@ npm run dist:installer  # NSIS-установщик, предпочтитель�
 - **Живые YouTube, Яндекс и Audius здесь не проверены:** сеть среды сборки блокирует эти сервисы (в частности, YouTube возвращает 403 от прокси). Реальный поиск и сетевое воспроизведение нужно проверить на компьютере с доступом к сервисам. Успех тестовых сценариев не подтверждает доступность сервисов.
 - Windows `.exe` собран в Linux. Запуск именно под Windows в этой среде не проверен.
 
-[Проверка предыдущего аудиопути Windows](docs/RELEASE_VALIDATION_1_10_3.md) · [Проверка предыдущего аудиопути iOS](docs/RELEASE_VALIDATION_IOS_1_4_2.md).
+[Проверки Windows 1.11.0 / iOS 1.5.0](docs/RELEASE_VALIDATION_MOODS.md).
 
 GitHub Actions проверяет ядро и собирает Windows portable из исходников. Главные модули: `src/core/recommender.mjs`, `catalog.mjs`, `youtube.mjs`, `search.mjs`, `library-import.mjs`; нативные файлы и аудиопротокол — `electron/local.cjs` и `electron/offline.cjs`.
 
