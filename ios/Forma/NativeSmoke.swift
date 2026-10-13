@@ -168,7 +168,7 @@ enum NativeSmoke {
             advanceStage("playback-boundaries")
             let stability = try await checkBoundaries(model: model, tracks: tracks, audio: recoveryAudio, slowURL: slowURL)
             advanceStage("three-track-preroll")
-            let bufferedStartMilliseconds = try await checkThreeTrackPreroll(audio: recoveryAudio, slowURL: slowURL)
+            let preparation = try await checkThreeTrackPreroll(audio: recoveryAudio, slowURL: slowURL)
             advanceStage("native-playback")
             let recoveryResolver = RecoveringFixtureResolver(audio: recoveryAudio)
             let recoveryPlayer = PlaybackController(resolver: recoveryResolver, extractionTimeout: 0.1, bufferTimeout: 4)
@@ -320,12 +320,14 @@ enum NativeSmoke {
             player.resume(); try await Task.sleep(nanoseconds: 500_000_000)
             guard player.isPlaying else { throw SyncError.rejected("Resume failed") }
             var final: [String: Any] = ["status": "passed", "realPCMAnalysis": true, "nativeStarts": starts.count, "automaticTransitions": feedback.count, "background": background, "pinnedTLS": true, "wrongPinRejected": rejectedWrongPin, "bidirectionalSync": true, "wifiApprovalRequired": true, "pauseResume": true, "miniPlayerAboveTabs": true, "miniPlayerBottom": miniFrame.maxY, "tabBarTop": barFrame.minY, "preparedManualSwitchMilliseconds": switchDelay * 1000, "preparedStreamReused": true, "controlledColdStartMilliseconds": coldStartMilliseconds, "preparedPlayingMilliseconds": preparedPlayingMilliseconds, "startupTimeoutRecovered": true, "recommendationSnapshotCaptured": true, "explicitLearningFeedbackCaptured": true, "networkHandoffRecovered": true, "oldNetworkPreparedItemDiscarded": true, "networkRecoveryRespectsPause": true]
-            final["threeTracksPreparedOnCellular"] = true; final["mutedPrerollReusedWithoutExtraction"] = true; final["bufferedThirdTrackMilliseconds"] = bufferedStartMilliseconds
+            final["threeTracksPreparedOnCellular"] = true; final["mutedPrerollReusedWithoutExtraction"] = true; final["bufferedThirdTrackMilliseconds"] = preparation.ready
+            final["parallelPreparation"] = true; final["pendingBufferTransferred"] = true
+            final["pendingBufferStartMilliseconds"] = preparation.pending; final["threeTrackPreparationMilliseconds"] = preparation.window
             stability.forEach { final[$0.key] = $0.value }; write(final)
             player.pause()
         } catch { let failure = error as NSError; write(["status": "failed", "stage": stage, "error": error.localizedDescription, "domain": failure.domain, "code": failure.code, "taskCancelled": Task.isCancelled]) }
     }
-    private static func checkThreeTrackPreroll(audio: ResolvedAudio, slowURL: URL) async throws -> Double {
+    private static func checkThreeTrackPreroll(audio: ResolvedAudio, slowURL: URL) async throws -> (ready: Double, pending: Double, window: Double) {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("forma-preroll-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -343,11 +345,16 @@ enum NativeSmoke {
         for _ in 0..<100 { if player.networkPolicy.known { break }; try await Task.sleep(nanoseconds: 20_000_000) }
         player.debugNetworkChanged(NetworkPolicy(reachable: true, cellular: true, expensive: true, constrained: true), signature: "preroll-cellular-VPN")
         try await Task.sleep(nanoseconds: 450_000_000)
-        player.setPreparationDepth(3); player.play(tracks[0], list: tracks)
+        player.setPreparationDepth(3); let preparationBegan = ProcessInfo.processInfo.systemUptime
+        player.play(tracks[0], list: tracks)
+        var parallelObserved = false
         for _ in 0..<1500 {
+            if player.debugWarmingTrackIDs.isSuperset(of: Set(tracks.dropFirst(2).map(\.id))) { parallelObserved = true }
             if player.debugPreparedTrackID == tracks[1].id, player.debugBufferedTrackIDs == Set(tracks.dropFirst().map(\.id)) { break }
             try await Task.sleep(nanoseconds: 20_000_000)
         }
+        let preparationMilliseconds = (ProcessInfo.processInfo.systemUptime - preparationBegan) * 1000
+        guard parallelObserved else { throw SyncError.rejected("Slow second/third audio was still prepared serially") }
         guard player.debugPreparedTrackID == tracks[1].id, player.debugBufferedTrackIDs == Set(tracks.dropFirst().map(\.id)), player.debugExtraPlayersMuted else { throw SyncError.rejected("Three-track muted preparation failed: \(player.debugBufferedTrackIDs); \(player.debugPlaybackState)") }
         let before = await resolver.calls[tracks[3].id], sampleCount = player.measurements.count
         player.play(tracks[3], list: tracks)
@@ -356,7 +363,37 @@ enum NativeSmoke {
         let after = await resolver.calls[tracks[3].id]; guard before == after else { throw SyncError.rejected("Buffered third track repeated extraction") }
         player.pause(); player.debugNetworkChanged(NetworkPolicy(reachable: true), signature: "preroll-new-wifi")
         guard player.debugBufferedTrackIDs.isEmpty else { throw SyncError.rejected("Old-network preroll cache survived handoff") }
-        return sample.totalMilliseconds
+        // Select the third track while its HTTP body is still withheld. The
+        // foreground player must retain the partially downloaded asset; a late
+        // completion/cancellation of its old warmer must not clear active audio.
+        var partialURLs = urls
+        for track in tracks.dropFirst(2) {
+            var components = URLComponents(url: urls[track.id]!, resolvingAgainstBaseURL: false)!
+            components.queryItems = (components.queryItems ?? []) + [URLQueryItem(name: "phase", value: "transfer")]
+            partialURLs[track.id] = components.url!
+        }
+        let partialResolver = PrerollFixtureResolver(urls: partialURLs), partial = PlaybackController(resolver: partialResolver)
+        defer { partial.pause() }
+        for _ in 0..<100 { if partial.networkPolicy.known { break }; try await Task.sleep(nanoseconds: 20_000_000) }
+        partial.debugNetworkChanged(NetworkPolicy(reachable: true, cellular: true, expensive: true, constrained: true), signature: "partial-cellular-VPN")
+        try await Task.sleep(nanoseconds: 450_000_000)
+        partial.setPreparationDepth(3); partial.play(tracks[0], list: tracks)
+        for _ in 0..<250 {
+            if partial.debugWarmingTrackIDs.contains(tracks[3].id) { break }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        guard let owner = partial.debugWarmingPlayerIdentity(tracks[3].id) else { throw SyncError.rejected("Partial third buffer was not prepared") }
+        let partialBefore = await partialResolver.calls[tracks[3].id], partialSamples = partial.measurements.count
+        partial.play(tracks[3], list: [tracks[3]])
+        for _ in 0..<600 {
+            if partial.measurements.count > partialSamples { break }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        let partialAfter = await partialResolver.calls[tracks[3].id]
+        guard partial.debugPlayerIdentity == owner, partialBefore == partialAfter,
+              partial.isPlaying, let pending = partial.measurements.dropFirst(partialSamples).last,
+              pending.source == "buffered" else { throw SyncError.rejected("Partial buffer was discarded or its old warmer interrupted foreground audio: \(partial.debugPlaybackState)") }
+        return (sample.totalMilliseconds, pending.totalMilliseconds, preparationMilliseconds)
     }
     private static func checkBoundaries(model: AppModel, tracks: [Track], audio: ResolvedAudio, slowURL: URL) async throws -> [String: Bool] {
         func until(_ label: String, diagnostic: () -> String = { "" }, _ condition: () async -> Bool) async throws {

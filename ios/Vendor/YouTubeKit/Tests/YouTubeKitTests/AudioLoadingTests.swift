@@ -165,6 +165,46 @@ final class AudioLoadingTests: XCTestCase {
         XCTAssertEqual(paths, ["/youtubei/v1/player"])
         XCTAssertEqual(clients, ["101"])
     }
+    func testSlowWarmNativeRequestIsHedgedBeforeItsNetworkTimeout() async throws {
+        _ = try await video(native: "visitor").audioStreams
+        AudioFixtureProtocol.lock.lock()
+        let original = AudioFixtureProtocol.handler!
+        AudioFixtureProtocol.handler = { request in
+            let reply = original(request)
+            return request.value(forHTTPHeaderField: "X-Youtube-Client-Name") == "101" ? (reply.0, 3, reply.2) : reply
+        }
+        AudioFixtureProtocol.lock.unlock()
+        let began = Date()
+        let streams = try await YouTube(videoID: "lmnopqrstuv", methods: [.local], session: fixtureSession!).audioStreams
+        XCTAssertEqual(streams.first?.fileExtension, .m4a)
+        XCTAssertLessThan(Date().timeIntervalSince(began), 1, "A warm cached client must not hold WEB behind its full network timeout")
+    }
+    func testEmbeddedClientsUseActualAppIdentityWithoutRewritingNativeOrigin() async throws {
+        _ = video()
+        AudioFixtureProtocol.lock.lock()
+        let original = AudioFixtureProtocol.handler!
+        var referers: [String?] = [], origins: [String?] = [], embedding: [String?] = []
+        AudioFixtureProtocol.handler = { request in
+            if request.url!.path == "/youtubei/v1/player" {
+                referers.append(request.value(forHTTPHeaderField: "Referer")); origins.append(request.value(forHTTPHeaderField: "Origin"))
+                let body = Self.requestBody(request).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+                embedding.append(((body?["context"] as? [String: Any])?["thirdParty"] as? [String: Any])?["embedUrl"] as? String)
+            }
+            return original(request)
+        }
+        AudioFixtureProtocol.lock.unlock()
+        let configuration = try JSONDecoder().decode(Extraction.YtCfg.self, from: Data("{}".utf8))
+        for client in [InnerTube.ClientType.webEmbed, .visionOS] {
+            _ = try await InnerTube(client: client, signatureTimestamp: nil, ytcfg: configuration, session: fixtureSession!).player(videoID: "abcdefghijk")
+        }
+        AudioFixtureProtocol.lock.lock(); let refs = referers, apiOrigins = origins, embeds = embedding; AudioFixtureProtocol.lock.unlock()
+        XCTAssertEqual(refs, [YouTubeNetwork.embedReferrer(), nil]); XCTAssertEqual(embeds, refs)
+        XCTAssertEqual(apiOrigins, ["https://www.youtube.com", "https://www.youtube.com"])
+        XCTAssertEqual(YouTubeNetwork.embedReferrer(bundleID: "music.forma.ios.USER123"), "https://music.forma.ios.user123/")
+        XCTAssertEqual(YouTubeNetwork.embedReferrer(bundleID: "bad/id"), "https://music.forma.ios/")
+        XCTAssertTrue(YouTubeNetwork.session.configuration.allowsConstrainedNetworkAccess)
+        XCTAssertTrue(YouTubeNetwork.session.configuration.allowsExpensiveNetworkAccess)
+    }
     func testRejectedWarmContextRefreshesInsteadOfPoisoningNextTracks() async throws {
         _ = try await video(native: "visitor").audioStreams
         AudioFixtureProtocol.lock.lock()

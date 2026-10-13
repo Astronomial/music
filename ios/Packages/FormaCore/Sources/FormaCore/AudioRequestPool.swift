@@ -68,6 +68,11 @@ public actor AudioRequestPool {
     }
     public func cancel(videoID: String) {
         cache[videoID] = nil
+        cancelPending(videoID: videoID)
+    }
+    /// Foreground priority may stop optional extraction without throwing away
+    /// completed, fresh URLs for the other tracks the user might select next.
+    public func cancelPending(videoID: String) {
         guard let flight = flights.removeValue(forKey: videoID) else { return }
         flight.task.cancel(); flight.deadline.cancel()
         for continuation in flight.waiters.values { continuation.resume(throwing: CancellationError()) }

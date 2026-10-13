@@ -27,7 +27,7 @@ class InnerTube {
         
         func context(configuration: Extraction.YtCfg) -> Context {
             let client = Context.ContextClient(clientName: name, clientVersion: version, clientScreen: screen, androidSdkVersion: androidSdkVersion, deviceMake: deviceMake, deviceModel: deviceModel, osName: osName, osVersion: osVersion, userAgent: userAgent ?? configuration.userAgent, visitorData: configuration.visitorData)
-            let thirdParty = screen == "EMBED" ? Context.ThirdParty(embedUrl: "https://www.reddit.com/") : nil
+            let thirdParty = screen == "EMBED" ? Context.ThirdParty(embedUrl: YouTubeNetwork.embedReferrer()) : nil
             return Context(client: client, thirdParty: thirdParty)
         }
         
@@ -176,6 +176,7 @@ class InnerTube {
         
         request.addValue(ytcfg.visitorData ?? "", forHTTPHeaderField: "X-Goog-Visitor-Id")
         request.addValue("https://www.youtube.com", forHTTPHeaderField: "Origin")
+        if let embedURL = context.thirdParty?.embedUrl { request.setValue(embedURL, forHTTPHeaderField: "Referer") }
         
         for (key, value) in headers {
             request.setValue(value, forHTTPHeaderField: key)

@@ -304,8 +304,10 @@ public class YouTube {
 #if canImport(JavaScriptCore)
             let cachedContext = await Self.audioContexts.cached(session: session)
             return try await withThrowingTaskGroup(of: AudioAttempt.self) { group in
-                func submit(configured: Bool) {
+                func submit(configured: Bool, preferWeb: Bool = false, delay: UInt64 = 0) {
                     group.addTask { [videoID, useOAuth, allowOAuthCache, session] in
+                        if delay > 0 { try await Task.sleep(nanoseconds: delay) }
+                        try Task.checkCancellation()
                         let contextTicket = await Self.audioContexts.ticket(session: session)
                         let worker = YouTube(videoID: videoID, useOAuth: useOAuth, allowOAuthCache: allowOAuthCache, methods: [.local], session: session)
                         if !configured, let cachedContext {
@@ -313,7 +315,7 @@ public class YouTube {
                             worker._jsURL = cachedContext.playerURL
                         }
                         var failures: [String] = []
-                        let clients: [InnerTube.ClientType] = configured ? [.visionOS, .web] : [.visionOS]
+                        let clients: [InnerTube.ClientType] = configured ? (preferWeb ? [.web, .visionOS] : [.visionOS, .web]) : [.visionOS]
                         for client in clients {
                             var stage = "CONFIG"
                             let label = "\(client.rawValue)/\(configured ? "configured" : "fast")"
@@ -376,19 +378,17 @@ public class YouTube {
                     }
                 }
                 submit(configured: false)
-                var fallbackSubmitted = cachedContext == nil
-                if fallbackSubmitted { submit(configured: true) }
+                // A warm native request can stall without returning an error.
+                // Hedge it after 250 ms, rather than waiting for the full HTTP
+                // timeout. Fast successes cancel the hedge before any request.
+                submit(configured: true, preferWeb: cachedContext != nil, delay: cachedContext == nil ? 0 : 250_000_000)
                 var failures: [String] = []
                 while let attempt = try await group.next() {
                     try Task.checkCancellation()
                     if !attempt.streams.isEmpty { group.cancelAll(); return attempt.streams }
                     failures += attempt.failures
-                    if !fallbackSubmitted {
-                        fallbackSubmitted = true
-                        await Self.audioContexts.invalidate(session: session)
-                        submit(configured: true)
-                    }
                 }
+                await Self.audioContexts.invalidate(session: session)
                 throw AudioStreamExtractionError(attempts: failures.sorted())
             }
 #else

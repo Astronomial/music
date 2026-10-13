@@ -17,7 +17,7 @@ actor YouTubeStreamResolver: StreamResolving {
         // Preserve a shared extraction for this video; the old warmer stops before
         // its next iteration. Cancelling it before joining would discard useful work.
         if sharedID != videoID { warming?.cancel() }
-        for id in optionalIDs where id != videoID { await requests.cancel(videoID: id) }
+        for id in optionalIDs where id != videoID { await requests.cancelPending(videoID: id) }
         return try await requests.resolve(videoID: videoID, forceRefresh: forceRefresh)
     }
     func analysisAudio(videoID: String) async throws -> ResolvedAudio { try await requests.resolve(videoID: videoID) }

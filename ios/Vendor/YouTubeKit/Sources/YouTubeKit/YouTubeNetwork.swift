@@ -2,6 +2,13 @@ import Foundation
 
 /// Forma's bounded, cookie-free transport; separate from artwork/catalog traffic.
 public enum YouTubeNetwork {
+    // Identify this app for EMBED clients. Native audio clients keep YouTube's
+    // own API Origin/headers; no blanket rewrite of their internal requests.
+    static func embedReferrer(bundleID: String? = Bundle.main.bundleIdentifier) -> String {
+        let id = bundleID?.lowercased() ?? "music.forma.ios"
+        guard !id.isEmpty, id.range(of: "^[a-z0-9]+(?:[.-][a-z0-9]+)*$", options: .regularExpression) != nil else { return "https://music.forma.ios/" }
+        return "https://\(id)/"
+    }
     public static let session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 12
@@ -9,6 +16,8 @@ public enum YouTubeNetwork {
         configuration.httpCookieStorage = nil
         configuration.waitsForConnectivity = true
         configuration.allowsCellularAccess = true
+        configuration.allowsExpensiveNetworkAccess = true
+        configuration.allowsConstrainedNetworkAccess = true
         configuration.networkServiceType = .avStreaming
         configuration.httpMaximumConnectionsPerHost = 4
         return URLSession(configuration: configuration)

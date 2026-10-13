@@ -26,6 +26,20 @@ private actor ExtractionProbe {
 
 final class AudioRequestPoolTests: XCTestCase {
     private let id = "abcdefghijk"
+    func testStoppingOptionalWorkPreservesCompletedWarmURL() async throws {
+        let probe = ExtractionProbe(), pool = AudioRequestPool(timeout: 2) { try await probe.load($0) }
+        let warm = Task { try await pool.resolve(videoID: id) }
+        try await wait { await probe.calls == 1 }; try await probe.finish(1)
+        let original = try await warm.value
+        await pool.cancelPending(videoID: id)
+        let next = try await pool.resolve(videoID: id)
+        XCTAssertEqual(original.url, next.url)
+        let calls = await probe.calls; XCTAssertEqual(calls, 1)
+        let other = Task { try await pool.resolve(videoID: "12345678901") }
+        try await wait { await probe.calls == 2 }; await pool.cancelPending(videoID: "12345678901")
+        do { _ = try await other.value; XCTFail("Optional pending work survived cancellation") } catch { XCTAssertTrue(error is CancellationError) }
+        let retained = try await pool.resolve(videoID: id); XCTAssertEqual(retained.url, original.url)
+    }
     private func wait(_ condition: () async -> Bool) async throws {
         for _ in 0..<500 {
             if await condition() { return }
