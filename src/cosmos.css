@@ -46,7 +46,7 @@
 @keyframes galaxy-revolve{to{transform:rotate(360deg)}}
 .wave-playing .galaxy-heart{animation:galaxy-heartbeat 4s ease-in-out infinite}
 @keyframes galaxy-heartbeat{0%,100%{opacity:.75;transform:scale(.9)}50%{opacity:1;transform:scale(1.2)}}
-.mix-art{background-color:#130b1f99;box-shadow:inset 0 1px #e1c0ff14;border-color:#bc99ef24}
+.mix-art{width:100%;aspect-ratio:auto;background-color:#130b1f99;box-shadow:inset 0 1px #e1c0ff14;border-color:#bc99ef24}
 .mix-art::after{content:none}
 .mix-art>h3{position:absolute;z-index:2;left:18px;bottom:22px;margin:0;max-width:calc(100% - 60px);font-size:calc(25px * var(--text-scale));line-height:1.12;letter-spacing:-.65px;font-weight:500}.mix-card>p{margin-top:12px}.sidebar-label{letter-spacing:.2px;text-transform:none;font-weight:500}.settings-card p,.page-intro p{max-width:72ch}.youtube-panel>.eyebrow{letter-spacing:0;text-transform:none}
 .mix-sage{background:radial-gradient(ellipse at 80% 0%,#7380c12c,transparent 90%),#100e1c99}
