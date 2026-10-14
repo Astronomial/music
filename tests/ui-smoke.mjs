@@ -90,7 +90,7 @@ try{
   await page.getByRole('button',{name:'Следующий трек',exact:true}).click();
   await page.waitForFunction(old=>document.querySelector('.now-playing strong').textContent!==old,old);
   await page.getByRole('button',{name:'Настройка Пульса',exact:true}).click();
-  await page.getByRole('heading',{name:'Твой Пульс. Твой выбор.'}).waitFor();
+  await page.getByRole('heading',{name:'Настройка Пульса'}).waitFor();
   await page.getByRole('button',{name:'Постепенно шире',exact:true}).click();
   await page.getByRole('button',{name:'Больше английской',exact:true}).click();
   await page.getByRole('button',{name:'Скорее не подходит сейчас',exact:true}).click();

@@ -1,73 +1,70 @@
 /* Original lightweight space scene. Only transforms and opacity animate. */
-:root{background:#050309;--cosmos-line:#c4a0ff1c}
+:root{font-family:'Segoe UI Variable','Segoe UI',Arial,sans-serif;background:#050309;--cosmos-line:#c4a0ff1c}
 .app-shell{position:relative;isolation:isolate;background:#050309;--line:var(--cosmos-line)}
 .sidebar,.main-shell{position:relative;z-index:1}
 .main-shell{background:transparent}
 .cosmic-background{position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none;contain:strict}
 .cosmic-nebula{position:absolute;inset:0;background:radial-gradient(ellipse at 82% 18%,#5e20982e,transparent 48%),radial-gradient(ellipse at 50% 82%,#40126a20,transparent 45%),radial-gradient(ellipse at 19% 5%,#33116220,transparent 45%)}
 .cosmic-starfield{position:absolute;inset:0;background:url('./assets/starfield.svg') center top/cover no-repeat;opacity:.8}
-.cosmic-twinkles i{position:absolute;left:67%;top:14%;width:2px;height:2px;background:#e9d9ff;border-radius:50%;box-shadow:0 0 8px #c5a5ff70;animation:star-breathe 9s ease-in-out infinite}
+.cosmic-twinkles i{position:absolute;left:67%;top:14%;width:2px;height:2px;background:#f2efff;border-radius:50%;box-shadow:0 0 8px #c5a5ff70;animation:star-breathe 9s ease-in-out infinite}
 .cosmic-twinkles i:nth-child(2){left:92%;top:63%;animation-delay:-4s}
 .cosmic-twinkles i:nth-child(3){left:41%;top:9%;animation-delay:-6s}
 .cosmic-twinkles i:nth-child(4){left:28%;top:73%;animation-delay:-2s}
 .cosmic-twinkles i:nth-child(5){left:86%;top:37%;animation-delay:-7s}
 .cosmic-twinkles i:nth-child(6){left:55%;top:91%;animation-delay:-3s}
-.shooting-star{position:absolute;left:66%;top:3%;width:138px;height:1px;border-radius:50%;opacity:0;background:linear-gradient(90deg,transparent,#c49bff80 65%,#fff4ff);transform-origin:right center;animation:meteor-fall 19s linear 1.5s infinite}
-.shooting-star::after{content:'';position:absolute;right:0;top:-1px;width:3px;height:3px;border-radius:50%;background:#fff7ff;box-shadow:0 0 8px 2px #d1b2ff8a}
-.shooting-star:nth-child(2){left:87%;top:31%;width:108px;animation-duration:27s;animation-delay:8s}
-.shooting-star:nth-child(3){left:36%;top:48%;width:91px;animation-duration:33s;animation-delay:15s}
-@keyframes meteor-fall{0%{opacity:0;transform:rotate(143deg) translateX(-100px)}1%{opacity:.85}6%{opacity:0;transform:rotate(143deg) translateX(430px)}100%{opacity:0;transform:rotate(143deg) translateX(430px)}}
+/* Full-window, short white trails inspired by the quiet Grok starfield. */
+.cosmic-meteors{position:absolute;inset:0;pointer-events:none}
+.meteor-origin{position:absolute;left:var(--meteor-x);top:var(--meteor-y);width:0;height:0;transform:rotate(var(--meteor-angle));pointer-events:none}
+.shooting-star{display:block;position:absolute;right:0;top:0;width:var(--meteor-tail);height:1px;border-radius:50%;opacity:0;background:linear-gradient(90deg,transparent,#e8e9f235 35%,#f7f7ffb3 85%,#fff);animation:meteor-flight 48s linear var(--meteor-delay) infinite;pointer-events:none}
+.shooting-star::after{content:'';position:absolute;right:-1px;top:-.5px;width:2px;height:2px;border-radius:50%;background:#fff;box-shadow:0 0 5px #eeeaff80}
+@keyframes meteor-flight{0%{opacity:0;transform:translateX(0)}.4%{opacity:var(--meteor-light)}4.5%{opacity:var(--meteor-light)}6.66%{opacity:0;transform:translateX(var(--meteor-distance))}100%{opacity:0;transform:translateX(var(--meteor-distance))}}
 @keyframes star-breathe{0%,100%{opacity:.15}50%{opacity:.8}}
-.sidebar{background:linear-gradient(180deg,#0d0716de,#08050dde);border-right-color:#b387f51a;backdrop-filter:none}
+.sidebar{background:linear-gradient(180deg,#0d07168f,#08050d9e);border-right-color:#b387f51a;backdrop-filter:none}
 .brand>svg{filter:drop-shadow(0 0 8px #bc8cff55)}
 .brand-dot{color:#c6a6ff}
-.topbar{background:#09060fc9;border-bottom-color:#c7a4ff12;backdrop-filter:blur(16px)}
+.topbar{background:#09060f80;border-bottom-color:#c7a4ff12;backdrop-filter:none}
 .nav-item.selected{background:linear-gradient(100deg,rgba(var(--accent-rgb),.16),rgba(var(--accent-rgb),.025));border:1px solid rgba(var(--accent-rgb),.12);padding:12px 11px;box-shadow:inset 3px 0 rgba(var(--accent-rgb),.6),0 0 24px rgba(var(--accent-rgb),.025)}
 .search-field{background:#130b1a9c;border-color:#c5a7ef20}
-.player{background:linear-gradient(180deg,#100a19f2,#08050efc);border-color:#b38bd028;backdrop-filter:blur(18px)}
-.youtube-panel{background:#08050ee8;border-left-color:#b491d91c}
+.player{background:linear-gradient(180deg,#100a19b3,#08050ec7);border-color:#b38bd028;backdrop-filter:none}
+.youtube-panel{background:#08050ebf;border-left-color:#b491d91c}
 .page-intro .eyebrow{color:#c5a4f4}
-.wave-hero{min-height:328px;padding:40px 36px;border-radius:26px;isolation:isolate;background:radial-gradient(ellipse at 80% 45%,#46177654,transparent 68%),linear-gradient(110deg,#12091df2,#0a0512db);border:1px solid #be87ff38;box-shadow:inset 0 1px #e7cbff14,0 18px 70px #0005;backdrop-filter:none}
-.wave-hero::before{content:'';position:absolute;inset:0;z-index:0;pointer-events:none;background:url('./assets/starfield.svg') 72% 50%/900px 560px;opacity:.56}
-.wave-hero::after{z-index:1;background:linear-gradient(90deg,#10091a66,transparent 57%);border-top-color:#e0b4ff12}
-.wave-copy{position:relative;z-index:3;max-width:64%}
-.wave-copy h2{font-size:calc(52px * var(--text-scale));font-weight:600;letter-spacing:-2.4px;color:#faf5ff;text-shadow:0 2px 22px #1e0a31}
-.wave-copy p{color:#bdb0cc;max-width:440px;white-space:pre-line;text-wrap:pretty}
-.hero-eyebrow{color:#d4baf7;font-size:10px;letter-spacing:1.8px}
-.hero-settings{color:#c3b3d4;position:relative;z-index:2}
-.hero-buttons{gap:20px}
-.hero-buttons .button-dark{background:linear-gradient(120deg,#e2ceff,#bd8cfa);color:#1b0b2c;border:1px solid #efdcff40;box-shadow:inset 0 1px #fff4,0 4px 26px #a34ffb2b}
-.hero-buttons .button-dark:hover:not(:disabled){background:linear-gradient(120deg,#edddff,#c99eff);color:#1b0b2c;box-shadow:0 5px 32px #a34ffb38}
-.hero-corner{display:none}
-.pulse-galaxy{position:absolute;z-index:0;right:-105px;top:50%;width:660px;height:660px;transform:translateY(-50%) rotate(-21deg);pointer-events:none;user-select:none;contain:layout style}
-.galaxy-aura{position:absolute;inset:15%;border-radius:50%;background:radial-gradient(ellipse,#b876ff23,transparent 67%);transform:scaleY(.65)}
+/* The Pulse is a free-standing scene, with no card or rectangular backdrop. */
+.pulse-stage{position:relative;isolation:isolate;min-height:400px;margin:-12px 0 8px;overflow:hidden;text-align:center}
+.pulse-controls{position:relative;z-index:1;display:flex;align-items:center;flex-direction:column;padding:18px 0 24px;pointer-events:none}
+.pulse-controls>button{pointer-events:auto}
+.pulse-controls h1{font-size:calc(36px * var(--text-scale));font-weight:550;letter-spacing:-1.3px;line-height:1.15;color:#f6efff}
+.pulse-play{display:inline-flex;align-items:center;justify-content:center;gap:12px;min-height:54px;margin-top:206px;padding:13px 24px;border-radius:40px;border:1px solid #dcc1ff35;background:linear-gradient(120deg,#6d448855,#38204e70);color:#f9f3ff;font-size:calc(18px * var(--text-scale));font-weight:550;box-shadow:inset 0 1px #f4e5ff14,0 0 32px #a34ffb17;transition:background .2s,transform .2s,box-shadow .2s}
+.pulse-play:hover{background:#73469980;box-shadow:0 0 36px #a34ffb30;transform:translateY(-2px)}
+.pulse-play:active{transform:scale(.97)}
+.pulse-customize{display:inline-flex;align-items:center;gap:8px;min-height:40px;margin-top:8px;color:#bdb0cf;font-size:calc(14px * var(--text-scale));padding:8px 16px;border-radius:24px}
+.pulse-customize:hover{color:#efe2ff;background:#b888ef12}
+.pulse-stage .pulse-galaxy{position:absolute;z-index:0;left:50%;right:auto;top:46%;width:min(790px,120%);height:auto;aspect-ratio:1;transform:translate(-50%,-50%) rotate(-18deg);opacity:1;pointer-events:none;user-select:none;contain:layout style}
+.galaxy-aura{position:absolute;inset:12%;border-radius:50%;background:radial-gradient(ellipse,#b876ff23,transparent 67%);transform:scaleY(.65)}
 .galaxy-plane{position:absolute;inset:0;transform:scaleY(.57)}
 .galaxy-disk{display:block;width:100%;height:100%;object-fit:contain;animation:galaxy-revolve 180s linear infinite;will-change:transform}
 .galaxy-heart{position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px;border-radius:50%;background:#ffefff;box-shadow:0 0 10px 4px #f0d0ff88,0 0 34px 8px #c082fa70,0 0 75px 17px #a445f445}
 @keyframes galaxy-revolve{to{transform:rotate(360deg)}}
 .wave-playing .galaxy-heart{animation:galaxy-heartbeat 4s ease-in-out infinite}
 @keyframes galaxy-heartbeat{0%,100%{opacity:.75;transform:scale(.9)}50%{opacity:1;transform:scale(1.2)}}
-.mix-art{background-color:#130b1f;box-shadow:inset 0 1px #e1c0ff14;border-color:#bc99ef24}
-.mix-art::after{content:'';position:absolute;inset:0;background:url('./assets/starfield.svg') center/600px 380px;opacity:.55;pointer-events:none}
-.mix-art>strong,.mix-art>span:first-child{z-index:2}
-.mix-sage{background:radial-gradient(ellipse at 80% 0%,#7380c12c,transparent 90%),#100e1c}
-.mix-sand{background:radial-gradient(ellipse at 90% 10%,#bd89c443,transparent 85%),#1b0e25}
-.mix-lilac{background:radial-gradient(ellipse at 85% 0%,#9360df3b,transparent 90%),#170c25}
-.mix-blue{background:radial-gradient(ellipse at 95% 10%,#7763e04a,transparent 85%),#100d24}
-.mix-focus{background:radial-gradient(ellipse at 95% 10%,#6559b740,transparent 85%),#0d0b1c}
-.mix-night{background:radial-gradient(ellipse at 95% 10%,#8a42ce40,transparent 85%),#11091e}
-.settings-card,.taste-card{background:linear-gradient(145deg,#1b1029bd,#0c0814e6);border-color:#c79bf124;backdrop-filter:blur(12px)}
-.search-welcome,.genre-grid button,.best-match,.artist-card{background-color:#100a1a;border-color:#c79bf124}
+.mix-art{background-color:#130b1f99;box-shadow:inset 0 1px #e1c0ff14;border-color:#bc99ef24}
+.mix-art::after{content:none}
+.mix-art>h3{position:absolute;z-index:2;left:18px;bottom:22px;margin:0;max-width:calc(100% - 60px);font-size:calc(25px * var(--text-scale));line-height:1.12;letter-spacing:-.65px;font-weight:500}.mix-card>p{margin-top:12px}.sidebar-label{letter-spacing:.2px;text-transform:none;font-weight:500}.settings-card p,.page-intro p{max-width:72ch}.youtube-panel>.eyebrow{letter-spacing:0;text-transform:none}
+.mix-sage{background:radial-gradient(ellipse at 80% 0%,#7380c12c,transparent 90%),#100e1c99}
+.mix-sand{background:radial-gradient(ellipse at 90% 10%,#bd89c443,transparent 85%),#1b0e2599}
+.mix-lilac{background:radial-gradient(ellipse at 85% 0%,#9360df3b,transparent 90%),#170c2599}
+.mix-blue{background:radial-gradient(ellipse at 95% 10%,#7763e04a,transparent 85%),#100d2499}
+.mix-focus{background:radial-gradient(ellipse at 95% 10%,#6559b740,transparent 85%),#0d0b1c99}
+.mix-night{background:radial-gradient(ellipse at 95% 10%,#8a42ce40,transparent 85%),#11091e99}
+.settings-card,.taste-card{background:linear-gradient(145deg,#1b102999,#0c081499);border-color:#c79bf124;backdrop-filter:none}
+.search-welcome,.genre-grid button,.best-match,.artist-card,.import-row,.import-history{background:#100a1a99;border-color:#c79bf124;backdrop-filter:none}
+.queue-panel{background:#100a1adb;border-color:#c79bf124}
 .modal{background:linear-gradient(145deg,#21122ff5,#0d0814fc);border-color:#c4a0ff2b}
 .appearance-card .cosmic-motion-row{padding-top:22px;margin-top:22px;border-top:1px solid var(--line)}
 .app-shell[data-space-motion=false] .cosmic-background .shooting-star{display:none}
 .app-shell[data-space-motion=false] .cosmic-background *,.app-shell[data-space-motion=false] .pulse-galaxy *{animation:none!important}
 .app-shell[data-visuals-active=false] .cosmic-background *,.app-shell[data-visuals-active=false] .pulse-galaxy *{animation-play-state:paused!important}
-@media(min-width:1600px){.pulse-galaxy{width:780px;height:780px;right:-65px}.wave-hero{min-height:360px}}
-@media(max-width:1320px){.wave-hero{padding:32px 28px}.pulse-galaxy{right:-165px;width:600px;height:600px}.wave-copy{max-width:76%}}
-.with-video .pulse-galaxy{right:-220px;opacity:.82}.with-video .wave-copy{max-width:92%}
-@media(max-width:1000px){.wave-hero{min-height:320px}.wave-copy{max-width:100%}.pulse-galaxy{right:-235px;opacity:.55}.wave-copy h2{font-size:calc(42px * var(--text-scale))}.wave-copy p{max-width:400px}.hero-buttons{flex-wrap:wrap;gap:15px}}
-@media(max-width:760px){.wave-hero{padding:28px 24px}.pulse-galaxy{right:-275px;opacity:.35}.wave-copy h2{font-size:36px}.hero-eyebrow{letter-spacing:1.2px}}
+@media(max-width:1000px){.pulse-stage{min-height:370px}.pulse-play{margin-top:184px}.pulse-controls h1{font-size:calc(32px * var(--text-scale))}.pulse-stage .pulse-galaxy{width:130%}}
+@media(max-width:760px){.pulse-stage{min-height:340px}.pulse-play{margin-top:160px;font-size:16px}.pulse-controls h1{font-size:30px}.pulse-stage .pulse-galaxy{width:155%}}
 @media(prefers-reduced-motion:reduce){.cosmic-background .shooting-star{display:none}.cosmic-background *,.pulse-galaxy *{animation:none!important}.galaxy-disk{will-change:auto}}
 
 .pulse-galaxy[data-in-view=false] *{animation-play-state:paused!important}

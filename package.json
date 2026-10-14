@@ -1,7 +1,7 @@
 {
   "name": "forma-music",
   "productName": "Forma",
-  "version": "1.12.1",
+  "version": "1.13.0",
   "description": "Personal music discovery with YouTube, local files and Audius",
   "author": "Forma",
   "private": true,
