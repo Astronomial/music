@@ -115,3 +115,5 @@
 
 .eyebrow{text-transform:none;letter-spacing:.3px;font-size:12px}.track-table-head{letter-spacing:.2px;font-size:12px}
 .startup-recovery{-webkit-app-region:drag}.recovery-content{-webkit-app-region:no-drag}
+
+.pulse-settings-modal>.settings-card{margin-bottom:22px}
