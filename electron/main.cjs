@@ -116,7 +116,7 @@ app.whenReady().then(async () => {
   });
   handle('youtube:open',id=>{if(!/^[\w-]{11}$/.test(id))throw new Error('Некорректная ссылка.');return shell.openExternal('https://www.youtube.com/watch?v='+id);});
   handle('window:control',action=> { if(action==='minimize') window.minimize(); if(action==='maximize') window.isMaximized()?window.unmaximize():window.maximize(); if(action==='close') window.close(); });
-  window = new BrowserWindow({width:1440,height:940,minWidth:1000,minHeight:680,frame:false,backgroundColor:'#06070b',title:'Forma',icon:path.join(__dirname,'../build/icon.png'),webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,webSecurity:true,backgroundThrottling:false}});
+  window = new BrowserWindow({width:1440,height:940,minWidth:1000,minHeight:680,frame:false,backgroundColor:'#050309',title:'Forma',icon:path.join(__dirname,'../build/icon.png'),webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,webSecurity:true,backgroundThrottling:false}});
   window.on('close',event=> {
     if(closing)return;
     event.preventDefault();window.webContents.send('app:closing');

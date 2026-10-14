@@ -128,12 +128,16 @@ try{
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
   await page.getByRole('button',{name:'Океан',exact:false}).click();
   await page.getByRole('button',{name:'Крупный',exact:true}).click();
+  await page.getByRole('switch',{name:'Космические анимации',exact:true}).click();
+  assert.equal(await page.locator('.cosmic-twinkles i').first().evaluate(el=>getComputedStyle(el).animationName),'none');
   assert.equal(await page.locator('.app-shell').getAttribute('data-palette'),'ocean');
   await page.screenshot({path:'artifacts/forma-settings.png',fullPage:true});
   await page.getByRole('switch',{name:'Только скачанная музыка'}).click();
   await page.getByText('Слушаем без интернета.',{exact:false}).waitFor();
   await page.reload();
   assert.equal(await page.locator('.app-shell').getAttribute('data-palette'),'ocean');
+  assert.equal(await page.locator('.app-shell').getAttribute('data-space-motion'),'false');
+  assert.equal(await page.locator('.galaxy-disk').evaluate(el=>getComputedStyle(el).animationName),'none');
   await page.getByRole('button',{name:'Настройка Пульса',exact:true}).click();
   assert.equal(await page.getByRole('button',{name:'Для концентрации',exact:true}).getAttribute('aria-pressed'),'true');
   assert.equal(await page.getByRole('button',{name:'Без вокала',exact:true}).getAttribute('aria-pressed'),'true');

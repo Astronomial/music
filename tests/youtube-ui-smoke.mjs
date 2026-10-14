@@ -29,10 +29,18 @@ try{
  assert.ok(Math.abs(await page.evaluate(()=>JSON.parse(localStorage.getItem('youtube-test-library')).settings.volume)-.338)<.001);
  const backgroundTime=await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));return window.testYTPlayer.getCurrentTime();});
  await page.waitForFunction(t=>window.testYTPlayer.getPlayerState()===1&&window.testYTPlayer.getCurrentTime()>t+.5,backgroundTime);
+ await page.waitForFunction(()=>document.querySelector('.app-shell').dataset.visualsActive==='false');
+ assert.equal(await page.locator('.galaxy-disk').evaluate(el=>getComputedStyle(el).animationPlayState),'paused');
  await page.getByRole('button',{name:'Следующий трек',exact:true}).click();await page.waitForFunction(id=>window.testYTPlayer.id!==id,initialVideo);
  await page.waitForFunction(()=>window.testYTPlayer.getPlayerState()===1&&window.testYTPlayer.getCurrentTime()>.5);
  assert.equal(await page.evaluate(()=>window.ytPlayerCreations),1);
  await page.evaluate(()=>{delete document.hidden;document.dispatchEvent(new Event('visibilitychange'));});
+ await page.waitForFunction(()=>document.querySelector('.app-shell').dataset.visualsActive==='true');
+ await page.emulateMedia({reducedMotion:'reduce'});
+ assert.equal(await page.locator('.galaxy-disk').evaluate(el=>getComputedStyle(el).animationName),'none');
+ assert.equal(await page.locator('.shooting-star').first().evaluate(el=>getComputedStyle(el).display),'none');
+ assert.equal(await page.evaluate(()=>window.testYTPlayer.getPlayerState()),1);
+ await page.emulateMedia({reducedMotion:'no-preference'});
  await page.getByRole('button',{name:'Пауза',exact:true}).click();assert.equal(await page.evaluate(()=>window.testYTPlayer.getPlayerState()),2);
  await page.getByRole('slider',{name:'Позиция воспроизведения'}).fill('45');assert.equal(await page.evaluate(()=>window.testYTPlayer.getCurrentTime()),45);
  await page.evaluate(()=>window.testYTPlayer.options.events.onError({data:101}));

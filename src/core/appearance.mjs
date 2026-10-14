@@ -1,5 +1,5 @@
 export const PALETTES = [
-  {id:'iris',name:'Ирис',description:'Фиолетовый и ледяной голубой',accent:'#c4b5fd',rgb:'196,181,253',secondary:'111,180,255'},
+  {id:'iris',name:'Космос',description:'Фиолетовый и чёрный',accent:'#c4b5fd',rgb:'196,181,253',secondary:'111,180,255'},
   {id:'ocean',name:'Океан',description:'Голубой и бирюзовый',accent:'#8bdafc',rgb:'139,218,252',secondary:'90,240,215'},
   {id:'mint',name:'Мята',description:'Мятный и мягкий лайм',accent:'#a2e7cd',rgb:'162,231,205',secondary:'198,235,151'},
   {id:'ember',name:'Янтарь',description:'Тёплый янтарный и персиковый',accent:'#ffd0a0',rgb:'255,208,160',secondary:'242,151,124'},
