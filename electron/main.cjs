@@ -19,7 +19,8 @@ app.whenReady().then(async () => {
   store = new Store(app.getPath('userData'));
   offline = new OfflineLibrary(path.join(app.getPath('userData'),'Music'));
   await offline.init();
-  const state = await store.read('library.json',null); apiKey = state?.settings?.apiKey || '';
+  // Let the renderer show recovery actions if the profile cannot be read.
+  const state = await store.read('library.json',null).catch(()=>null); apiKey = state?.settings?.apiKey || '';
   protocol.handle('forma-audio', request => { const url = new URL(request.url); return url.hostname==='track' ? offline.respond(url.pathname.slice(1),request.headers.get('range')) : url.hostname==='art'?offline.respondArt(url.pathname.slice(1)):new Response(null,{status:404}); });
   const handle = (name, fn) => ipcMain.handle(name,(event,...args)=> {
     if (event.sender !== window?.webContents || event.senderFrame !== window?.webContents.mainFrame) throw new Error('Недопустимый источник запроса');

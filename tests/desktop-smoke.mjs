@@ -135,5 +135,14 @@ try{
   await page.locator('.track-row').first().locator('.track-actions button').last().click();
   await page.getByRole('button',{name:'Удалить скачанный файл',exact:true}).click();
   await expect.poll(async()=>Object.keys(await page.evaluate(()=>window.forma.downloads())).length).toBe(1);
-  console.log('PASS: real Electron sandbox/preload, native AAC decode and Wi-Fi settings and approval on PC, draft does not modify library, pinned TLS/token and approved receipt survive restart, minimized playback (real local audio + mocked YouTube player), explicit pause, catalogue and Yandex IPC and automatic requested-playlist import across restart (mock transport), file import, IPC download, audio seeking, close-save, restart offline, deletion.');
+  // A damaged primary and backup must open a recovery screen, never an empty autosaved profile.
+  await app.close();app=null;
+  await fs.writeFile(path.join(dir,'library.json'),'damaged primary');await fs.writeFile(path.join(dir,'library.json.bak'),'damaged backup');
+  await fs.writeFile(path.join(dir,'sync-settings.json'),JSON.stringify({enabled:false}));
+  launched=await launch();app=launched.instance;page=launched.page;
+  await expect(page.getByRole('heading',{name:'Библиотека не загрузилась'})).toBeVisible();await page.waitForTimeout(350);
+  assert.equal(await fs.readFile(path.join(dir,'library.json'),'utf8'),'damaged primary');assert.equal(await fs.readFile(path.join(dir,'library.json.bak'),'utf8'),'damaged backup');
+  await fs.writeFile(path.join(dir,'library.json'),JSON.stringify(saved));await page.getByRole('button',{name:'Повторить загрузку'}).click();
+  await expect(page.locator('.sidebar')).toBeVisible();assert.ok((await page.evaluate(()=>window.forma.load())).likes.includes('DesktopTest'));
+  console.log('PASS: real Electron sandbox/preload, native AAC decode and Wi-Fi settings and approval on PC, draft does not modify library, pinned TLS/token and approved receipt survive restart, minimized playback (real local audio + mocked YouTube player), explicit pause, catalogue and Yandex IPC and automatic requested-playlist import across restart (mock transport), file import, IPC download, audio seeking, close-save, restart offline, deletion, damaged-profile protection and retry recovery.');
 }finally{if(app)await app.close();await fs.rm(dir,{recursive:true,force:true});}

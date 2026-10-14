@@ -1,0 +1,353 @@
+{
+  "engine": "axe-core 4.10.3",
+  "date": "2026-10-14",
+  "target": "Windows renderer production build, controlled catalog and player",
+  "states": 42,
+  "registeredViolations": 0,
+  "screens": [
+    {
+      "mode": "expanded",
+      "screen": "home",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "expanded",
+      "screen": "search",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "expanded",
+      "screen": "liked",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "expanded",
+      "screen": "downloads",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "expanded",
+      "screen": "import",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "expanded",
+      "screen": "settings",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "expanded",
+      "screen": "pulse-settings",
+      "violations": [],
+      "incompleteRules": [
+        "aria-prohibited-attr",
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "expanded",
+      "screen": "create",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "expanded",
+      "screen": "mood",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "expanded",
+      "screen": "search-result",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "expanded",
+      "screen": "artist",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "expanded",
+      "screen": "queue",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast",
+        "frame-tested"
+      ]
+    },
+    {
+      "mode": "expanded",
+      "screen": "track-menu",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "expanded",
+      "screen": "add-playlist",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "expanded",
+      "screen": "rename",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "expanded",
+      "screen": "delete",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "expanded",
+      "screen": "reset-history",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "expanded",
+      "screen": "empty-search",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast",
+        "frame-tested"
+      ]
+    },
+    {
+      "mode": "expanded",
+      "screen": "source-error",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast",
+        "frame-tested"
+      ]
+    },
+    {
+      "mode": "expanded",
+      "screen": "onboarding",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "expanded",
+      "screen": "recovery",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "compact",
+      "screen": "home",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "compact",
+      "screen": "search",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "compact",
+      "screen": "liked",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "compact",
+      "screen": "downloads",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "compact",
+      "screen": "import",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "compact",
+      "screen": "settings",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "compact",
+      "screen": "pulse-settings",
+      "violations": [],
+      "incompleteRules": [
+        "aria-prohibited-attr",
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "compact",
+      "screen": "create",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "compact",
+      "screen": "mood",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "compact",
+      "screen": "search-result",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "compact",
+      "screen": "artist",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "compact",
+      "screen": "queue",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast",
+        "frame-tested"
+      ]
+    },
+    {
+      "mode": "compact",
+      "screen": "track-menu",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "compact",
+      "screen": "add-playlist",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "compact",
+      "screen": "rename",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "compact",
+      "screen": "delete",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "compact",
+      "screen": "reset-history",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "compact",
+      "screen": "empty-search",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast",
+        "frame-tested"
+      ]
+    },
+    {
+      "mode": "compact",
+      "screen": "source-error",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast",
+        "frame-tested"
+      ]
+    },
+    {
+      "mode": "compact",
+      "screen": "onboarding",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    },
+    {
+      "mode": "compact",
+      "screen": "recovery",
+      "violations": [],
+      "incompleteRules": [
+        "color-contrast"
+      ]
+    }
+  ]
+}

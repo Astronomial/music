@@ -49,3 +49,18 @@ test('serialized atomic state saves recover the last backup after corruption',as
   assert.equal((await store.read('library.json')).value,2);
   await fs.writeFile(path.join(dir,'library.json'),'corrupt');assert.equal((await store.read('library.json')).value,1);
 });
+
+test('unreadable library is not treated as a new profile and recovery preserves the valid backup',async t=>{
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'forma-recovery-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));const store=new Store(dir);
+  assert.equal(await store.read('library.json',null),null);
+  await store.write('library.json',{version:1,value:1});await store.write('library.json',{version:1,value:2});
+  await fs.writeFile(path.join(dir,'library.json'),'broken primary');
+  assert.equal((await store.read('library.json')).value,1);
+  await store.write('library.json',{version:1,value:3});
+  assert.equal(JSON.parse(await fs.readFile(path.join(dir,'library.json.bak'),'utf8')).value,1,'recovered save must retain valid backup');
+  await fs.writeFile(path.join(dir,'library.json'),'broken primary');await fs.writeFile(path.join(dir,'library.json.bak'),'broken backup');
+  await assert.rejects(store.read('library.json',null),/Исходные файлы сохранены/);
+  assert.equal(await fs.readFile(path.join(dir,'library.json'),'utf8'),'broken primary');
+  assert.equal(await fs.readFile(path.join(dir,'library.json.bak'),'utf8'),'broken backup');
+  await fs.writeFile(path.join(dir,'cache.json'),'broken cache');assert.deepEqual(await store.read('cache.json',{}),{});
+});

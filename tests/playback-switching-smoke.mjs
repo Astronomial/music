@@ -20,7 +20,8 @@ try{
  await page.goto(process.env.FORMA_TEST_URL||'http://localhost:5173');
  await page.locator('.sidebar-playlists').getByRole('button',{name:'Switching test'}).click();
  await page.getByRole('button',{name:'Слушать Song 1',exact:true}).click();await page.waitForFunction(()=>Boolean(window.fixturePlayer));
- await page.keyboard.press('Space');await page.waitForTimeout(600);assert.equal(await page.evaluate(()=>window.fixturePlayer.getPlayerState()),2,'pause before ready must prevent autoplay');
+ // Global playback hotkey: focused buttons retain their native Space action.
+ await page.evaluate(()=>document.activeElement?.blur());await page.keyboard.press('Space');await page.waitForTimeout(600);assert.equal(await page.evaluate(()=>window.fixturePlayer.getPlayerState()),2,'pause before ready must prevent autoplay');
  await page.getByRole('button',{name:'Воспроизвести',exact:true}).click();await page.waitForFunction(()=>window.fixturePlayer.getPlayerState()===1);
  const iframe=await page.locator('.youtube-frame iframe').elementHandle();
  await page.getByRole('button',{name:'Следующий трек',exact:true}).click();await page.waitForFunction(()=>window.fixturePlayer.id==='12345678901');
@@ -31,7 +32,8 @@ try{
  await page.evaluate(()=>window.fixturePlayer.pauseVideo());await page.getByRole('button',{name:'Воспроизвести',exact:true}).click();
  assert.equal(await page.evaluate(()=>window.fixturePlayer.getPlayerState()),1,'pause inside iframe must be resumable in one click');
  await page.getByRole('button',{name:'Скачанное',exact:true}).click();await page.getByRole('button',{name:'Слушать Local song',exact:true}).click();
- await page.keyboard.press('Space');await page.waitForTimeout(650);
+ // Global playback hotkey: focused buttons retain their native Space action.
+ await page.evaluate(()=>document.activeElement?.blur());await page.keyboard.press('Space');await page.waitForTimeout(650);
  assert.equal(await page.locator('audio').evaluate(a=>a.paused),true,'pause while resolving a local source must remain paused');
  assert.equal(await page.locator('.youtube-panel').isVisible(),false);assert.equal(await iframe.evaluate(node=>node.isConnected),true);
  await page.getByRole('button',{name:'Воспроизвести',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('audio').paused);
