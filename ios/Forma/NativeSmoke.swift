@@ -287,6 +287,8 @@ enum NativeSmoke {
             let barFrame = bar.convert(bar.bounds, to: nil)
             guard miniFrame.maxY <= barFrame.minY + 1 else { throw SyncError.rejected("Mini-player covers navigation: \(miniFrame), tab bar \(barFrame)") }
             write(["status": "running", "stage": "layout-verified", "miniPlayerBottom": miniFrame.maxY, "tabBarTop": barFrame.minY])
+            advanceStage("native-design-audit")
+            let design = try await NativeDesignAudit.run(model: model)
             // Simulator screenshots can take longer than our short audio fixtures.
             // Explicitly coordinate the move to Safari before measuring background transitions.
             var transitionTask = UIApplication.shared.beginBackgroundTask(withName: "Forma smoke transition")
@@ -323,7 +325,7 @@ enum NativeSmoke {
             final["threeTracksPreparedOnCellular"] = true; final["mutedPrerollReusedWithoutExtraction"] = true; final["bufferedThirdTrackMilliseconds"] = preparation.ready
             final["parallelPreparation"] = true; final["pendingBufferTransferred"] = true
             final["pendingBufferStartMilliseconds"] = preparation.pending; final["threeTrackPreparationMilliseconds"] = preparation.window
-            stability.forEach { final[$0.key] = $0.value }; write(final)
+            stability.forEach { final[$0.key] = $0.value }; design.forEach { final[$0.key] = $0.value }; write(final)
             player.pause()
         } catch { let failure = error as NSError; write(["status": "failed", "stage": stage, "error": error.localizedDescription, "domain": failure.domain, "code": failure.code, "taskCancelled": Task.isCancelled]) }
     }
@@ -490,11 +492,30 @@ enum NativeSmoke {
         let moodProbe = Track(videoID: "moodprobe01", title: "Проверка настроения", artist: "Mood probe", duration: 5, genres: ["House"], mood: "calm")
         model.playRecommendation(homeProbe)
         try await until("home-recommendation-playing") { model.player.isPlaying }
-        guard model.player.current?.id == homeProbe.id, model.player.selectionSurface == "pulse", model.player.selectionMood == nil else { throw SyncError.rejected("Home recommendation row lost adaptive Pulse context") }
+        guard model.player.current?.id == homeProbe.id, model.player.selectionSurface == "pulse", model.player.selectionMood == nil, model.isPersonalPulse else { throw SyncError.rejected("Home recommendation row lost adaptive Pulse context") }
         model.playRecommendation(moodProbe, mood: "calm")
         try await until("mood-recommendation-playing") { model.player.isPlaying }
-        guard model.player.current?.id == moodProbe.id, model.player.selectionSurface == "mood", model.player.selectionMood == "calm" else { throw SyncError.rejected("Mood recommendation row lost adaptive mood context") }
+        guard model.player.current?.id == moodProbe.id, model.player.selectionSurface == "mood", model.player.selectionMood == "calm", !model.isPersonalPulse else { throw SyncError.rejected("Mood recommendation row lost adaptive mood context") }
         model.player.pause()
+
+        let reject = Track(videoID: "rejectone01", title: "Первый трек", artist: "Первый исполнитель", duration: 5)
+        let following = Track(videoID: "rejecttwo01", title: "Следующий трек", artist: "Другой исполнитель", duration: 5)
+        let other = Track(videoID: "rejectlib01", title: "Трек из библиотеки", artist: "Третий исполнитель", duration: 5)
+        model.play(reject, list: [reject, following, other])
+        try await until("dislike-fixture-playing") { model.player.isPlaying }
+        try await Task.sleep(nanoseconds: 3_100_000_000)
+        let eventCount = model.library.events.filter { $0.trackID == reject.id && ($0.kind == .skip || $0.kind == .listen) }.count
+        model.toggleDislike(reject)
+        try await until("dislike-advances-current-track") { model.player.current?.id == following.id && model.player.isPlaying }
+        guard model.isDisliked(reject), model.library.events.filter({ $0.trackID == reject.id && $0.kind == .dislike }).count == 1,
+              model.library.events.filter({ $0.trackID == reject.id && ($0.kind == .skip || $0.kind == .listen) }).count == eventCount else {
+            throw SyncError.rejected("Dislike did not advance once with exactly one negative signal")
+        }
+        model.toggleDislike(reject)
+        guard !model.isDisliked(reject), model.player.current?.id == following.id else { throw SyncError.rejected("Undo dislike interrupted playback") }
+        model.toggleDislike(other)
+        guard model.isDisliked(other), model.player.current?.id == following.id else { throw SyncError.rejected("Rating a library track interrupted playback") }
+        model.toggleDislike(other); model.player.pause()
 
         let storageURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("library.json")
         defer { try? FileManager.default.removeItem(at: storageURL.deletingLastPathComponent()) }
@@ -517,7 +538,8 @@ enum NativeSmoke {
                 "interruptionRespectsPause": true, "mediaServicesResetRecovered": true, "mediaServicesLossRecovered": true, "recoveryNoDuplicateFeedback": true,
                 "rapidSelectionCancelsOldLoad": true, "staleSearchIgnored": true, "staleLinkIgnored": true, "stalePulseIgnored": true, "homeRowsStartAdaptivePulse": true, "moodRowsKeepAdaptiveContext": true,
                 "oldSaveCannotOverwriteNewerLibrary": true, "syncBaselineBoundToPairedPC": true, "legacyBaselineMigratedSafely": true,
-                "advancedQueueMatchesNewList": true, "keychainRestoreRetriesTransientFailure": true, "cancelledSearchClearsSpinner": true]
+                "advancedQueueMatchesNewList": true, "keychainRestoreRetriesTransientFailure": true, "cancelledSearchClearsSpinner": true,
+                "dislikeAdvancesWithSingleSignal": true, "undoAndLibraryDislikeKeepPlayback": true, "personalPulseDistinctFromMood": true]
     }
 }
 #endif

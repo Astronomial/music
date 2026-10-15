@@ -105,7 +105,7 @@ YouTube играет через **видимый официальный встр
 
 ## iPhone и синхронизация
 
-**[Скачать Forma iOS 1.5.0 (IPA для подписи)](https://github.com/Astronomial/music/releases/download/ios-v1.5.0/Forma-iOS-1.5.0-unsigned.ipa)** · **[Установка с Windows через Sideloadly](ios/INSTALL_WINDOWS.md)**
+**[Скачать Forma iOS 1.6.0 (IPA для подписи)](https://github.com/Astronomial/music/releases/download/ios-v1.6.0/Forma-iOS-1.6.0-unsigned.ipa)** · **[Установка с Windows через Sideloadly](ios/INSTALL_WINDOWS.md)**
 
 В 1.5.0 подборки используют общие с ПК правила настроения и русские названия: [как отбираются песни](docs/MOOD_COLLECTIONS.md).
 

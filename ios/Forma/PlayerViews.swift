@@ -5,26 +5,18 @@ import FormaCore
 struct MiniPlayer: View {
     @ObservedObject var model: AppModel
     @ObservedObject private var player: PlaybackController
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let expand: () -> Void
     init(model: AppModel, expand: @escaping () -> Void) { self.model = model; self.player = model.player; self.expand = expand }
     var body: some View {
         if let track = player.current {
-            HStack(spacing: 4) {
-                Button(action: expand) {
-                    HStack(spacing: 12) {
-                        Artwork(track: track, size: 42)
-                        VStack(alignment: .leading, spacing: 3) { Text(track.title).font(.subheadline.bold()).lineLimit(1); Text(track.artist).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
-                    }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-                }.buttonStyle(ResponsiveButtonStyle()).accessibilityLabel("Открыть плеер")
-                Button { model.toggleLike(track) } label: {
-                    Image(systemName: model.isLiked(track) ? "heart.fill" : "heart").contentTransition(.symbolEffect(.replace)).foregroundStyle(model.isLiked(track) ? FormaTheme.accent : .secondary).frame(width: 44, height: 44)
-                }.buttonStyle(ResponsiveButtonStyle()).accessibilityLabel(model.isLiked(track) ? "Убрать из любимого" : "Добавить в любимое").accessibilityIdentifier("mini-player-like")
-                Button { model.toggleDislike(track) } label: { Image(systemName: model.isDisliked(track) ? "hand.thumbsdown.fill" : "hand.thumbsdown").foregroundStyle(model.isDisliked(track) ? FormaTheme.accent : .secondary).frame(width: 44, height: 44) }.buttonStyle(ResponsiveButtonStyle()).accessibilityLabel(model.isDisliked(track) ? "Снять дизлайк" : "Не нравится")
-                Button { player.toggle() } label: {
-                    Group { if player.isLoading { ProgressView() } else { Image(systemName: player.isPlaying ? "pause.fill" : "play.fill").font(.title3) } }.frame(width: 44, height: 44)
-                }.buttonStyle(ResponsiveButtonStyle()).accessibilityLabel(player.isPlaying ? "Пауза" : "Воспроизвести")
-                Button { player.next() } label: { Image(systemName: "forward.end.fill").frame(width: 44, height: 44) }.buttonStyle(ResponsiveButtonStyle()).accessibilityLabel("Следующий трек")
-            }.padding(10).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
+            Group {
+                if typeSize.isAccessibilitySize {
+                    VStack(spacing: 8) { details(track); controls(track).frame(maxWidth: .infinity) }
+                } else { HStack(spacing: 4) { details(track); controls(track) } }
+            }.padding(10).background(reduceTransparency ? FormaTheme.background : FormaTheme.panel, in: RoundedRectangle(cornerRadius: 20))
+                .overlay(RoundedRectangle(cornerRadius: 20).stroke(.white.opacity(0.1), lineWidth: 1))
                 .accessibilityIdentifier("mini-player")
 #if DEBUG && targetEnvironment(simulator)
                 .background(GeometryReader { bounds in
@@ -33,9 +25,30 @@ struct MiniPlayer: View {
                 })
 #endif
                 .overlay(alignment: .bottomLeading) {
-                    GeometryReader { bounds in Capsule().fill(FormaTheme.accent).frame(width: bounds.size.width * (player.duration > 0 ? min(1, player.position / player.duration) : 0), height: 2) }.frame(height: 2).padding(.horizontal, 20)
+                    GeometryReader { bounds in Capsule().fill(FormaTheme.accent).frame(width: bounds.size.width * (player.duration > 0 ? max(0, min(1, player.position / player.duration)) : 0), height: 2) }.frame(height: 2).padding(.horizontal, 20).accessibilityHidden(true)
                 }
         }
+    }
+    private func details(_ track: Track) -> some View {
+        Button(action: expand) {
+            HStack(spacing: 10) {
+                Artwork(track: track, size: 44).accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) { Text(track.title).font(.subheadline.bold()).lineLimit(1); Text(track.artist).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+            }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+        }.foregroundStyle(.primary).buttonStyle(ResponsiveButtonStyle()).accessibilityLabel("\(track.title), \(track.artist)").accessibilityHint("Открыть плеер")
+    }
+    private func controls(_ track: Track) -> some View {
+        HStack(spacing: 0) {
+            Button { model.toggleLike(track) } label: {
+                Image(systemName: model.isLiked(track) ? "heart.fill" : "heart").foregroundStyle(model.isLiked(track) ? FormaTheme.accent : .secondary).frame(width: 44, height: 44).contentShape(Rectangle())
+            }.accessibilityLabel(model.isLiked(track) ? "Убрать из любимого" : "Добавить в любимое").accessibilityIdentifier("mini-player-like")
+            Button { model.toggleDislike(track) } label: { Image(systemName: model.isDisliked(track) ? "hand.thumbsdown.fill" : "hand.thumbsdown").foregroundStyle(model.isDisliked(track) ? FormaTheme.accent : .secondary).frame(width: 44, height: 44).contentShape(Rectangle()) }
+                .accessibilityLabel(model.isDisliked(track) ? "Снять дизлайк" : "Не нравится").accessibilityHint("Переключает текущий трек").accessibilityIdentifier("mini-player-dislike")
+            Button { player.toggle() } label: {
+                Group { if player.isLoading { ProgressView() } else { Image(systemName: player.isPlaying ? "pause.fill" : "play.fill").font(.title3) } }.frame(width: 44, height: 44).contentShape(Rectangle())
+            }.accessibilityLabel(player.isPlaying || player.isLoading ? "Пауза" : "Воспроизвести").accessibilityIdentifier("mini-player-play")
+            Button { player.next() } label: { Image(systemName: "forward.end.fill").frame(width: 44, height: 44).contentShape(Rectangle()) }.accessibilityLabel("Следующий трек").accessibilityIdentifier("mini-player-next")
+        }.buttonStyle(ResponsiveButtonStyle()).fixedSize(horizontal: true, vertical: false)
     }
 }
 @MainActor
@@ -45,19 +58,24 @@ struct NowPlayingView: View {
     @State private var seekValue: Double = 0
     @State private var dragging = false
     @State private var seekTrackID: String?
+    @Environment(\.dismiss) private var dismiss
+    private var contextTitle: String {
+        if let mood = player.selectionMood { return MoodMix.all.first { $0.id == mood }?.title ?? "Подборка" }
+        if let playlistID = model.pulsePlaylistID { return model.library.playlists.first { $0.id == playlistID }?.name ?? "Пульс" }
+        return player.selectionSurface == "pulse" ? "Пульс" : "Сейчас играет"
+    }
     init(model: AppModel) { self.model = model; self.player = model.player }
     var body: some View {
         GeometryReader { bounds in
             ScrollView {
-                VStack(spacing: 28) {
-                    Text("В ТВОЁМ РИТМЕ").font(.caption.weight(.semibold)).tracking(3).foregroundStyle(.secondary)
-                    Artwork(track: player.current, size: min(bounds.size.width - 64, 340)).shadow(color: FormaTheme.accent.opacity(0.1), radius: 36)
+                VStack(spacing: 20) {
+                    Artwork(track: player.current, size: max(100, min(bounds.size.width - 48, min(bounds.size.height * 0.36, 300)))).accessibilityHidden(true)
                     VStack(spacing: 10) { Text(player.current?.title ?? "Музыка ждёт тебя").font(.title2.bold()).multilineTextAlignment(.center); Text(player.current?.artist ?? "YouTube").foregroundStyle(.secondary) }
                     if let error = player.error {
                         GlassPanel { VStack(spacing: 12) { Text(error).font(.subheadline); Button("Повторить") { player.resume() }.buttonStyle(.bordered) } }
                     }
                     VStack(spacing: 8) {
-                        Slider(value: Binding(get: { dragging ? seekValue : player.position }, set: { seekValue = $0 }), in: 0...max(1, player.duration), onEditingChanged: { editing in
+                        Slider(value: Binding(get: { min(max(1, player.duration), max(0, dragging ? seekValue : player.position)) }, set: { seekValue = $0 }), in: 0...max(1, player.duration), onEditingChanged: { editing in
                             if editing { seekValue = player.position; seekTrackID = player.current?.id; dragging = true }
                             else {
                                 dragging = false
@@ -68,22 +86,23 @@ struct NowPlayingView: View {
                         HStack { Text(formatTime(dragging ? seekValue : player.position)); Spacer(); Text(formatTime(player.duration)) }.font(.caption).monospacedDigit().foregroundStyle(.secondary)
                     }
                     HStack(spacing: 42) {
-                        Button { player.previous() } label: { Image(systemName: "backward.end.fill").font(.title2) }.accessibilityLabel("В начало трека")
+                        Button { player.previous() } label: { Image(systemName: "backward.end.fill").font(.title2).frame(width: 44, height: 44) }.accessibilityLabel("В начало трека")
                         Button { player.toggle() } label: {
                             Group { if player.isLoading { ProgressView().tint(.black) } else { Image(systemName: player.isPlaying ? "pause.fill" : "play.fill").font(.title) } }
                                 .frame(width: 74, height: 74).foregroundStyle(.black).background(FormaTheme.accent, in: Circle())
-                        }.accessibilityLabel(player.isPlaying ? "Пауза" : "Воспроизвести")
-                        Button { player.next() } label: { Image(systemName: "forward.end.fill").font(.title2) }.accessibilityLabel("Следующий трек")
-                    }
+                        }.accessibilityLabel(player.isPlaying || player.isLoading ? "Пауза" : "Воспроизвести")
+                        Button { player.next() } label: { Image(systemName: "forward.end.fill").font(.title2).frame(width: 44, height: 44) }.accessibilityLabel("Следующий трек")
+                    }.buttonStyle(ResponsiveButtonStyle())
                     HStack {
                         Image(systemName: "speaker.fill").foregroundStyle(.secondary)
                         Slider(value: $player.volume, in: 0...1).accessibilityLabel("Громкость")
                         Image(systemName: "speaker.wave.3.fill").foregroundStyle(.secondary)
                     }
                     if let track = player.current { HStack { Button { model.toggleDislike(track) } label: { Label(model.isDisliked(track) ? "Дизлайк" : "Не нравится", systemImage: model.isDisliked(track) ? "hand.thumbsdown.fill" : "hand.thumbsdown") }.buttonStyle(.bordered); Button { model.toggleLike(track) } label: { Label(model.isLiked(track) ? "В любимом" : "Сохранить", systemImage: model.isLiked(track) ? "heart.fill" : "heart") }.buttonStyle(.bordered) } }
-                }.padding(32)
-            }.background(LinearGradient(colors: [FormaTheme.accent.opacity(0.09), FormaTheme.background], startPoint: .topLeading, endPoint: .bottomTrailing)).tint(FormaTheme.accent)
+                }.padding(24)
+            }.cosmicBackground().tint(FormaTheme.accent)
                 .onChange(of: player.current?.id) { _, _ in dragging = false; seekTrackID = nil; seekValue = player.position }
-        }
+        }.navigationTitle(contextTitle).navigationBarTitleDisplayMode(.inline)
+            .toolbar { Button("Готово") { dismiss() }.accessibilityLabel("Закрыть плеер") }
     }
 }

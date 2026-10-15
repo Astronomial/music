@@ -1,5 +1,5 @@
 """Run native AVQueuePlayer and pinned TLS sync in an actual iOS Simulator."""
-import json, pathlib, signal, subprocess, tempfile, time, urllib.parse
+import json, pathlib, shutil, signal, subprocess, tempfile, time, urllib.parse
 run = lambda *args: subprocess.check_output(args, text=True, timeout=180).strip()
 root = pathlib.Path(__file__).resolve().parents[2]
 with tempfile.TemporaryDirectory(prefix='forma-simulator-') as directory:
@@ -69,6 +69,9 @@ with tempfile.TemporaryDirectory(prefix='forma-simulator-') as directory:
             if report.exists(): (root/'ios/native-smoke-result.json').write_text(report.read_text())
             raise RuntimeError('Native app did not reach background transition handshake; last stage: ' + str(last_stage))
         run('xcrun','simctl','io',device,'screenshot',str(root/'ios/native-layout.png'))
+        design = container/'Documents/design-audit'
+        if not design.is_dir(): raise RuntimeError('Native design captures missing')
+        shutil.copytree(design, root/'ios/native-design', dirs_exist_ok=True)
         # Moving to Safari is the assertion's only purpose: opening our pinned
         # self-signed HTTPS server additionally invokes unrelated browser/TLS UI.
         # A cold Simulator may time out its launch RPC after Safari actually opens;

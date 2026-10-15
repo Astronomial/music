@@ -5,25 +5,39 @@ import FormaCore
 struct ContentView: View {
     @ObservedObject var model: AppModel
     @AppStorage("forma.palette") private var palette = "iris"
+    @AppStorage("forma.compactNavigation") private var compactNavigation = false
     @Environment(\.scenePhase) private var scenePhase
-    @State private var showPlayer = false
-    @State private var showSettings = false
+    @State private var selectedTab = 0
+    @State private var sheet: AppSheet?
+#if DEBUG && targetEnvironment(simulator)
+    @Environment(\.dynamicTypeSize) private var systemTypeSize
+    @State private var auditingLargeText = false
+#endif
+    private var showSettings: Binding<Bool> { Binding(get: { sheet == .pulse }, set: { sheet = $0 ? .pulse : nil }) }
     var body: some View {
-        TabView {
-            NavigationStack { HomeView(model: model, showSettings: $showSettings) }.modifier(PlayerInset(model: model, expand: { showPlayer = true })).tabItem { Label("Главная", systemImage: "house") }
-            NavigationStack { SearchView(model: model) }.modifier(PlayerInset(model: model, expand: { showPlayer = true })).tabItem { Label("Поиск", systemImage: "magnifyingglass") }
-            NavigationStack { PlaylistsView(model: model) }.modifier(PlayerInset(model: model, expand: { showPlayer = true })).tabItem { Label("Библиотека", systemImage: "square.stack") }
-            NavigationStack { SettingsView(model: model) }.modifier(PlayerInset(model: model, expand: { showPlayer = true })).tabItem { Label("Настройки", systemImage: "gearshape") }
+        TabView(selection: $selectedTab) {
+            NavigationStack { HomeView(model: model, showSettings: showSettings) }.modifier(PlayerInset(model: model, expand: { sheet = .player }))
+                .tabItem { Image(systemName: "house"); Text(compactNavigation ? "" : "Главная") }.tag(0)
+            NavigationStack { SearchView(model: model) }.modifier(PlayerInset(model: model, expand: { sheet = .player }))
+                .tabItem { Image(systemName: "magnifyingglass"); Text(compactNavigation ? "" : "Поиск") }.tag(1)
+            NavigationStack { PlaylistsView(model: model) }.modifier(PlayerInset(model: model, expand: { sheet = .player }))
+                .tabItem { Image(systemName: "square.stack"); Text(compactNavigation ? "" : "Библиотека") }.tag(2)
+            NavigationStack { SettingsView(model: model) }.modifier(PlayerInset(model: model, expand: { sheet = .player }))
+                .tabItem { Image(systemName: "gearshape"); Text(compactNavigation ? "" : "Настройки") }.tag(3)
         }
+        .background(TabBarLabels(compact: compactNavigation).frame(width: 0, height: 0))
         .tint(FormaTheme.color(palette))
-        .sheet(isPresented: $showPlayer) { NowPlayingView(model: model).presentationDetents([.large]).presentationDragIndicator(.visible) }
-        .sheet(isPresented: $showSettings) { NavigationStack { PulseSettingsView(model: model) }.presentationDetents([.large]).presentationDragIndicator(.visible) }
-        .alert("Forma", isPresented: Binding(get: { model.message != nil }, set: { if !$0 { model.message = nil } })) {
-            Button("Понятно", role: .cancel) { model.message = nil }
-        } message: { Text(model.message ?? "") }
+        .sheet(item: $sheet) { destination in
+            NavigationStack {
+                if destination == .player { NowPlayingView(model: model) }
+                else { PulseSettingsView(model: model) }
+            }.modifier(AppMessageAlert(model: model)).presentationDetents([.large]).presentationDragIndicator(.visible)
+        }
+        .modifier(AppMessageAlert(model: model, enabled: sheet == nil))
         .task {
             guard !ProcessInfo.processInfo.arguments.contains("--forma-smoke") else { return }
             while (!model.player.networkPolicy.known || model.isRestoringLibrary), !Task.isCancelled { try? await Task.sleep(nanoseconds: 50_000_000) }
+            guard !Task.isCancelled else { return }
             if model.library.tracks.isEmpty || UserDefaults.standard.integer(forKey: "forma.discoveryRevision") < 6 { await model.refresh(automatic: true) }
             while !Task.isCancelled {
                 if scenePhase == .active { await model.synchronize() }
@@ -34,6 +48,25 @@ struct ContentView: View {
             if phase == .active { Task { await model.becameActive() } }
             else { model.persist(immediately: true, background: phase == .background) }
         }
+#if DEBUG && targetEnvironment(simulator)
+        .environment(\.dynamicTypeSize, auditingLargeText ? .accessibility3 : systemTypeSize)
+        .onAppear {
+            NativeDesignAudit.selectTab = { selectedTab = $0 }
+            NativeDesignAudit.present = { sheet = $0 == "player" ? .player : $0 == "pulse" ? .pulse : nil }
+            NativeDesignAudit.largeText = { auditingLargeText = $0 }
+        }
+#endif
+    }
+}
+private enum AppSheet: String, Identifiable { case player, pulse; var id: String { rawValue } }
+@MainActor
+private struct AppMessageAlert: ViewModifier {
+    @ObservedObject var model: AppModel
+    var enabled = true
+    func body(content: Content) -> some View {
+        content.alert("Forma", isPresented: Binding(get: { enabled && model.message != nil }, set: { if !$0, enabled { model.message = nil } })) {
+            Button("Понятно", role: .cancel) { model.message = nil }
+        } message: { Text(model.message ?? "") }
     }
 }
 /// Reserve content space inside each tab, leaving the system tab bar untouched.
@@ -55,43 +88,33 @@ private struct PlayerInset: ViewModifier {
 struct HomeView: View {
     @ObservedObject var model: AppModel
     @Binding var showSettings: Bool
+    @Environment(\.dynamicTypeSize) private var typeSize
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 24) {
-                Text("Музыка ближе к тебе.").font(.largeTitle.bold()).padding(.top, 8)
                 if model.isRestoringLibrary { ProgressView("Открываем библиотеку…") }
-                GlassPanel {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Label("Твой Пульс", systemImage: "waveform").font(.title.bold())
-                        Text("Твой вкус задаёт направление. Оставим место открытиям.").foregroundStyle(.secondary)
-                        HStack {
-                            Button { model.startPulse() } label: { Label("Слушать", systemImage: "play.fill").fontWeight(.semibold) }.buttonStyle(.borderedProminent).disabled(model.isRestoringLibrary)
-                            Spacer()
-                            Button { showSettings = true } label: { Image(systemName: "slider.horizontal.3") }.accessibilityLabel("Настроить Пульс")
-                        }
-                    }
-                }
-                .background(LinearGradient(colors: [FormaTheme.accent.opacity(0.15), .blue.opacity(0.08)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 24))
-                HStack { Text("Как ты себя чувствуешь?").font(.title2.bold()); Spacer(); if model.isRefreshing { ProgressView() } }
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
+                LibraryRecoveryNotice(model: model)
+                PulseHero(model: model) { showSettings = true }
+                HStack { Text("По настроению").font(.title2.bold()).accessibilityAddTraits(.isHeader); Spacer(); if model.isRefreshing { ProgressView().accessibilityLabel("Обновление подборок") } }
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .top), count: typeSize.isAccessibilitySize ? 1 : 2), spacing: 14) {
                     ForEach(Array(MoodMix.all.enumerated()), id: \.element.id) { index, mix in
                         NavigationLink { MoodView(model: model, mix: mix) } label: {
                             VStack(alignment: .leading, spacing: 12) {
-                                Image(systemName: ["leaf", "sun.max", "moon", "bolt", "sparkles", "moon.stars"][index]).font(.title)
-                                Spacer(minLength: 12)
+                                Image(systemName: ["leaf", "sun.max", "moon", "bolt", "sparkles", "moon.stars"][index]).font(.title2).foregroundStyle(FormaTheme.colors[index]).accessibilityHidden(true)
+                                Spacer(minLength: 16)
                                 Text(mix.title).font(.headline).multilineTextAlignment(.leading)
-                                Text(mix.subtitle).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading)
-                                Text("\(model.moodTracks(mix).count) треков").font(.caption).foregroundStyle(.secondary)
-                            }.frame(maxWidth: .infinity, minHeight: 122, alignment: .leading).padding(16)
-                                .background(LinearGradient(colors: [FormaTheme.colors[index].opacity(0.2), .white.opacity(0.03)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 20))
-                        }.buttonStyle(ResponsiveButtonStyle())
+                                Text("\(model.moodTracks(mix).count) треков").font(.subheadline).foregroundStyle(.secondary)
+                            }.frame(maxWidth: .infinity, minHeight: 124, alignment: .leading).padding(16)
+                                .background(FormaTheme.panel, in: RoundedRectangle(cornerRadius: 20))
+                                .overlay(RoundedRectangle(cornerRadius: 20).stroke(.white.opacity(0.08), lineWidth: 1))
+                        }.foregroundStyle(.primary).buttonStyle(ResponsiveButtonStyle()).accessibilityHint(mix.subtitle)
                     }
                 }
-                Text("Следующее любимое").font(.title2.bold())
-                if model.recommendations.isEmpty { EmptyState(title: "Начни со своей музыки", text: "Найди любимые треки в поиске. Пульс будет учиться на сохранениях и прослушиваниях.") }
+                Text("Для тебя").font(.title2.bold()).accessibilityAddTraits(.isHeader)
+                if model.recommendations.isEmpty, !model.isRestoringLibrary { EmptyState(title: "Добавь любимую музыку", text: "Найди треки в поиске или перенеси библиотеку с ПК.") }
                 ForEach(model.recommendations.prefix(12)) { item in TrackRow(model: model, track: item.track, reason: item.reason) { model.playRecommendation(item.track) } }
             }.padding(20)
-        }.background(FormaTheme.background).navigationTitle("forma.").navigationBarTitleDisplayMode(.inline)
+        }.cosmicBackground().navigationTitle("forma.").navigationBarTitleDisplayMode(.inline)
             .toolbar { Button { Task { await model.refresh() } } label: { Image(systemName: "arrow.clockwise") }.disabled(model.isRefreshing).accessibilityLabel("Обновить подборки") }
             .refreshable { await model.refresh() }
     }
@@ -113,15 +136,16 @@ struct TrackRow: View {
                         if let reason { Text(reason).font(.caption).foregroundStyle(FormaTheme.accent).lineLimit(1) }
                     }.frame(maxWidth: .infinity, alignment: .leading)
                 }.contentShape(Rectangle())
-            }.buttonStyle(ResponsiveButtonStyle()).accessibilityLabel("Слушать \(track.artist) — \(track.title)")
-            Button { model.toggleLike(track) } label: { Image(systemName: model.isLiked(track) ? "heart.fill" : "heart").foregroundStyle(model.isLiked(track) ? FormaTheme.accent : .secondary) }
+            }.foregroundStyle(.primary).buttonStyle(ResponsiveButtonStyle()).accessibilityLabel("Слушать \(track.artist) — \(track.title)").accessibilityHint(reason ?? "")
+            Button { model.toggleLike(track) } label: { Image(systemName: model.isLiked(track) ? "heart.fill" : "heart").foregroundStyle(model.isLiked(track) ? FormaTheme.accent : .secondary).frame(width: 44, height: 44).contentShape(Rectangle()) }
                 .buttonStyle(ResponsiveButtonStyle()).accessibilityLabel(model.isLiked(track) ? "Убрать из любимого" : "Добавить в любимое")
             Menu {
-                Button(model.isDisliked(track) ? "Снять дизлайк" : "Не нравится — снизить приоритет") { model.toggleDislike(track) }
+                Button(model.isDisliked(track) ? "Снять дизлайк" : "Не нравится", systemImage: "hand.thumbsdown") { model.toggleDislike(track) }
                 if model.library.playlists.isEmpty { Text("Создай плейлист в библиотеке") }
                 ForEach(model.library.playlists) { playlist in Button(playlist.name) { model.add(track, to: playlist.id) } }
-            } label: { Image(systemName: "ellipsis").frame(width: 30, height: 40) }.accessibilityLabel("Добавить в плейлист")
-        }.padding(.vertical, 6)
+            } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44).contentShape(Rectangle()) }.accessibilityLabel("Действия с треком \(track.title)")
+        }.padding(.vertical, 6).padding(.horizontal, 8)
+            .background(FormaTheme.panel.opacity(0.45), in: RoundedRectangle(cornerRadius: 16))
     }
 }
 @MainActor
@@ -134,12 +158,11 @@ struct MoodView: View {
             VStack(alignment: .leading, spacing: 20) {
                 Text(mix.title).font(.largeTitle.bold())
                 Text(mix.subtitle).foregroundStyle(.secondary)
-                Text("Собрано под твой вкус и настроение").foregroundStyle(.secondary)
                 Button { model.startPulse(mood: mix.id) } label: { Label("Слушать подборку", systemImage: "play.fill") }.buttonStyle(.borderedProminent).disabled(tracks.isEmpty)
-                if tracks.isEmpty { EmptyState(title: "Ищем музыку под это настроение", text: "Добавим треки, когда найдём подходящее звучание. Любимая песня не попадёт сюда только ради заполнения подборки.") }
+                if tracks.isEmpty { EmptyState(title: model.isRefreshing ? "Подбираем треки…" : "Пока нет подходящих треков", text: "Обнови подборки на главной или добавь любимую музыку.") }
                 ForEach(tracks) { track in TrackRow(model: model, track: track) { model.playRecommendation(track, mood: mix.id) } }
             }.padding(20)
-        }.background(FormaTheme.background).navigationBarTitleDisplayMode(.inline)
+        }.cosmicBackground().navigationBarTitleDisplayMode(.inline)
             .task { await model.prepareTracks(tracks) }
     }
 }
@@ -149,15 +172,18 @@ struct SearchView: View {
     @State private var query = ""
     @State private var showLink = false
     @State private var link = ""
+    private var normalizedQuery: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 8) {
-                if model.isSearching { ProgressView("Ищем музыку…").padding() }
-                if query.isEmpty { EmptyState(title: "Что хочется услышать?", text: "Название трека, исполнитель или ссылка на YouTube.") }
-                else if !model.isSearching, model.searchResults.isEmpty { EmptyState(title: "Пока ничего не найдено", text: "Уточни название или попробуй прямую ссылку.") }
-                ForEach(model.searchResults) { track in TrackRow(model: model, track: track) { model.play(track, list: model.searchResults) } }
+                if normalizedQuery.count < 2 { EmptyState(title: "Найди свою музыку", text: "Введи хотя бы два символа: название или исполнителя.") }
+                else if model.isSearching || model.completedSearchQuery != normalizedQuery { ProgressView("Ищем музыку…").padding() }
+                if normalizedQuery.count >= 2, model.completedSearchQuery == normalizedQuery {
+                    if !model.isSearching, model.searchResults.isEmpty { EmptyState(title: "Ничего не найдено", text: "Уточни запрос или открой ссылку YouTube.") }
+                    ForEach(model.searchResults) { track in TrackRow(model: model, track: track) { model.play(track, list: model.searchResults) } }
+                }
             }.padding(20)
-        }.background(FormaTheme.background).navigationTitle("Поиск")
+        }.cosmicBackground().navigationTitle("Поиск")
             .searchable(text: $query, prompt: "Трек или исполнитель")
             .task(id: query) {
                 do { try await Task.sleep(nanoseconds: 350_000_000); try Task.checkCancellation(); await model.search(query) } catch { }
@@ -180,7 +206,7 @@ struct LibraryView: View {
                 else { Button { if let first = model.liked.first { model.play(first, list: model.liked) } } label: { Label("Слушать любимое", systemImage: "play.fill") }.buttonStyle(.borderedProminent) }
                 ForEach(model.liked) { track in TrackRow(model: model, track: track) { model.play(track, list: model.liked) } }
             }.padding(20)
-        }.background(FormaTheme.background).navigationTitle("Любимое")
+        }.cosmicBackground().navigationTitle("Любимое")
     }
 }
 @MainActor
@@ -188,6 +214,6 @@ struct EmptyState: View {
     let title: String
     let text: String
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) { Text(title).font(.headline); Text(text).foregroundStyle(.secondary) }.padding(.vertical, 24)
+        VStack(alignment: .leading, spacing: 10) { Text(title).font(.headline).accessibilityAddTraits(.isHeader); Text(text).foregroundStyle(.secondary) }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 24)
     }
 }

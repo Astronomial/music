@@ -9,10 +9,13 @@ final class AppModel: ObservableObject {
     @Published private(set) var library = Library()
     @Published private(set) var recommendations: [Recommendation] = []
     @Published private(set) var searchResults: [Track] = []
+    @Published private(set) var completedSearchQuery = ""
     @Published private(set) var isRefreshing = false
     @Published private(set) var isSearching = false
     @Published private(set) var isSyncing = false
     @Published private(set) var isRestoringLibrary = true
+    @Published private(set) var libraryRecoveryMessage: String?
+    @Published private(set) var isStartingPulse = false
     @Published private(set) var pcHost: String?
     @Published private(set) var syncStatus = "Подключи ПК по Wi-Fi. Каждый обмен требует подтверждения"
     @Published private(set) var syncProposal: WiFiProposal?
@@ -43,7 +46,8 @@ final class AppModel: ObservableObject {
     private var selectedContexts: [String: RecommendationContext] = [:]
     private var activeContext: RecommendationContext?
     private var playbackIndex: PulseEngine.RankingIndex?
-    private var pulsePlaylistID: String?
+    @Published private(set) var pulsePlaylistID: String?
+    var isPersonalPulse: Bool { player.selectionSurface == "pulse" && pulsePlaylistID == nil }
     private var searchGeneration = UUID()
     private var recommendationGeneration = UUID()
     private var pulseGeneration = UUID()
@@ -124,10 +128,10 @@ final class AppModel: ObservableObject {
                 loaded.library.settings.discovery = 0.7; loaded.library.settings.recommendationVersion = 2
             }
             library = LibrarySync.merge(current: loaded.library, base: Library(), incoming: library)
-            storage = store; didLoadLibrary = true; message = loaded.notice
+            storage = store; didLoadLibrary = true; libraryRecoveryMessage = nil; message = loaded.notice
         } catch {
             // A read/access failure must never be followed by saving an empty profile.
-            storage = nil; message = "Не удалось прочитать библиотеку. Исходный файл не изменён: \(error.localizedDescription)"
+            storage = nil; libraryRecoveryMessage = "Не удалось открыть библиотеку. \(error.localizedDescription)"
         }
         isRestoringLibrary = false; updateRecommendations()
         if didLoadLibrary { persist(immediately: true) }
@@ -137,6 +141,7 @@ final class AppModel: ObservableObject {
         await restorePCConnection(epoch: connectionEpoch)
         await synchronize()
     }
+    func retryLibrary() async { if !isRestoringLibrary { await restoreLibrary() } }
     private func restorePCConnection(epoch: UUID) async {
         guard let connection = await sync.restore() else { return }
         let base = await storage?.syncBase(peerID: connection.pin, allowLegacy: connection.baselineVersion == nil)
@@ -170,8 +175,9 @@ final class AppModel: ObservableObject {
         library.merge([track]); let disliked = isDisliked(track)
         library.likedIDs.removeAll { $0 == track.id }; library.events.removeAll { $0.trackID == track.id && $0.kind == .dislike }
         if disliked { library.dislikedIDs.removeAll { $0 == track.id } }
-        else { library.dislikedIDs.append(track.id); library.record(.init(trackID: track.id, kind: .dislike, seconds: 0, ratio: 0, recommendation: context(for: track), surface: player.selectionSurface)) }
+        else { library.dislikedIDs.append(track.id); library.record(.init(trackID: track.id, kind: .dislike, seconds: 0, ratio: 0, recommendation: context(for: track), surface: player.current?.id == track.id ? player.selectionSurface : "library")) }
         changed()
+        if !disliked { player.skipDislikedTrack(track.id) }
     }
     func toggleLike(_ track: Track) {
         library.merge([track])
@@ -233,6 +239,7 @@ final class AppModel: ObservableObject {
     }
     func play(_ track: Track, list: [Track], context: String? = nil) {
         pulseGeneration = UUID(); pulseWork?.cancel(); linkTask?.cancel(); soundTask?.cancel()
+        isStartingPulse = false
         let exposure = self.context(for: track)
         selectedContexts.removeAll()
         if let exposure { selectedContexts[track.id] = exposure }
@@ -243,6 +250,7 @@ final class AppModel: ObservableObject {
     func playRecommendation(_ track: Track, mood: String? = nil) {
         guard !isRestoringLibrary else { return }
         pulseGeneration = UUID(); pulseWork?.cancel(); linkTask?.cancel(); soundTask?.cancel()
+        isStartingPulse = false
         let source = mood.flatMap { moodCache[$0] } ?? recommendations
         selectedContexts.removeAll()
         if let exposure = source.first(where: { $0.id == track.id })?.exposure { selectedContexts[track.id] = exposure }
@@ -253,6 +261,7 @@ final class AppModel: ObservableObject {
     func startPulse(mood: String? = nil, playlistID: String? = nil) {
         guard !isRestoringLibrary else { return }
         pulseWork?.cancel(); linkTask?.cancel(); soundTask?.cancel()
+        selectedContexts.removeAll(); isStartingPulse = true
         let changedProfile = pulsePlaylistID != playlistID
         pulsePlaylistID = playlistID
         if changedProfile { updateRecommendations() }
@@ -261,7 +270,7 @@ final class AppModel: ObservableObject {
         let cached = mood.flatMap { moodCache[$0] } ?? pulseCache
         if playlistID == nil, pulseCachePlaylistID == nil, let first = PulseEngine.selectCached(cached, library: snapshot, exclude: excluded, currentID: player.current?.id, index: playbackIndex, mood: mood) {
             if let exposure = first.exposure { selectedContexts[first.id] = exposure }
-            player.startPulse(first.track, mood: mood); return
+            isStartingPulse = false; player.startPulse(first.track, mood: mood); return
         }
         Task {
             guard pulseGeneration == token else { return }
@@ -269,6 +278,7 @@ final class AppModel: ObservableObject {
             pulseWork = work
             let result = await work.value
             guard pulseGeneration == token else { return }
+            isStartingPulse = false
             guard let first = result.first else { message = "Пока нет подходящих треков. Обнови подборки или найди музыку в поиске."; return }
             pulseCache = result
             pulseCachePlaylistID = playlistID
@@ -364,20 +374,22 @@ final class AppModel: ObservableObject {
         if successes == 0, !Task.isCancelled, !automatic { message = failure ?? "Каталог пока недоступен. Попробуй ссылку на конкретный трек." }
     }
     func search(_ query: String) async {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let token = UUID(); searchGeneration = token
         defer { if searchGeneration == token { isSearching = false } }
-        if query.trimmingCharacters(in: .whitespacesAndNewlines).count < 2 { searchResults = []; isSearching = false; return }
+        if query.count < 2 { searchResults = []; completedSearchQuery = query; isSearching = false; return }
         isSearching = true
         do {
             let tracks = try await catalog.search(query)
             guard searchGeneration == token, !Task.isCancelled else { return }
-            searchResults = tracks; merge(tracks)
+            searchResults = tracks; completedSearchQuery = query; merge(tracks)
             if player.networkPolicy.canPrewarmExtraTracks { await audioResolver.prewarm(videoIDs: Array(tracks.prefix(3).map(\.id))) }
         } catch is CancellationError { }
-        catch { if searchGeneration == token, !Task.isCancelled { message = error.localizedDescription; searchResults = [] } }
+        catch { if searchGeneration == token, !Task.isCancelled { message = error.localizedDescription; searchResults = []; completedSearchQuery = query } }
     }
     func openYouTube(_ value: String) async {
         let token = UUID(); pulseGeneration = token; pulseWork?.cancel(); linkTask?.cancel(); soundTask?.cancel()
+        isStartingPulse = false
         guard let id = VideoID.parse(value) else { message = "Вставь ссылку на трек или видео YouTube."; return }
         if let existing = library.tracks[id] { play(existing, list: [existing]); return }
         let work = Task { await catalog.describe(videoID: id) }; linkTask = work

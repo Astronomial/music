@@ -8,22 +8,25 @@ struct SettingsView: View {
     @AppStorage("forma.showArtwork") private var showArtwork = true
     @AppStorage("forma.soundAnalysis") private var soundAnalysis = true
     @AppStorage("forma.soundCellular") private var soundCellular = true
+    @AppStorage("forma.compactNavigation") private var compactNavigation = false
+    @AppStorage("forma.starMotion") private var starMotion = true
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                WiFiSettingsView(model: model)
+                LibraryRecoveryNotice(model: model)
                 GlassPanel {
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("Твой цвет").font(.headline)
+                        Text("Оформление").font(.headline).accessibilityAddTraits(.isHeader)
                         Picker("Палитра", selection: $palette) {
                             Text("Ирис").tag("iris"); Text("Мята").tag("mint"); Text("Закат").tag("sunset"); Text("Лёд").tag("ice")
                         }.pickerStyle(.segmented)
+                        Toggle("Навигация только иконками", isOn: $compactNavigation).accessibilityIdentifier("compact-navigation-toggle")
+                        Toggle("Движение звёзд и галактики", isOn: $starMotion)
+                        Toggle("Обложки треков", isOn: $showArtwork)
+                            .onChange(of: showArtwork) { _, _ in model.player.refreshArtworkPreference() }
                     }
                 }
-                GlassPanel {
-                    Toggle("Показывать обложки", isOn: $showArtwork)
-                        .onChange(of: showArtwork) { _, _ in model.player.refreshArtworkPreference() }
-                }
+                WiFiSettingsView(model: model)
                 GlassPanel {
                     VStack(alignment: .leading, spacing: 12) {
                         Toggle("Анализировать звучание", isOn: $soundAnalysis).onChange(of: soundAnalysis) { _, _ in model.soundPolicyChanged() }
@@ -34,9 +37,9 @@ struct SettingsView: View {
                 GlassPanel { PreparationSettingsView(player: model.player) }
                 GlassPanel { DisclosureGroup("Скорость воспроизведения") { PlaybackPerformanceView(player: model.player) } }
                 NavigationLink { PulseSettingsView(model: model) } label: { Label("Настроить Пульс", systemImage: "slider.horizontal.3").font(.headline) }
-                Text("Forma 1.5.0 · iOS 17+\nВоспроизведение работает через нативный плеер. YouTube должен быть доступен в твоей сети.").font(.footnote).foregroundStyle(.secondary)
+                Text("Forma \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "") · iOS 17+").font(.footnote).foregroundStyle(.secondary)
             }.padding(20)
-        }.background(FormaTheme.background).navigationTitle("Настройки")
+        }.cosmicBackground().navigationTitle("Настройки")
     }
 }
 
@@ -63,8 +66,8 @@ private struct WiFiSettingsView: View {
     var body: some View {
         GlassPanel {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Синхронизация с ПК · Wi-Fi").font(.title2.bold())
-                Text("Подключи iPhone и ПК к одной домашней сети. На ПК: Настройки → Подключить iPhone. Каждый обмен требует подтверждения на одном из устройств.").foregroundStyle(.secondary)
+                Text("Синхронизация с ПК").font(.title2.bold())
+                Text("Нужна общая Wi-Fi сеть. На ПК: Настройки → Подключить iPhone. Обмен — после подтверждения на одном из устройств.").foregroundStyle(.secondary)
                 TextField("Вставь код подключения", text: $code, axis: .vertical).textInputAutocapitalization(.never).autocorrectionDisabled().textFieldStyle(.roundedBorder)
                 Button("Подключить ПК") { Task { await model.pairPC(code) } }.buttonStyle(.borderedProminent).disabled(model.isSyncing || code.isEmpty || !model.canSynchronizePC)
                 if let host = model.pcHost {
@@ -85,7 +88,7 @@ private struct WiFiSettingsView: View {
                 }
                 if model.isSyncing { ProgressView("Проверяем обмен…") }
                 Text(model.syncStatus).font(.footnote).foregroundStyle(.secondary)
-                Text("Локальные изменения сохраняются сразу. На другое устройство они переносятся только после подтверждения. Передаются лайки, дизлайки, плейлисты, история, настройки Пульса и признаки звучания; музыкальные файлы остаются на устройстве.").font(.footnote).foregroundStyle(.secondary)
+                DisclosureGroup("Что переносится") { Text("Лайки, дизлайки, плейлисты, история, настройки Пульса и признаки звучания. Музыкальные файлы остаются на устройстве.").font(.footnote).foregroundStyle(.secondary).padding(.top, 8) }
             }
         }
     }
@@ -114,7 +117,7 @@ private struct PreparationSettingsView: View {
             Picker("Глубина подготовки", selection: Binding(get: { player.preparationDepth }, set: { player.setPreparationDepth($0) })) {
                 Text("Следующий").tag(1); Text("До трёх").tag(3)
             }.pickerStyle(.segmented)
-            Text("Подготовка начала следующих треков Пульса и очереди работает также по мобильной сети. Расход трафика увеличивается. Режим экономии данных iOS не уменьшает выбранную глубину подготовки.").font(.footnote).foregroundStyle(.secondary)
+            Text("Включая мобильную сеть и режим экономии данных. Увеличивает расход трафика.").font(.footnote).foregroundStyle(.secondary)
         }
     }
 }

@@ -2,7 +2,8 @@ import SwiftUI
 import FormaCore
 
 enum FormaTheme {
-    static let background = Color(red: 0.025, green: 0.03, blue: 0.05)
+    static let background = Color(red: 0.018, green: 0.012, blue: 0.033)
+    static let panel = Color(red: 0.10, green: 0.075, blue: 0.16).opacity(0.68)
     static var accent: Color { color(UserDefaults.standard.string(forKey: "forma.palette") ?? "iris") }
     static func color(_ palette: String) -> Color {
         switch palette { case "mint": return Color(red: 0.4, green: 0.92, blue: 0.7); case "sunset": return Color(red: 1, green: 0.65, blue: 0.5); case "ice": return Color(red: 0.5, green: 0.8, blue: 1); default: return Color(red: 0.73, green: 0.65, blue: 1) }
@@ -12,9 +13,11 @@ enum FormaTheme {
 @MainActor
 struct GlassPanel<Content: View>: View {
     let content: Content
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     init(@ViewBuilder content: () -> Content) { self.content = content() }
     var body: some View {
-        content.padding(20).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24))
+        content.frame(maxWidth: .infinity, alignment: .leading).padding(20)
+            .background(reduceTransparency ? FormaTheme.background : FormaTheme.panel, in: RoundedRectangle(cornerRadius: 24))
             .overlay(RoundedRectangle(cornerRadius: 24).stroke(.white.opacity(0.08), lineWidth: 1))
     }
 }

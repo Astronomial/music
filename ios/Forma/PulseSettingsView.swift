@@ -13,8 +13,7 @@ struct PulseSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                Text("Твой Пульс. Твой выбор.").font(.largeTitle.bold())
-                Text("Сохраняй любимое. Прослушивания и пропуски уточняют направление.").foregroundStyle(.secondary)
+                Text("Что слушаем?").font(.largeTitle.bold()).accessibilityAddTraits(.isHeader)
                 Button("Больше новых имён") { model.configure { $0.discovery = 0.85; $0.explorationStyle = "nearby"; $0.artistDiversity = 1; $0.repeatHours = 24 } }.buttonStyle(.bordered)
                 Button("На каждый день · 70/30") { model.configure({ $0.discovery = 0.7; $0.explorationStyle = "nearby"; $0.languagePreference = "ru"; $0.skipSensitivity = "strict"; $0.artistDiversity = 0.6 }, refreshCatalog: true) }.buttonStyle(.bordered)
                 GlassPanel {
@@ -30,8 +29,7 @@ struct PulseSettingsView: View {
                             Text("Предлагать похожее реже").tag("strict"); Text("Не подходит сейчас").tag("soft")
                         }
                         Text("Влияние текущей сессии · \(Int(model.library.settings.sessionInfluence * 100))%").font(.subheadline)
-                        Slider(value: Binding(get: { model.library.settings.sessionInfluence }, set: { value in model.configure { $0.sessionInfluence = value } }), in: 0...1, step: 0.05)
-                        Text("Модель учится на дослушиваниях, сохранениях и пропусках. Доля открытий и расстояние от вкуса задаются отдельно; серии пропусков уменьшают эксперименты. Язык по названиям определяется приблизительно.").font(.footnote).foregroundStyle(.secondary)
+                        Slider(value: Binding(get: { model.library.settings.sessionInfluence }, set: { value in model.configure { $0.sessionInfluence = value } }), in: 0...1, step: 0.05).accessibilityLabel("Влияние текущей сессии")
                     }
                 }
                 GlassPanel {
@@ -68,11 +66,10 @@ struct PulseSettingsView: View {
                 GlassPanel {
                     VStack(alignment: .leading, spacing: 16) {
                         Text("Доля открытий · \(Int(model.library.settings.discovery * 100))%").font(.headline)
-                        Slider(value: Binding(get: { model.library.settings.discovery }, set: { value in model.configure { $0.discovery = value } }), in: 0...1)
+                        Slider(value: Binding(get: { model.library.settings.discovery }, set: { value in model.configure { $0.discovery = value } }), in: 0...1).accessibilityLabel("Доля открытий")
                         HStack { Text("Знакомое"); Spacer(); Text("Новое") }.font(.caption).foregroundStyle(.secondary)
                         Text("Разнообразие исполнителей").font(.headline)
-                        Slider(value: Binding(get: { model.library.settings.artistDiversity }, set: { value in model.configure { $0.artistDiversity = value } }), in: 0...1)
-                        Text("Больше расстояние между повторами артистов и больше новых имён. В маленьком каталоге повторы всё же возможны.").font(.footnote).foregroundStyle(.secondary)
+                        Slider(value: Binding(get: { model.library.settings.artistDiversity }, set: { value in model.configure { $0.artistDiversity = value } }), in: 0...1).accessibilityLabel("Разнообразие исполнителей")
                         Toggle("Включать сохранённые треки", isOn: Binding(get: { model.library.settings.includeLibrary }, set: { value in model.configure { $0.includeLibrary = value } }))
                         Picker("Не повторять треки", selection: Binding(get: { model.library.settings.repeatHours }, set: { value in model.configure { $0.repeatHours = value } })) {
                             Text("Без интервала").tag(0.0); Text("30 минут").tag(0.5); Text("2 часа").tag(2.0); Text("6 часов").tag(6.0); Text("Сутки").tag(24.0)
@@ -104,12 +101,12 @@ struct PulseSettingsView: View {
                         }
                     }
                 }
-                Text("Все подборки используют общий вкус. Настроение определяется по направлению поиска, поэтому соответствие может быть неточным.").font(.footnote).foregroundStyle(.secondary)
+                Text("Общий вкус уточняется прослушиваниями, сохранениями, пропусками и звучанием треков. Оценка настроения может быть неточной.").font(.footnote).foregroundStyle(.secondary)
                 Button("Экспортировать библиотеку") { do { export = try model.exportLibrary() } catch { model.message = error.localizedDescription } }.buttonStyle(.bordered)
                 if let export { ShareLink(item: export) { Label("Поделиться файлом", systemImage: "square.and.arrow.up") } }
                 Button("Авторы и лицензии") { showLicenses = true }.font(.subheadline)
             }.padding(20)
-        }.background(FormaTheme.background).navigationTitle("Настройка Пульса").navigationBarTitleDisplayMode(.inline)
+        }.cosmicBackground().navigationTitle("Настройка Пульса").navigationBarTitleDisplayMode(.inline)
             .toolbar { Button("Готово") { dismiss() } }
             .onAppear { preferredArtistText = model.library.settings.preferredArtists.joined(separator: ", "); excludedArtistText = model.library.settings.excludedArtists.joined(separator: ", ") }
             .onChange(of: model.library.settings.preferredArtists) { _, names in if artistNames(preferredArtistText) != names { preferredArtistText = names.joined(separator: ", ") } }

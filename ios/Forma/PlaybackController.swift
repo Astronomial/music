@@ -16,7 +16,10 @@ final class PlaybackController: ObservableObject {
     @Published private(set) var error: String?
     @Published private(set) var measurements: [PlaybackMeasurement] = []
     private var startTiming: (at: TimeInterval, wall: Date, resolved: TimeInterval?, source: String)?
-    @Published var volume: Float = 0.7 { didSet { engine.volume = volume } }
+    @Published var volume: Float = {
+        guard let stored = UserDefaults.standard.object(forKey: "forma.volume") as? NSNumber, stored.floatValue.isFinite else { return 0.7 }
+        return max(0, min(1, stored.floatValue))
+    }() { didSet { engine.volume = volume; UserDefaults.standard.set(volume, forKey: "forma.volume") } }
     @Published private(set) var networkPolicy = NetworkPolicy.unknown
     var onConnectivityChange: ((NetworkPolicy) -> Void)?
     var onStarted: ((Track) -> Void)?
@@ -282,8 +285,17 @@ final class PlaybackController: ObservableObject {
         catch { fail(error) }
     }
     func next(ended: Bool = false) {
+        advance(ended: ended, recordFeedback: true)
+    }
+    /// An explicit dislike is already feedback. Do not also train a skip/listen.
+    func skipDislikedTrack(_ id: String) {
         adoptPreparedItem()
-        finish(ended ? .listen : .skip)
+        guard current?.id == id else { return }
+        advance(ended: false, recordFeedback: false)
+    }
+    private func advance(ended: Bool, recordFeedback: Bool) {
+        adoptPreparedItem()
+        if recordFeedback { finish(ended ? .listen : .skip) } else { clock.reset() }
         if let current { playedInRun.insert(current.id) }
         if pulseMode { refreshPreparedSelection() }
         if let ready = prepared, ready.audio.isFresh(margin: 15), ready.item.status != .failed, engine.items().contains(ready.item) {
