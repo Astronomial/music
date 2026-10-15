@@ -158,7 +158,7 @@ struct MoodView: View {
             VStack(alignment: .leading, spacing: 20) {
                 Text(mix.title).font(.largeTitle.bold())
                 Text(mix.subtitle).foregroundStyle(.secondary)
-                Button { model.startPulse(mood: mix.id) } label: { Label("Слушать подборку", systemImage: "play.fill") }.buttonStyle(.borderedProminent).disabled(tracks.isEmpty)
+                Button { model.startPulse(mood: mix.id) } label: { Label("Слушать подборку", systemImage: "play.fill") }.buttonStyle(.borderedProminent).foregroundStyle(FormaTheme.background).disabled(tracks.isEmpty)
                 if tracks.isEmpty { EmptyState(title: model.isRefreshing ? "Подбираем треки…" : "Пока нет подходящих треков", text: "Обнови подборки на главной или добавь любимую музыку.") }
                 ForEach(tracks) { track in TrackRow(model: model, track: track) { model.playRecommendation(track, mood: mix.id) } }
             }.padding(20)
@@ -203,7 +203,7 @@ struct LibraryView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 12) {
                 if model.liked.isEmpty { EmptyState(title: "Здесь будет любимое", text: "Сохраняй треки сердечком — они станут основой Пульса.") }
-                else { Button { if let first = model.liked.first { model.play(first, list: model.liked) } } label: { Label("Слушать любимое", systemImage: "play.fill") }.buttonStyle(.borderedProminent) }
+                else { Button { if let first = model.liked.first { model.play(first, list: model.liked) } } label: { Label("Слушать любимое", systemImage: "play.fill") }.buttonStyle(.borderedProminent).foregroundStyle(FormaTheme.background) }
                 ForEach(model.liked) { track in TrackRow(model: model, track: track) { model.play(track, list: model.liked) } }
             }.padding(20)
         }.cosmicBackground().navigationTitle("Любимое")

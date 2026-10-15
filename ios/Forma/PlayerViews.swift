@@ -59,6 +59,7 @@ struct NowPlayingView: View {
     @State private var dragging = false
     @State private var seekTrackID: String?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var typeSize
     private var contextTitle: String {
         if let mood = player.selectionMood { return MoodMix.all.first { $0.id == mood }?.title ?? "Подборка" }
         if let playlistID = model.pulsePlaylistID { return model.library.playlists.first { $0.id == playlistID }?.name ?? "Пульс" }
@@ -98,11 +99,22 @@ struct NowPlayingView: View {
                         Slider(value: $player.volume, in: 0...1).accessibilityLabel("Громкость")
                         Image(systemName: "speaker.wave.3.fill").foregroundStyle(.secondary)
                     }
-                    if let track = player.current { HStack { Button { model.toggleDislike(track) } label: { Label(model.isDisliked(track) ? "Дизлайк" : "Не нравится", systemImage: model.isDisliked(track) ? "hand.thumbsdown.fill" : "hand.thumbsdown") }.buttonStyle(.bordered); Button { model.toggleLike(track) } label: { Label(model.isLiked(track) ? "В любимом" : "Сохранить", systemImage: model.isLiked(track) ? "heart.fill" : "heart") }.buttonStyle(.bordered) } }
+                    if let track = player.current {
+                        if typeSize.isAccessibilitySize { VStack(spacing: 12) { ratings(track) } }
+                        else { HStack(spacing: 12) { ratings(track) } }
+                    }
                 }.padding(24)
             }.cosmicBackground().tint(FormaTheme.accent)
                 .onChange(of: player.current?.id) { _, _ in dragging = false; seekTrackID = nil; seekValue = player.position }
         }.navigationTitle(contextTitle).navigationBarTitleDisplayMode(.inline)
             .toolbar { Button("Готово") { dismiss() }.accessibilityLabel("Закрыть плеер") }
+    }
+    @ViewBuilder private func ratings(_ track: Track) -> some View {
+        Button { model.toggleDislike(track) } label: {
+            Label(model.isDisliked(track) ? "Снять дизлайк" : "Не нравится", systemImage: model.isDisliked(track) ? "hand.thumbsdown.fill" : "hand.thumbsdown").frame(minHeight: 32)
+        }.buttonStyle(.bordered).accessibilityHint("Переключает текущий трек")
+        Button { model.toggleLike(track) } label: {
+            Label(model.isLiked(track) ? "В любимом" : "Сохранить", systemImage: model.isLiked(track) ? "heart.fill" : "heart").frame(minHeight: 32)
+        }.buttonStyle(.bordered).accessibilityLabel(model.isLiked(track) ? "Убрать из любимого" : "Добавить в любимое")
     }
 }

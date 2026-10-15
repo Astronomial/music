@@ -6,6 +6,7 @@ with tempfile.TemporaryDirectory(prefix='forma-simulator-') as directory:
     server = subprocess.Popen(['node', str(root/'ios/Scripts/smoke-sync-server.mjs'), directory])
     device = None
     launch = None
+    container = None
     console = root/'ios/native-smoke-console.txt'
     stream = console.open('w')
     try:
@@ -71,7 +72,6 @@ with tempfile.TemporaryDirectory(prefix='forma-simulator-') as directory:
         run('xcrun','simctl','io',device,'screenshot',str(root/'ios/native-layout.png'))
         design = container/'Documents/design-audit'
         if not design.is_dir(): raise RuntimeError('Native design captures missing')
-        shutil.copytree(design, root/'ios/native-design', dirs_exist_ok=True)
         # Moving to Safari is the assertion's only purpose: opening our pinned
         # self-signed HTTPS server additionally invokes unrelated browser/TLS UI.
         # A cold Simulator may time out its launch RPC after Safari actually opens;
@@ -98,6 +98,8 @@ with tempfile.TemporaryDirectory(prefix='forma-simulator-') as directory:
             time.sleep(1)
         else: raise RuntimeError('Native simulator smoke timed out')
     finally:
+        if container and (container/'Documents/design-audit').is_dir():
+            shutil.copytree(container/'Documents/design-audit', root/'ios/native-design', dirs_exist_ok=True)
         if launch and launch.poll() is None:
             launch.terminate()
             try: launch.wait(timeout=10)

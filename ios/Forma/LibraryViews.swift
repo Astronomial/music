@@ -43,7 +43,7 @@ struct PlaylistView: View {
                 Text(title).font(.largeTitle.bold())
                 Text("\(tracks.count) треков").foregroundStyle(.secondary)
                 HStack {
-                    Button { if let first = tracks.first { model.play(first, list: tracks) } } label: { Label("Слушать", systemImage: "play.fill") }.buttonStyle(.borderedProminent)
+                    Button { if let first = tracks.first { model.play(first, list: tracks) } } label: { Label("Слушать", systemImage: "play.fill") }.buttonStyle(.borderedProminent).foregroundStyle(FormaTheme.background)
                     Button { model.startPulse(playlistID: playlistID) } label: { Label("Пульс", systemImage: "waveform") }.buttonStyle(.bordered)
                 }.disabled(tracks.isEmpty)
                 ForEach(tracks) { track in

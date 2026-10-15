@@ -10,6 +10,7 @@ struct SettingsView: View {
     @AppStorage("forma.soundCellular") private var soundCellular = true
     @AppStorage("forma.compactNavigation") private var compactNavigation = false
     @AppStorage("forma.starMotion") private var starMotion = true
+    @Environment(\.dynamicTypeSize) private var typeSize
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
@@ -17,9 +18,8 @@ struct SettingsView: View {
                 GlassPanel {
                     VStack(alignment: .leading, spacing: 16) {
                         Text("Оформление").font(.headline).accessibilityAddTraits(.isHeader)
-                        Picker("Палитра", selection: $palette) {
-                            Text("Ирис").tag("iris"); Text("Мята").tag("mint"); Text("Закат").tag("sunset"); Text("Лёд").tag("ice")
-                        }.pickerStyle(.segmented)
+                        if typeSize.isAccessibilitySize { palettePicker.pickerStyle(.menu) }
+                        else { palettePicker.pickerStyle(.segmented) }
                         Toggle("Навигация только иконками", isOn: $compactNavigation).accessibilityIdentifier("compact-navigation-toggle")
                         Toggle("Движение звёзд и галактики", isOn: $starMotion)
                         Toggle("Обложки треков", isOn: $showArtwork)
@@ -31,7 +31,10 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Toggle("Анализировать звучание", isOn: $soundAnalysis).onChange(of: soundAnalysis) { _, _ in model.soundPolicyChanged() }
                         Toggle("Анализ по мобильной сети", isOn: $soundCellular).disabled(!soundAnalysis).onChange(of: soundCellular) { _, _ in model.soundPolicyChanged() }
-                        Text("Пульс сравнивает спектр, темп, динамику и ритм. До 6 МБ на трек, 12 треков в час; временное аудио удаляется после обработки. Проанализировано: \(model.library.tracks.values.filter { $0.soundProfile != nil }.count)").font(.footnote).foregroundStyle(.secondary)
+                        Text("Проанализировано: \(model.library.tracks.values.filter { $0.soundProfile != nil }.count) треков").font(.footnote).foregroundStyle(.secondary)
+                        DisclosureGroup("Как работает анализ") {
+                            Text("Учитываются темп, ритм и энергия. До 6 МБ на трек, 12 треков в час. Временное аудио удаляется после обработки.").font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
+                        }
                     }
                 }
                 GlassPanel { PreparationSettingsView(player: model.player) }
@@ -40,6 +43,11 @@ struct SettingsView: View {
                 Text("Forma \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "") · iOS 17+").font(.footnote).foregroundStyle(.secondary)
             }.padding(20)
         }.cosmicBackground().navigationTitle("Настройки")
+    }
+    private var palettePicker: some View {
+        Picker("Палитра", selection: $palette) {
+            Text("Ирис").tag("iris"); Text("Мята").tag("mint"); Text("Закат").tag("sunset"); Text("Лёд").tag("ice")
+        }
     }
 }
 
@@ -69,7 +77,7 @@ private struct WiFiSettingsView: View {
                 Text("Синхронизация с ПК").font(.title2.bold())
                 Text("Нужна общая Wi-Fi сеть. На ПК: Настройки → Подключить iPhone. Обмен — после подтверждения на одном из устройств.").foregroundStyle(.secondary)
                 TextField("Вставь код подключения", text: $code, axis: .vertical).textInputAutocapitalization(.never).autocorrectionDisabled().textFieldStyle(.roundedBorder)
-                Button("Подключить ПК") { Task { await model.pairPC(code) } }.buttonStyle(.borderedProminent).disabled(model.isSyncing || code.isEmpty || !model.canSynchronizePC)
+                Button("Подключить ПК") { Task { await model.pairPC(code) } }.buttonStyle(.borderedProminent).foregroundStyle(FormaTheme.background).disabled(model.isSyncing || code.isEmpty || !model.canSynchronizePC)
                 if let host = model.pcHost {
                     Text("ПК: \(host)").font(.subheadline)
                     if let proposal = model.syncProposal {
@@ -77,7 +85,7 @@ private struct WiFiSettingsView: View {
                         WiFiChangesView(title: "На ПК", summary: proposal.summary.toPC)
                         WiFiChangesView(title: "На iPhone", summary: proposal.summary.toPhone)
                         if proposal.status == .pending {
-                            Button("Применить на обоих устройствах") { Task { await model.approveExchange() } }.buttonStyle(.borderedProminent).disabled(model.isSyncing || !model.canSynchronizePC)
+                            Button("Применить на обоих устройствах") { Task { await model.approveExchange() } }.buttonStyle(.borderedProminent).foregroundStyle(FormaTheme.background).disabled(model.isSyncing || !model.canSynchronizePC)
                         }
                         Button("Отклонить обмен", role: .destructive) { Task { await model.rejectExchange() } }.disabled(model.isSyncing || !model.canSynchronizePC || proposal.status == .approved || proposal.status == .committing)
                         Button("Проверить решение на ПК") { Task { await model.synchronize(showErrors: true) } }.disabled(model.isSyncing || !model.canSynchronizePC)

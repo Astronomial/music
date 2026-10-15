@@ -75,6 +75,7 @@ struct PulseGalaxy: View {
             Image("PulseGalaxy").resizable().scaledToFit()
                 .rotationEffect(.degrees(moving ? timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 240) * 1.5 : 0))
         }
+        .scaleEffect(x: 1.4, y: 0.8).rotationEffect(.degrees(-18))
         .allowsHitTesting(false).accessibilityHidden(true)
         .onAppear { visible = true }.onDisappear { visible = false }
     }
@@ -101,7 +102,7 @@ struct PulseHero: View {
                         else { Image(systemName: active && player.isPlaying ? "pause.fill" : "play.fill") }
                         Text(active && player.isPlaying ? "Пауза" : "Слушать Пульс").fontWeight(.semibold)
                     }.frame(minHeight: 32).padding(.horizontal, 12)
-                }.buttonStyle(.borderedProminent).buttonBorderShape(.capsule)
+                }.buttonStyle(.borderedProminent).foregroundStyle(FormaTheme.background).buttonBorderShape(.capsule)
                     .disabled(model.isRestoringLibrary || model.isStartingPulse)
                     .accessibilityIdentifier("personal-pulse-play")
                 Button(action: settings) { Image(systemName: "slider.horizontal.3").frame(width: 48, height: 48) }

@@ -59,15 +59,18 @@ enum NativeDesignAudit {
         defaults.set(false, forKey: "forma.compactNavigation")
         defaults.set(false, forKey: "forma.starMotion")
         for tab in 0..<4 {
-            selectTab(tab); try await settle(); try verifyTabs(tab, compact: false); try snapshot("\(tab)-standard")
+            selectTab(tab); try await settle(); try snapshot("\(tab)-standard"); try verifyTabs(tab, compact: false)
         }
         defaults.set(true, forKey: "forma.compactNavigation")
         for tab in 0..<4 {
-            selectTab(tab); try await settle(); try verifyTabs(tab, compact: true); try snapshot("\(tab)-compact")
+            selectTab(tab); try await settle(); try snapshot("\(tab)-compact"); try verifyTabs(tab, compact: true)
         }
         selectTab(0); largeText(true); try await settle(); try verifyTabs(0, compact: true); try snapshot("home-large-text")
-        largeText(false); try await settle()
+        selectTab(3); try await settle(); try snapshot("settings-large-text"); try verifyTabs(3, compact: true)
+        selectTab(0); largeText(false); try await settle()
         present("player"); try await settle(); try snapshot("player")
+        largeText(true); try await settle(); try snapshot("player-large-text")
+        largeText(false)
         present(nil); try await settle()
         present("pulse"); try await settle(); try snapshot("pulse-settings")
         present(nil); try await settle()
