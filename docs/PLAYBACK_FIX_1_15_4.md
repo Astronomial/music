@@ -34,3 +34,9 @@
 Живой YouTube недоступен из среды по сетевой политике. Контролируемые проверки не подтверждают доступность сервиса на пользовательском подключении.
 
 Источники: [Format YouTube.js](https://github.com/LuanRT/YouTube.js/blob/main/src/parser/classes/misc/Format.ts), [описание смены WEB-потоков](https://github.com/yt-dlp/yt-dlp/issues/12482), [hls.js](https://github.com/video-dev/hls.js), работающие правила MIME и объединения форматов в ios/Vendor/YouTubeKit этого репозитория.
+
+## Готовый релиз
+
+[GitHub Actions](https://github.com/Astronomial/music/actions/runs/38752300736) завершён успешно: 149 тестов, шесть UI-сценариев, нативный сценарий Windows и отдельный запуск упакованного Forma.exe. Последний подтвердил app.isPackaged и app.asar, версию 1.15.4, AAC/HLS, перемотку, фон, переключение на локальный файл и сохранение профиля.
+
+Публичный EXE скачан и распакован: 92 563 964 байт, PE x64, 51 файл совпал с исходниками/локальной сборкой (44 после нормализации CRLF), HLS-чанк, нативный HLS-модуль, WASM и лицензия hls.js присутствуют. SHA-256 совпал с манифестом и digest GitHub: `f6f87e8a9e0e22ae42fb75ae924931421949beabdaac49f9b3fa375d0216c499`. [Результат](../artifacts/windows-1.15.4-verification.json). Исходники релиза: `502c8b83f5c14f3b567c6a21cd0c1ef6641d4c73`.
