@@ -74,7 +74,8 @@ jobs:
             ios/native-process-sample.txt
           if-no-files-found: error
       - name: Publish iOS download
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        # Audit-only commits verify the existing release without replacing its IPA.
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && !contains(github.event.head_commit.message, '[ios audit]')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

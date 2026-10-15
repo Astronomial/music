@@ -1,5 +1,5 @@
 """Run native AVQueuePlayer and pinned TLS sync in an actual iOS Simulator."""
-import json, pathlib, shutil, signal, subprocess, tempfile, time, urllib.parse
+import json, pathlib, re, shutil, signal, subprocess, tempfile, time, urllib.parse
 run = lambda *args: subprocess.check_output(args, text=True, timeout=180).strip()
 root = pathlib.Path(__file__).resolve().parents[2]
 with tempfile.TemporaryDirectory(prefix='forma-simulator-') as directory:
@@ -49,10 +49,23 @@ with tempfile.TemporaryDirectory(prefix='forma-simulator-') as directory:
         launch = subprocess.Popen(['xcrun','simctl','launch','--console',device,'music.forma.ios','--forma-smoke','--forma-pair-code',pairing,'--forma-slow-audio',slow_audio], stdout=stream, stderr=stream)
         print('Launching native app; waiting for foreground audio', flush=True)
         last_stage = None
+        last_capture = None
         launch_deadline = time.monotonic() + 240
         test_deadline = None
         while time.monotonic() < (test_deadline or launch_deadline):
             if launch.poll() is not None and launch.returncode != 0: raise RuntimeError('Simulator launch failed')
+            capture = container/'Documents/design-capture.json'
+            if capture.exists():
+                request = json.loads(capture.read_text())
+                if request['id'] != last_capture:
+                    name = request['name']
+                    if not re.fullmatch(r'[a-z0-9-]+', name): raise RuntimeError('Invalid design capture name')
+                    destination = container/'Documents/design-audit'
+                    destination.mkdir(exist_ok=True)
+                    run('xcrun','simctl','io',device,'screenshot',str(destination/(name+'.png')))
+                    (container/'Documents/design-capture-ack.txt').write_text(request['id'])
+                    last_capture = request['id']
+                    print('Native system capture: ' + name, flush=True)
             if report.exists():
                 result = json.loads(report.read_text())
                 # A cold CI simulator may spend minutes starting the process.

@@ -49,32 +49,40 @@ enum NativeDesignAudit {
             }
         }
         var captures = 0
-        func snapshot(_ name: String) throws {
-            window.layoutIfNeeded()
-            let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
-            let image = renderer.image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
-            guard let data = image.pngData() else { throw SyncError.rejected("Native screen capture failed") }
-            try data.write(to: directory.appendingPathComponent(name + ".png")); captures += 1
+        func snapshot(_ name: String) async throws {
+            // Capture the compositor, including UIKit lists/materials. A view's
+            // drawHierarchy snapshot can omit their safe-area overlay layers.
+            let documents = directory.deletingLastPathComponent()
+            let id = UUID().uuidString
+            let request = try JSONSerialization.data(withJSONObject: ["id": id, "name": name])
+            try request.write(to: documents.appendingPathComponent("design-capture.json"), options: .atomic)
+            for _ in 0..<300 {
+                if (try? String(contentsOf: documents.appendingPathComponent("design-capture-ack.txt"), encoding: .utf8)) == id {
+                    captures += 1; return
+                }
+                try await Task.sleep(nanoseconds: 50_000_000)
+            }
+            throw SyncError.rejected("System screenshot was not acknowledged: \(name)")
         }
         guard let image = UIImage(named: "PulseGalaxy"), image.size.width >= 1024 else { throw SyncError.rejected("Galaxy texture missing or undersized") }
         defaults.set(false, forKey: "forma.compactNavigation")
         defaults.set(false, forKey: "forma.starMotion")
         for tab in 0..<4 {
-            selectTab(tab); try await settle(); try snapshot("\(tab)-standard"); try verifyTabs(tab, compact: false)
+            selectTab(tab); try await settle(); try await snapshot("\(tab)-standard"); try verifyTabs(tab, compact: false)
         }
         defaults.set(true, forKey: "forma.compactNavigation")
         for tab in 0..<4 {
-            selectTab(tab); try await settle(); try snapshot("\(tab)-compact"); try verifyTabs(tab, compact: true)
+            selectTab(tab); try await settle(); try await snapshot("\(tab)-compact"); try verifyTabs(tab, compact: true)
         }
-        selectTab(0); largeText(true); try await settle(); try verifyTabs(0, compact: true); try snapshot("home-large-text")
-        selectTab(3); try await settle(); try snapshot("settings-large-text"); try verifyTabs(3, compact: true)
+        selectTab(0); largeText(true); try await settle(); try verifyTabs(0, compact: true); try await snapshot("home-large-text")
+        selectTab(3); try await settle(); try await snapshot("settings-large-text"); try verifyTabs(3, compact: true)
         selectTab(0); largeText(false); try await settle()
-        present("player"); try await settle(); try snapshot("player")
-        largeText(true); try await settle(); try snapshot("player-large-text")
+        present("player"); try await settle(); try await snapshot("player")
+        largeText(true); try await settle(); try await snapshot("player-large-text")
         guard playerTextSize == .accessibility3 else { throw SyncError.rejected("Large-text audit did not reach the presented player") }
         largeText(false)
         present(nil); try await settle()
-        present("pulse"); try await settle(); try snapshot("pulse-settings")
+        present("pulse"); try await settle(); try await snapshot("pulse-settings")
         present(nil); try await settle()
         return ["nativeDesignScreens": captures, "compactTabsKeepVoiceOverNames": true, "nativeTabSelectionVerified": true,
                 "largeTextMiniPlayerAboveTabs": true, "largeTextPlayerVerified": true, "galaxyTexture1024": true]
