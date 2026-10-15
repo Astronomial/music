@@ -1,7 +1,7 @@
 // Runs inside the real Electron main process. The extractor is controlled, but
 // CDN bytes, redirects and cancellation use Chromium's actual network stack.
-export async function installMediaFixture({net,app},{audio,project}){
-  const require=process.getBuiltinModule('module').createRequire(project+'/electron/main.cjs');
+export async function installMediaFixture({net,app},{audio,hlsFiles={}}){
+  const require=process.getBuiltinModule('module').createRequire(app.getAppPath()+'/electron/main.cjs');
   const assert=require('node:assert/strict'),http=require('node:http');
   const {mediaFetch}=require('./media-fetch.cjs'),bytes=Buffer.from(audio,'base64');
   const seen=[];let closedSlow=0,closedStall=0;
@@ -10,6 +10,12 @@ export async function installMediaFixture({net,app},{audio,project}){
     seen.push({path:url.pathname,range:url.searchParams.get('range'),headers:request.headers});
     if(url.pathname==='/stall'){response.once('close',()=>closedStall++);return;}
     if(url.pathname==='/redirect'){response.writeHead(302,{Location:'/direct'});response.end();return;}
+    if(url.pathname.includes('/hls/')){
+      const name=url.pathname.split('/').at(-1),encoded=hlsFiles[name];
+      if(!encoded){response.writeHead(404);response.end();return;}
+      const data=Buffer.from(encoded,'base64'),range=url.searchParams.get('range'),[start,end]=range?range.split('-').map(Number):[0,data.length-1],part=data.subarray(start,Math.min(end+1,data.length));
+      response.writeHead(200,{'Content-Type':name.endsWith('.m3u8')?'application/vnd.apple.mpegurl':'application/octet-stream','Content-Length':String(part.length)});response.end(part);return;
+    }
     if(url.pathname.startsWith('/r1.googlevideo.com/')){response.writeHead(302,{Location:'https://r2.googlevideo.com/native-audio'});response.end();return;}
     if(url.pathname==='/slow'){response.once('close',()=>closedSlow++);response.writeHead(200,{'Content-Type':'audio/mp4'});response.write(bytes.subarray(0,1024));return;}
     const range=url.searchParams.get('range'),[start,end]=range?range.split('-').map(Number):[0,bytes.length-1],part=bytes.subarray(start,Math.min(end+1,bytes.length));

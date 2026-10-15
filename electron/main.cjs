@@ -5,9 +5,12 @@ const { playerBrowserURL, playerRequestHeaders } = require('./player-links.cjs')
 const { Store } = require('./storage.cjs');
 const { folderFiles, importLocalFile } = require('./local.cjs');
 const { OfflineLibrary, validId } = require('./offline.cjs');
-protocol.registerSchemesAsPrivileged(['forma-audio','forma-stream'].map(scheme=>({scheme,privileges:{standard:true,secure:true,stream:true,supportFetchAPI:true}})));
+protocol.registerSchemesAsPrivileged(['forma-audio','forma-stream'].map(scheme=>({scheme,privileges:{standard:true,secure:true,stream:true,supportFetchAPI:true,corsEnabled:true}})));
 let window, store, offline, youtubeAudio, uiServer, syncServer, coordinator, desktopBaseline, closing = false, closeTimer;
 // Dev smoke tests use an explicit temporary profile on all operating systems.
+// Explicit isolated profiles also let release checks run the packaged EXE.
+const profileArg=process.argv.find(arg=>arg.startsWith('--user-data-dir='));
+if(profileArg)app.setPath('userData',path.resolve(profileArg.slice('--user-data-dir='.length)));
 const testDataArg = process.argv.find(arg=>arg.startsWith('--forma-test-data='));
 if(!app.isPackaged&&testDataArg) app.setPath('userData',path.resolve(testDataArg.slice('--forma-test-data='.length)));
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -84,14 +87,18 @@ app.whenReady().then(async () => {
   });
   handle('yandex:cancel',()=>importController?.abort());
   youtubeAudio=new (require('./youtube-audio.cjs').YouTubeAudio)((input,options)=>net.fetch(input,options),undefined,{fetchMedia:(input,options)=>require('./media-fetch.cjs').mediaFetch(net,input,options)});
-  protocol.handle('forma-stream',request=>{
+  protocol.handle('forma-stream',async request=>{
     const u=new URL(request.url);
-    return u.hostname==='youtube'?youtubeAudio.respond(u.pathname.slice(1),request):new Response(null,{status:404});
+    if(u.hostname!=='youtube')return new Response(null,{status:404});
+    const hls=u.pathname.match(/^\/([\w-]{11})\/hls\/([\w.-]+)$/);
+    const response=await(hls?youtubeAudio.respondHls(hls[1],hls[2],request):youtubeAudio.respond(u.pathname.slice(1),request));
+    const headers=new Headers(response.headers);headers.set('Access-Control-Allow-Origin','*');headers.set('Access-Control-Expose-Headers','Content-Length,Content-Range');
+    return new Response(response.body,{status:response.status,headers});
   });
   handle('audio:sources',async id=> {
     if(typeof id!=='string')throw new Error('Некорректный трек');
     if(validId(id)&&offline.manifest[id])return [`forma-audio://track/${id}`];
-    if(/^yt_[A-Za-z0-9_-]{11}$/.test(id)){const videoID=id.slice(3);await youtubeAudio.resolve(videoID);return [`forma-stream://youtube/${videoID}`];}
+    if(/^yt_[A-Za-z0-9_-]{11}$/.test(id)){const videoID=id.slice(3),source=await youtubeAudio.resolve(videoID);return [`forma-stream://youtube/${videoID}${source.kind==='hls'?'/hls/index.m3u8':''}`];}
     throw new Error('Трек недоступен. Найди версию в поиске YouTube.');
   });
   handle('audio:error',id=>youtubeAudio.error(String(id).replace(/^yt_/,'')));
@@ -124,7 +131,7 @@ app.whenReady().then(async () => {
   window.webContents.on('will-navigate',(e,url)=>{if(url!==entry){e.preventDefault();openPlayerLink(url);}});
   window.webContents.session.setPermissionRequestHandler((_wc,_permission,cb)=>cb(false));
   window.webContents.session.webRequest.onHeadersReceived((details,callback)=> {
-    if(details.url===entry) callback({responseHeaders:{...details.responseHeaders,'Content-Security-Policy':["default-src 'self'; script-src 'self' https://www.youtube.com https://s.ytimg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob: forma-audio:; media-src 'self' forma-stream: forma-audio: blob:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; frame-src https://www.youtube.com https://www.youtube-nocookie.com"]}});
+    if(details.url===entry) callback({responseHeaders:{...details.responseHeaders,'Content-Security-Policy':["default-src 'self'; script-src 'self' https://www.youtube.com https://s.ytimg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob: forma-audio:; media-src 'self' forma-stream: forma-audio: blob:; connect-src 'self' https: forma-stream:; object-src 'none'; base-uri 'self'; frame-src https://www.youtube.com https://www.youtube-nocookie.com"]}});
     else callback({responseHeaders:details.responseHeaders});
   });
   app.setAppUserModelId(desktopAppID);

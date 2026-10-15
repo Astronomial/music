@@ -16,7 +16,7 @@ test('audio fallback wins a stalled primary; one failing client can recover with
  const a=new YouTubeAudio(async()=>audio(),()=>({getBasicInfo:async(_,options)=>options.client==='VISIONOS'?await new Promise(r=>setTimeout(()=>r(info()),600)):info()}));
  const start=performance.now();await a.resolve(id);assert.ok(performance.now()-start<550);a.close();
  let fail=true;const b=new YouTubeAudio(async()=>audio(),()=>({getBasicInfo:async()=>{if(fail)throw Error('network');return info();}}));
- await assert.rejects(b.resolve(id),/Аудиопоток/);fail=false;await b.resolve(id);b.close();
+ await assert.rejects(b.resolve(id),/Не удалось получить аудио/);fail=false;await b.resolve(id);b.close();
 });
 test('restricted or mismatched videos and arbitrary stream hosts cannot enter playback',async()=>{
  for(const data of [{...info(),playability_status:{status:'LOGIN_REQUIRED'}},{...info(),basic_info:{id:'12345678901'}},info([format('https://evil.invalid/x')]),info([format(undefined,{has_video:true})])]){

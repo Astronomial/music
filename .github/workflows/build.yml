@@ -49,6 +49,11 @@ jobs:
           if-no-files-found: error
       - name: Check native audio, background playback and confirmed Wi-Fi sync
         run: npm run test:desktop
+      - name: Check playback from the packaged Windows EXE
+        env:
+          FORMA_ELECTRON_PATH: release/win-unpacked/Forma.exe
+          FORMA_PACKAGED_TEST: '1'
+        run: node tests/desktop-smoke.mjs
       - name: Publish Windows download
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         env:

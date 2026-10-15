@@ -9,8 +9,9 @@ import {portableLibrary} from '../src/core/sync.mjs';
 import {musicSearchResponse} from './fixtures-youtube.mjs';
 import {installMediaFixture} from './native-media-transport.mjs';
 const project=path.resolve('.');
+const version=JSON.parse(await fs.readFile(path.join(project,'package.json'),'utf8')).version;
 const dir=await fs.mkdtemp(path.join(os.tmpdir(),'forma-desktop-'));
-await fs.writeFile(path.join(dir,'library.json'),JSON.stringify({version:1,tracks:{},likes:[],playlists:[],events:[],hidden:[],settings:{provider:'audius',audioAnalysis:false},onboarded:true}));
+await fs.writeFile(path.join(dir,'library.json'),JSON.stringify({version:1,tracks:{yt_12345678901:{id:'yt_12345678901',videoId:'12345678901',title:'HLS audio only',artist:'Test Artist',source:'youtube',genre:'House',duration:12,streamable:true,tags:[]}},likes:[],playlists:[{id:'hls-test',name:'HLS test',trackIds:['yt_12345678901']}],events:[],hidden:[],settings:{provider:'audius',audioAnalysis:false},onboarded:true}));
 const executable=process.env.FORMA_ELECTRON_PATH||path.join(project,'node_modules/electron/dist',process.platform==='win32'?'electron.exe':'electron');
 const desktopEnv={...process.env,XDG_CONFIG_HOME:dir,XDG_CACHE_HOME:path.join(dir,'cache')};
 const track={id:'DesktopTest',title:'Offline integration test',user:{id:'ArtistOne',name:'Test artist'},genre:'House',duration:20,is_downloadable:true,is_streamable:true};
@@ -21,23 +22,27 @@ await fs.writeFile(path.join(dir,'Music','DesktopTest.audio'),wav());
 await fs.writeFile(path.join(dir,'Music','downloads.json'),JSON.stringify({DesktopTest:{track:offlineTrack,bytes:wav().length,mime:'audio/wav',savedAt:1}}));
 let app;
 async function launch(){
-  const instance=await _electron.launch({executablePath:executable,args:['--no-sandbox','--disable-gpu',...(process.platform==='linux'&&!process.env.DISPLAY?['--ozone-platform=headless']:[]),project,`--forma-test-data=${dir}`],env:desktopEnv});
+  const instance=await _electron.launch({executablePath:executable,args:['--no-sandbox','--disable-gpu',...(process.platform==='linux'&&!process.env.DISPLAY?['--ozone-platform=headless']:[]),...(process.env.FORMA_PACKAGED_TEST?[]:[process.env.FORMA_APP_ENTRY||project]),`--user-data-dir=${dir}`],env:desktopEnv});
   const page=await instance.firstWindow();await page.waitForLoadState();return{instance,page};
 }
 try{
   let launched=await launch();app=launched.instance;let page=launched.page;
+  assert.equal(await app.evaluate(({app})=>app.getVersion()),version);
+  if(process.env.FORMA_PACKAGED_TEST){assert.equal(await app.evaluate(({app})=>app.isPackaged),true);assert.match(await app.evaluate(({app})=>app.getAppPath()),/app\.asar$/);}
   await app.evaluate(({net},{track,audio,streamAudio,youtubeFixture})=>{
     // Replace the main-process transport only in this test; production has no fixtures.
     net.fetch=async (url,options={})=>{
       const parsed=new URL(typeof url==='string'?url:url.url);const path=parsed.pathname;
       if(parsed.hostname==='api.music.yandex.net')return Response.json({result:{title:'Public playlist',trackCount:1,tracks:[{track:{title:'Soft Focus',artists:[{name:'Test Artist'}],durationMs:200000}}]}});
+      if(path.endsWith('/player')&&JSON.parse(options.body).videoId==='12345678901')return Response.json({playabilityStatus:{status:'OK'},videoDetails:{videoId:'12345678901',title:'HLS audio only',author:'Test Artist'},streamingData:{hlsManifestUrl:'https://r2.googlevideo.com/hls/master.m3u8'}});
       if(path.endsWith('/player')){const videoId=JSON.parse(options.body).videoId;return Response.json({playabilityStatus:{status:'OK'},videoDetails:{videoId,title:'Native fixture',author:'Test Artist',lengthSeconds:'20'},streamingData:{expiresInSeconds:'3600',adaptiveFormats:[{itag:140,url:'https://r1.googlevideo.com/native-audio',mimeType:'audio/mp4; codecs="mp4a.40.2"',bitrate:128000,contentLength:String(Buffer.from(streamAudio,'base64').length),audioQuality:'AUDIO_QUALITY_MEDIUM',approxDurationMs:'12000'}]}});}
       if(path.endsWith('/search')&&parsed.hostname.includes('youtube'))return Response.json(youtubeFixture);
       if(path.endsWith('/download'))return new Response(Buffer.from(audio,'base64'),{headers:{'content-length':String(Buffer.from(audio,'base64').length)}});
       return Response.json({data:/\/tracks\/DesktopTest$/.test(path)?track:[track]});
     };
   },{track,audio:wav().toString('base64'),streamAudio:(await fs.readFile(path.join(project,'tests/fixtures/acoustic-sample.m4a'))).toString('base64'),youtubeFixture:musicSearchResponse()});
-  const transport=await app.evaluate(installMediaFixture,{project,audio:(await fs.readFile(path.join(project,'tests/fixtures/acoustic-sample.m4a'))).toString('base64')});
+  const hlsFiles=Object.fromEntries(await Promise.all((await fs.readdir(path.join(project,'tests/fixtures/hls'))).map(async name=>[name,(await fs.readFile(path.join(project,'tests/fixtures/hls',name))).toString('base64')])));
+  const transport=await app.evaluate(installMediaFixture,{hlsFiles,audio:(await fs.readFile(path.join(project,'tests/fixtures/acoustic-sample.m4a'))).toString('base64')});
   assert.ok(Object.values(transport).every(Boolean));
   assert.equal(await page.evaluate(()=>window.forma.desktop),true);
   const scriptResult=await app.evaluate(async({app})=>{const req=process.getBuiltinModule('module').createRequire(process.getBuiltinModule('path').join(app.getAppPath(),'electron/main.cjs'));return req('./signature-runtime.cjs').evaluateSignature({output:'return {n:typeof process+":"+typeof require+":"+typeof fetch};'});});assert.equal(scriptResult.n,'undefined:undefined:undefined');
@@ -94,12 +99,28 @@ try{
   await app.evaluate(({BrowserWindow})=>{const w=BrowserWindow.getAllWindows()[0];w.restore();w.show();w.focus();});
   await page.getByRole('button',{name:'Пауза',exact:true}).click();
   assert.equal(await page.locator('audio').evaluate(a=>a.paused),true);
+  await page.locator('.sidebar-playlists').getByRole('button',{name:'HLS test',exact:true}).click();
+  await page.getByRole('button',{name:'Слушать HLS audio only',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('audio').currentTime>.5);
+  assert.match(await page.locator('audio').evaluate(a=>a.src),/^blob:/);
+  await page.getByRole('slider',{name:'Позиция воспроизведения'}).fill('7');await page.waitForFunction(()=>document.querySelector('audio').currentTime>=7);
+  const hlsTime=await page.locator('audio').evaluate(a=>a.currentTime);
+  await page.getByRole('button',{name:'Свернуть',exact:true}).click();
+  await page.waitForFunction(t=>!document.querySelector('audio').paused&&document.querySelector('audio').currentTime>t+.5,hlsTime);
+  await app.evaluate(({BrowserWindow})=>{const w=BrowserWindow.getAllWindows()[0];w.restore();w.show();w.focus();});
+  await page.getByRole('button',{name:'Пауза',exact:true}).click();
+  assert.equal(await page.locator('iframe,video').count(),0);
+  assert.ok(!(await app.evaluate(()=>globalThis.nativeMediaRequests)).some(r=>r.path.includes('video.m3u8')));
+  await page.getByRole('button',{name:'Скачанное',exact:true}).click();await page.locator('.track-name').first().click();
+  await page.waitForFunction(()=>document.querySelector('audio').src.startsWith('forma-audio:')&&document.querySelector('audio').currentTime>1.3);
+  await page.getByRole('button',{name:'Пауза',exact:true}).click();
   await expect.poll(async()=>{const s=await page.evaluate(()=>window.forma.load());return s.importRequests?.find(r=>r.id==='astronomial-favorites')?.status;}).toBe('complete');
   const transferred=await page.evaluate(()=>window.forma.load());
   const requested=transferred.playlists.find(p=>p.id==='astronomial-favorites');
   assert.equal(requested.trackIds.length,1);assert.equal(transferred.tracks[requested.trackIds[0]].title,'Soft Focus');
   assert.equal(transferred.tracks[requested.trackIds[0]].source,'youtube');
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Forma '+version,exact:true})).toBeVisible();
   await page.getByRole('switch',{name:'Только скачанная музыка'}).click();
   await expect(page.getByRole('heading',{name:'iPhone и ПК · Wi-Fi',exact:true})).toBeVisible();
   assert.equal(await page.evaluate(()=>typeof window.forma.googleStatus),'undefined');
@@ -149,5 +170,5 @@ try{
   assert.equal(await fs.readFile(path.join(dir,'library.json'),'utf8'),'damaged primary');assert.equal(await fs.readFile(path.join(dir,'library.json.bak'),'utf8'),'damaged backup');
   await fs.writeFile(path.join(dir,'library.json'),JSON.stringify(saved));await page.getByRole('button',{name:'Повторить загрузку'}).click();
   await expect(page.locator('.sidebar')).toBeVisible();assert.ok((await page.evaluate(()=>window.forma.load())).likes.includes('DesktopTest'));
-  console.log('PASS: real Electron sandbox/preload, native AAC playback through CDN redirect/query ranges, isolated signature runtime and Wi-Fi settings and approval on PC, draft does not modify library, pinned TLS/token and approved receipt survive restart, minimized playback (real local audio + real native YouTube audio protocol with controlled extractor/HTTP), explicit pause, catalogue and Yandex IPC and automatic requested-playlist import across restart (mock transport), file import, legacy downloaded file preservation, audio seeking, close-save, restart offline, deletion, damaged-profile protection and retry recovery.');
+  console.log('PASS: real Electron sandbox/preload, native AAC + HLS audio playback through real network redirect/query ranges, HLS seeking and background, actual application bundle='+await app.evaluate(({app})=>app.getAppPath())+',  isolated signature runtime and Wi-Fi settings and approval on PC, draft does not modify library, pinned TLS/token and approved receipt survive restart, minimized playback (real local audio + real native YouTube audio protocol with controlled extractor/HTTP), explicit pause, catalogue and Yandex IPC and automatic requested-playlist import across restart (mock transport), file import, legacy downloaded file preservation, audio seeking, close-save, restart offline, deletion, damaged-profile protection and retry recovery.');
 }finally{if(app)await app.close();await fs.rm(dir,{recursive:true,force:true});}
