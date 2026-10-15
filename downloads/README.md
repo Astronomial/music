@@ -6,4 +6,6 @@
 
 Сборка не подписана сертификатом издателя. SHA-256 находится в [манифесте релиза](https://github.com/Astronomial/music/releases/download/win-v1.15.5/Forma-Windows-SHA256SUMS.txt).
 
+Проверенный SHA-256: `64a1f90db4004173c3c803015bc12f8319bac89630e2e9f4a7b6fb0710fe443a`. [Проверка готового EXE и ограничения](../docs/PLAYBACK_FIX_1_15_5.md).
+
 Для iPhone: [IPA и установка с Windows](../ios/INSTALL_WINDOWS.md). Библиотека передаётся по домашней сети только после просмотра и подтверждения пакета на ПК или телефоне: [инструкция](../docs/WIFI_SYNC.md). Google-аккаунт не нужен.
