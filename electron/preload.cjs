@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('forma',{
   openYouTube:id=>ipcRenderer.invoke('youtube:open',id),
   importLocal:kind=>ipcRenderer.invoke('local:import',kind),
   prepareAudio:ids=>ipcRenderer.invoke('audio:prepare',ids),
+  audioError:id=>ipcRenderer.invoke('audio:error',id),
   sources:id=>ipcRenderer.invoke('audio:sources',id),
   downloads:()=>ipcRenderer.invoke('offline:list'),
   removeDownload:id=>ipcRenderer.invoke('offline:remove',id),

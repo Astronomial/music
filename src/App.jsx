@@ -207,7 +207,7 @@ export default function App() {
       const sources=await sourcesFor(track.id);if(token!==playToken.current)return;
       const trySource=index=>{
         if(token!==playToken.current)return;
-        if(index>=sources.length){playingIntent.current=false;session.current.recorded=false;setBuffering(false);setPlaying(false);el.onerror=null;notify('Не удалось воспроизвести трек. Он может быть недоступен в источнике музыки.');return;}
+        if(index>=sources.length){playingIntent.current=false;session.current.recorded=false;setBuffering(false);setPlaying(false);el.onerror=null;const message='Не удалось воспроизвести аудио. Нажми воспроизведение, чтобы повторить.';if(bridge.audioError)bridge.audioError(track.id).then(detail=>{if(token===playToken.current)notify(detail||message);}).catch(()=>{if(token===playToken.current)notify(message);});else notify(message);return;}
         el.onerror=()=>trySource(index+1);el.src=sources[index];
         if(!playingIntent.current){setBuffering(false);return;}
         el.play().catch(e=>{if(token===playToken.current&&e.name!=='AbortError'){playingIntent.current=false;setBuffering(false);if(e.name==='NotAllowedError')notify('Нажми кнопку воспроизведения, чтобы начать.');}});

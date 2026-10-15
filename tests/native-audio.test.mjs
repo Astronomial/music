@@ -4,18 +4,19 @@ import {YouTubeAudio,streamURL} from '../electron/youtube-audio.cjs';
 import {initialState} from '../src/core/model.mjs';
 import {likedTracksNewestFirst,retireLegacyCatalog} from '../src/core/library-order.mjs';
 const id='abcdefghijk';
+const audio=()=>new Response(new Uint8Array([0,0,0,24,102,116,121,112,77,52,65,32]),{headers:{'content-type':'audio/mp4'}});
 const format=(url='https://r1.googlevideo.com/audio',extra={})=>({has_audio:true,has_video:false,mime_type:'audio/mp4',url,bitrate:128000,...extra});
 const info=(formats=[format()])=>({basic_info:{id},playability_status:{status:'OK'},streaming_data:{adaptive_formats:formats}});
 test('native audio resolves and shares cached public audio without allowing video or non-default language',async()=>{
- let calls=0;const a=new YouTubeAudio(()=>{},()=>({getBasicInfo:async()=>{calls++;return info([format(undefined,{has_video:true}),format('https://r1.googlevideo.com/dub',{audio_track:{audio_is_default:false}}),format()]);}}));
- assert.deepEqual(await Promise.all([a.resolve(id),a.resolve(id)]),['https://r1.googlevideo.com/audio','https://r1.googlevideo.com/audio']);assert.equal(calls,1);
+ let calls=0;const a=new YouTubeAudio(async()=>audio(),()=>({getBasicInfo:async()=>{calls++;return info([format(undefined,{has_video:true}),format('https://r1.googlevideo.com/dub',{audio_track:{audio_is_default:false}}),format()]);}}));
+ assert.deepEqual((await Promise.all([a.resolve(id),a.resolve(id)])).map(s=>s.url),['https://r1.googlevideo.com/audio','https://r1.googlevideo.com/audio']);assert.equal(calls,1);
  await a.prepare([id,id,'bad']);assert.equal(calls,1);a.cache.get(id).expires=0;await a.resolve(id);assert.equal(calls,2);a.close();
 });
 test('audio fallback wins a stalled primary; one failing client can recover without a cached rejection',async()=>{
- const a=new YouTubeAudio(()=>{},()=>({getBasicInfo:async(_,options)=>options.client==='IOS'?await new Promise(r=>setTimeout(()=>r(info()),600)):info()}));
+ const a=new YouTubeAudio(async()=>audio(),()=>({getBasicInfo:async(_,options)=>options.client==='VISIONOS'?await new Promise(r=>setTimeout(()=>r(info()),600)):info()}));
  const start=performance.now();await a.resolve(id);assert.ok(performance.now()-start<550);a.close();
- let fail=true;const b=new YouTubeAudio(()=>{},()=>({getBasicInfo:async()=>{if(fail)throw Error('network');return info();}}));
- await assert.rejects(b.resolve(id),/Не удалось/);fail=false;await b.resolve(id);b.close();
+ let fail=true;const b=new YouTubeAudio(async()=>audio(),()=>({getBasicInfo:async()=>{if(fail)throw Error('network');return info();}}));
+ await assert.rejects(b.resolve(id),/Аудиопоток/);fail=false;await b.resolve(id);b.close();
 });
 test('restricted or mismatched videos and arbitrary stream hosts cannot enter playback',async()=>{
  for(const data of [{...info(),playability_status:{status:'LOGIN_REQUIRED'}},{...info(),basic_info:{id:'12345678901'}},info([format('https://evil.invalid/x')]),info([format(undefined,{has_video:true})])]){
@@ -24,9 +25,9 @@ test('restricted or mismatched videos and arbitrary stream hosts cannot enter pl
  for(const url of ['http://r1.googlevideo.com/a','https://googlevideo.com.evil.test/a','https://user@r1.googlevideo.com/a','https://r1.googlevideo.com:444/a'])assert.throws(()=>streamURL(url));
 });
 test('native protocol streams byte ranges, refreshes expired access once, and keeps tokens out of response headers',async()=>{
- const requests=[];let extracts=0;
- const a=new YouTubeAudio(async(url,options)=>{requests.push(options);return requests.length===1?new Response(null,{status:403}):new Response(new Uint8Array([4,5,6]),{status:206,headers:{'Content-Type':'audio/mp4','Content-Range':'bytes 3-5/10','Content-Length':'3','Accept-Ranges':'bytes','set-cookie':'secret'}});},()=>({getBasicInfo:async()=>{extracts++;return info();}}));
- const r=await a.respond(id,new Request('https://forma.test/audio',{headers:{Range:'bytes=3-5'}}));assert.equal(r.status,206);assert.equal(r.headers.get('content-range'),'bytes 3-5/10');assert.equal(r.headers.get('set-cookie'),null);assert.deepEqual([...new Uint8Array(await r.arrayBuffer())],[4,5,6]);assert.equal(extracts,2);assert.equal(requests[1].headers.Range,'bytes=3-5');assert.equal(requests[1].redirect,'error');a.close();
+ const requests=[];let extracts=0,failed=false;
+ const a=new YouTubeAudio(async(url,options)=>{const range=new URL(url).searchParams.get('range');requests.push({range,...options});if(range==='0-1023')return audio();if(!failed){failed=true;return new Response(null,{status:403});}return new Response(new Uint8Array([4,5,6]),{status:206,headers:{'Content-Type':'audio/mp4','Content-Range':'bytes 3-5/12','Content-Length':'3','Accept-Ranges':'bytes','set-cookie':'secret'}});},()=>({getBasicInfo:async()=>{extracts++;return info([format(undefined,{content_length:12})]);}}));
+ const r=await a.respond(id,new Request('https://forma.test/audio',{headers:{Range:'bytes=3-5'}}));assert.equal(r.status,206);assert.equal(r.headers.get('content-range'),'bytes 3-5/12');assert.equal(r.headers.get('set-cookie'),null);assert.deepEqual([...new Uint8Array(await r.arrayBuffer())],[4,5,6]);assert.equal(extracts,2);assert.equal(requests.at(-1).range,'3-5');assert.equal(requests.at(-1).redirect,'manual');a.close();
 });
 test('native protocol rejects malformed ranges, aborted requests and non-audio responses',async()=>{
  const a=new YouTubeAudio(async()=>new Response('<html/>',{headers:{'content-type':'text/html'}}),()=>({getBasicInfo:async()=>info()}));

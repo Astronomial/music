@@ -25,19 +25,24 @@ async function launch(){
 }
 try{
   let launched=await launch();app=launched.instance;let page=launched.page;
-  await app.evaluate(({net},{track,audio,youtubeFixture})=>{
+  await app.evaluate(({net},{track,audio,streamAudio,youtubeFixture})=>{
     // Replace the main-process transport only in this test; production has no fixtures.
     net.fetch=async (url,options={})=>{
       const parsed=new URL(typeof url==='string'?url:url.url);const path=parsed.pathname;
       if(parsed.hostname==='api.music.yandex.net')return Response.json({result:{title:'Public playlist',trackCount:1,tracks:[{track:{title:'Soft Focus',artists:[{name:'Test Artist'}],durationMs:200000}}]}});
-      if(path.endsWith('/player')){const videoId=JSON.parse(options.body).videoId;return Response.json({playabilityStatus:{status:'OK'},videoDetails:{videoId,title:'Native fixture',author:'Test Artist',lengthSeconds:'20'},streamingData:{expiresInSeconds:'3600',adaptiveFormats:[{itag:140,url:'https://r1.googlevideo.com/native-audio',mimeType:'audio/mp4; codecs="mp4a.40.2"',bitrate:128000,contentLength:String(Buffer.from(audio,'base64').length),audioQuality:'AUDIO_QUALITY_MEDIUM',approxDurationMs:'20000'}]}});}
-      if(parsed.hostname==='r1.googlevideo.com')return new Response(Buffer.from(audio,'base64'),{headers:{'Content-Type':'audio/wav','Accept-Ranges':'bytes'}});
+      if(path.endsWith('/player')){const videoId=JSON.parse(options.body).videoId;return Response.json({playabilityStatus:{status:'OK'},videoDetails:{videoId,title:'Native fixture',author:'Test Artist',lengthSeconds:'20'},streamingData:{expiresInSeconds:'3600',adaptiveFormats:[{itag:140,url:'https://r1.googlevideo.com/native-audio',mimeType:'audio/mp4; codecs="mp4a.40.2"',bitrate:128000,contentLength:String(Buffer.from(streamAudio,'base64').length),audioQuality:'AUDIO_QUALITY_MEDIUM',approxDurationMs:'12000'}]}});}
+      if(parsed.hostname==='r1.googlevideo.com')return new Response(null,{status:302,headers:{location:'https://r2.googlevideo.com/native-audio'}});
+      if(parsed.hostname==='r2.googlevideo.com'){const bytes=Buffer.from(streamAudio,'base64'),range=parsed.searchParams.get('range'),[start,end]=range?range.split('-').map(Number):[0,bytes.length-1],part=bytes.subarray(start,Math.min(end+1,bytes.length));return new Response(part,{headers:{'Content-Type':'application/octet-stream','Content-Length':String(part.length)}});}
       if(path.endsWith('/search')&&parsed.hostname.includes('youtube'))return Response.json(youtubeFixture);
       if(path.endsWith('/download'))return new Response(Buffer.from(audio,'base64'),{headers:{'content-length':String(Buffer.from(audio,'base64').length)}});
       return Response.json({data:/\/tracks\/DesktopTest$/.test(path)?track:[track]});
     };
-  },{track,audio:wav().toString('base64'),youtubeFixture:musicSearchResponse()});
+  },{track,audio:wav().toString('base64'),streamAudio:(await fs.readFile(path.join(project,'tests/fixtures/acoustic-sample.m4a'))).toString('base64'),youtubeFixture:musicSearchResponse()});
   assert.equal(await page.evaluate(()=>window.forma.desktop),true);
+  const scriptResult=await app.evaluate(async({app})=>{const req=process.getBuiltinModule('module').createRequire(process.getBuiltinModule('path').join(app.getAppPath(),'electron/main.cjs'));return req('./signature-runtime.cjs').evaluateSignature({output:'return {n:typeof process+":"+typeof require+":"+typeof fetch};'});});assert.equal(scriptResult.n,'undefined:undefined:undefined');
+  const packed=path.join(project,'release/win-unpacked/resources/app.asar');
+  if(process.platform==='win32'){const packedResult=await app.evaluate(async(_electron,file)=>{const req=process.getBuiltinModule('module').createRequire(file+'/electron/main.cjs');return req('./signature-runtime.cjs').evaluateSignature({output:'return {n:"asar-wasm-ok"};'});},packed);assert.equal(packedResult.n,'asar-wasm-ok');}
+
   await app.evaluate(({shell})=>{globalThis.playerBrowserCalls=[];shell.openExternal=async url=>{globalThis.playerBrowserCalls.push(url);};});
   for(const url of ['https://accounts.google.com/ServiceLogin?service=youtube','https://www.youtube.com/watch?v=abcdefghijk']){
     await page.evaluate(url=>window.open(url,'_blank'),url);
@@ -78,6 +83,7 @@ try{
   await page.waitForFunction(()=>document.querySelector('audio').currentTime>.5);
   assert.match(await page.locator('audio').evaluate(a=>a.src),/^forma-stream:\/\/youtube\//);
   assert.equal(await page.locator('iframe,video,.youtube-panel').count(),0);
+  await page.getByRole('slider',{name:'Позиция воспроизведения'}).fill('5');await page.waitForFunction(()=>document.querySelector('audio').currentTime>=5);
   const youtubeTime=await page.locator('audio').evaluate(a=>a.currentTime);
   await page.getByRole('button',{name:'Свернуть',exact:true}).click();
   await page.waitForFunction(t=>!document.querySelector('audio').paused&&document.querySelector('audio').currentTime>t+.8,youtubeTime);
@@ -139,5 +145,5 @@ try{
   assert.equal(await fs.readFile(path.join(dir,'library.json'),'utf8'),'damaged primary');assert.equal(await fs.readFile(path.join(dir,'library.json.bak'),'utf8'),'damaged backup');
   await fs.writeFile(path.join(dir,'library.json'),JSON.stringify(saved));await page.getByRole('button',{name:'Повторить загрузку'}).click();
   await expect(page.locator('.sidebar')).toBeVisible();assert.ok((await page.evaluate(()=>window.forma.load())).likes.includes('DesktopTest'));
-  console.log('PASS: real Electron sandbox/preload, native AAC decode and Wi-Fi settings and approval on PC, draft does not modify library, pinned TLS/token and approved receipt survive restart, minimized playback (real local audio + real native YouTube audio protocol with controlled extractor/HTTP), explicit pause, catalogue and Yandex IPC and automatic requested-playlist import across restart (mock transport), file import, legacy downloaded file preservation, audio seeking, close-save, restart offline, deletion, damaged-profile protection and retry recovery.');
+  console.log('PASS: real Electron sandbox/preload, native AAC playback through CDN redirect/query ranges, isolated signature runtime and Wi-Fi settings and approval on PC, draft does not modify library, pinned TLS/token and approved receipt survive restart, minimized playback (real local audio + real native YouTube audio protocol with controlled extractor/HTTP), explicit pause, catalogue and Yandex IPC and automatic requested-playlist import across restart (mock transport), file import, legacy downloaded file preservation, audio seeking, close-save, restart offline, deletion, damaged-profile protection and retry recovery.');
 }finally{if(app)await app.close();await fs.rm(dir,{recursive:true,force:true});}

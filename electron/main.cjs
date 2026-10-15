@@ -94,6 +94,7 @@ app.whenReady().then(async () => {
     if(/^yt_[A-Za-z0-9_-]{11}$/.test(id)){const videoID=id.slice(3);await youtubeAudio.resolve(videoID);return [`forma-stream://youtube/${videoID}`];}
     throw new Error('Трек недоступен. Найди версию в поиске YouTube.');
   });
+  handle('audio:error',id=>youtubeAudio.error(String(id).replace(/^yt_/,'')));
   handle('audio:prepare',ids=>{if(!Array.isArray(ids))throw new Error('Некорректная очередь');return youtubeAudio.prepare(ids.slice(0,3));});
   handle('offline:list',()=>offline.list());
   handle('offline:remove',id=>offline.remove(id));
