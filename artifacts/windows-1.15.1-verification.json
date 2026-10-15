@@ -1,0 +1,9 @@
+{
+  "version": "1.15.1",
+  "size": 88365915,
+  "sha256": "be10e93a7c7b153caceca6f8d3fb2eef839c67e240b3e14780dc4e2c45a67d35",
+  "pe": "x64",
+  "byteMatchedFiles": 6,
+  "lineEndingMatchedFiles": 41,
+  "audiusModuleAbsent": true
+}
