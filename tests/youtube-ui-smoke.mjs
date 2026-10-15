@@ -21,7 +21,7 @@ try{
  const initialVideo=await page.evaluate(()=>window.nativeAudio.id);
  const volume=page.getByRole('slider',{name:'Громкость',exact:true});
  await volume.fill('0.337');assert.ok(Math.abs(await page.evaluate(()=>window.nativeAudio.volume)-33.7)<.01);
- await volume.press('ArrowRight');await page.waitForTimeout(400);
+ await volume.press('ArrowRight');await page.waitForFunction(()=>Math.abs(JSON.parse(localStorage.getItem('youtube-test-library')).settings.volume-.338)<.001,null,{timeout:5000});
  assert.ok(Math.abs(await page.evaluate(()=>JSON.parse(localStorage.getItem('youtube-test-library')).settings.volume)-.338)<.001);
  const backgroundTime=await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));return window.nativeAudio.getCurrentTime();});
  await page.waitForFunction(t=>window.nativeAudio.getPlayerState()===1&&window.nativeAudio.getCurrentTime()>t+.5,backgroundTime);
