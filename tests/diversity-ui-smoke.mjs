@@ -17,7 +17,7 @@ try{
   await page.waitForFunction(()=>window.nativeAudio?.state===1&&!!window.nativeAudio.id);
   const sequence=[];
   for(let i=0;i<18;i++){
-    const id=await page.evaluate(()=>window.nativeAudio.id);sequence.push(await page.evaluate(id=>window.trackFixture['yt_'+id],id));
+    const id=await page.evaluate(()=>window.nativeAudio.id);await page.waitForFunction(id=>window.savedState.events.findLast(e=>e.type==='play')?.trackId==='yt_'+id,id);sequence.push(await page.evaluate(id=>window.trackFixture['yt_'+id],id));
     if(i<17){await page.getByRole('button',{name:'Следующий трек',exact:true}).click();await page.waitForFunction(previous=>window.nativeAudio.id!==previous&&window.nativeAudio.state===1,id);}
   }
   assert.equal(new Set(sequence.map(t=>t.id)).size,18);

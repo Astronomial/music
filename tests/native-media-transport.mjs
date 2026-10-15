@@ -4,11 +4,12 @@ export async function installMediaFixture({net,app},{audio,hlsFiles={}}){
   const require=process.getBuiltinModule('module').createRequire(app.getAppPath()+'/electron/main.cjs');
   const assert=require('node:assert/strict'),http=require('node:http');
   const {mediaFetch}=require('./media-fetch.cjs'),bytes=Buffer.from(audio,'base64');
-  const seen=[];let closedSlow=0,closedStall=0;
+  const seen=[];let closedSlow=0,closedStall=0,notifyStall;
+  const stallReceived=new Promise(resolve=>{notifyStall=resolve;});
   const server=http.createServer((request,response)=>{
     const url=new URL(request.url,'http://localhost');
     seen.push({path:url.pathname,range:url.searchParams.get('range'),headers:request.headers});
-    if(url.pathname==='/stall'){response.once('close',()=>closedStall++);return;}
+    if(url.pathname==='/stall'){response.once('close',()=>closedStall++);notifyStall();return;}
     if(url.pathname==='/redirect'){response.writeHead(302,{Location:'/direct'});response.end();return;}
     if(url.pathname.includes('/hls/')){
       const name=url.pathname.split('/').at(-1),encoded=hlsFiles[name];
@@ -31,7 +32,7 @@ export async function installMediaFixture({net,app},{audio,hlsFiles={}}){
   const redirect=await mediaFetch(net,base+'/redirect',{headers});assert.equal(redirect.status,302);assert.equal(redirect.headers.get('location'),base+'/direct');
   const partial=await mediaFetch(net,base+'/direct?range=8-31',{headers});assert.equal((await partial.arrayBuffer()).byteLength,24);
   const cancelled=new AbortController();cancelled.abort();await assert.rejects(mediaFetch(net,base+'/direct',{signal:cancelled.signal}),{name:'AbortError'});
-  const stalled=new AbortController(),pending=mediaFetch(net,base+'/stall',{signal:stalled.signal});setTimeout(()=>stalled.abort(),50);await assert.rejects(pending,{name:'AbortError'});
+  const stalled=new AbortController(),pending=mediaFetch(net,base+'/stall',{signal:stalled.signal});await stallReceived;stalled.abort();await assert.rejects(pending,{name:'AbortError'});
   const active=new AbortController(),stream=await mediaFetch(net,base+'/slow',{signal:active.signal}),reader=stream.body.getReader();await reader.read();active.abort();await assert.rejects(reader.read());
   const probe=await mediaFetch(net,base+'/slow');await probe.body.cancel();
   const deadline=Date.now()+3000;while((closedSlow<2||closedStall<1)&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,20));

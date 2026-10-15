@@ -6,7 +6,7 @@ const { Store } = require('./storage.cjs');
 const { folderFiles, importLocalFile } = require('./local.cjs');
 const { OfflineLibrary, validId } = require('./offline.cjs');
 protocol.registerSchemesAsPrivileged(['forma-audio','forma-stream'].map(scheme=>({scheme,privileges:{standard:true,secure:true,stream:true,supportFetchAPI:true,corsEnabled:true}})));
-let window, store, offline, youtubeAudio, uiServer, syncServer, coordinator, desktopBaseline, closing = false, closeTimer;
+let window, store, offline, youtubeAudio, browserAudio, uiServer, syncServer, coordinator, desktopBaseline, closing = false, closeTimer;
 // Dev smoke tests use an explicit temporary profile on all operating systems.
 // Explicit isolated profiles also let release checks run the packaged EXE.
 const profileArg=process.argv.find(arg=>arg.startsWith('--user-data-dir='));
@@ -87,6 +87,8 @@ app.whenReady().then(async () => {
   });
   handle('yandex:cancel',()=>importController?.abort());
   youtubeAudio=new (require('./youtube-audio.cjs').YouTubeAudio)((input,options)=>net.fetch(input,options),undefined,{fetchMedia:(input,options)=>require('./media-fetch.cjs').mediaFetch(net,input,options)});
+  browserAudio=new (require('./browser-audio.cjs').BrowserAudio)({BrowserWindow,onState:state=>{if(window&&!window.isDestroyed())window.webContents.send('browser-audio:state',state);}});
+  handle('browser-audio:command',command=>browserAudio.command(command));
   protocol.handle('forma-stream',async request=>{
     const u=new URL(request.url);
     if(u.hostname!=='youtube')return new Response(null,{status:404});
@@ -98,11 +100,11 @@ app.whenReady().then(async () => {
   handle('audio:sources',async id=> {
     if(typeof id!=='string')throw new Error('Некорректный трек');
     if(validId(id)&&offline.manifest[id])return [`forma-audio://track/${id}`];
-    if(/^yt_[A-Za-z0-9_-]{11}$/.test(id)){const videoID=id.slice(3),source=await youtubeAudio.resolve(videoID);return [`forma-stream://youtube/${videoID}${source.kind==='hls'?'/hls/index.m3u8':''}`];}
+    if(/^yt_[A-Za-z0-9_-]{11}$/.test(id)){const videoID=id.slice(3);if(browserAudio.preferred)return [`forma-browser://youtube/${videoID}`];const source=await youtubeAudio.resolve(videoID);return [`forma-stream://youtube/${videoID}${source.kind==='hls'?'/hls/index.m3u8':''}`];}
     throw new Error('Трек недоступен. Найди версию в поиске YouTube.');
   });
   handle('audio:error',id=>youtubeAudio.error(String(id).replace(/^yt_/,'')));
-  handle('audio:prepare',ids=>{if(!Array.isArray(ids))throw new Error('Некорректная очередь');return youtubeAudio.prepare(ids.slice(0,3));});
+  handle('audio:prepare',ids=>{if(!Array.isArray(ids))throw new Error('Некорректная очередь');return browserAudio.preferred?0:youtubeAudio.prepare(ids.slice(0,3));});
   handle('offline:list',()=>offline.list());
   handle('offline:remove',id=>offline.remove(id));
   handle('offline:cancel',id=>offline.cancel(id));
@@ -117,6 +119,7 @@ app.whenReady().then(async () => {
   handle('youtube:open',id=>{if(!/^[\w-]{11}$/.test(id))throw new Error('Некорректная ссылка.');return shell.openExternal('https://www.youtube.com/watch?v='+id);});
   handle('window:control',action=> { if(action==='minimize') window.minimize(); if(action==='maximize') window.isMaximized()?window.unmaximize():window.maximize(); if(action==='close') window.close(); });
   window = new BrowserWindow({width:1440,height:940,minWidth:1000,minHeight:680,frame:false,backgroundColor:'#050309',title:'Forma',icon:path.join(__dirname,'../build/icon.png'),webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,webSecurity:true,backgroundThrottling:false}});
+  window.on('closed',()=>browserAudio?.close());
   window.on('close',event=> {
     if(closing)return;
     event.preventDefault();window.webContents.send('app:closing');
@@ -139,4 +142,4 @@ app.whenReady().then(async () => {
   await window.loadURL(entry);
 });
 app.on('window-all-closed',()=>app.quit());
-app.on('before-quit',()=>{syncServer?.stop({persist:false});uiServer?.close();youtubeAudio?.close();for(const id of offline?.active.keys() || []) offline.cancel(id);});
+app.on('before-quit',()=>{syncServer?.stop({persist:false});uiServer?.close();youtubeAudio?.close();browserAudio?.close();for(const id of offline?.active.keys() || []) offline.cancel(id);});

@@ -25,6 +25,7 @@ import {createRecommendationClient} from './core/recommendation-client.mjs';
 import {MOOD_MIXES} from './core/mood-mixes.mjs';
 import {ListeningClock} from './core/listening-clock.mjs';
 import { likedTracksNewestFirst, retireLegacyCatalog } from './core/library-order.mjs';
+import {createHybridAudio} from './core/hybrid-audio.mjs';
 
 const fmt = seconds => `${Math.floor((seconds || 0)/60)}:${String(Math.floor((seconds || 0)%60)).padStart(2,'0')}`;
 let hlsModule;
@@ -40,6 +41,7 @@ export default function App() {
   const [loading,setLoading]=useState(false), [networkError,setNetworkError]=useState(''), [online,setOnline]=useState(navigator.onLine);
   const [downloads,setDownloads]=useState({}), [toast,setToast]=useState('');
   const [playbackIssue,setPlaybackIssue]=useState('');
+  const [playbackAttempt,setPlaybackAttempt]=useState(0);
   const hlsPlayer=useRef(null);
   function stopHls(){hlsPlayer.current?.destroy();hlsPlayer.current=null;}
   useEffect(()=>()=>stopHls(),[]);
@@ -56,6 +58,7 @@ export default function App() {
   const [queue,setQueue]=useState([]), [wave,setWave]=useState(false), [queueOpen,setQueueOpen]=useState(false), [shuffle,setShuffle]=useState(false), [repeat,setRepeat]=useState(false);
   const readyRef=useRef(false),pendingCloudSync=useRef(null);
   const audio = useRef(null), stateRef=useRef(state), currentRef=useRef(null), session=useRef({clock:new ListeningClock(),recorded:false}), playToken=useRef(0), queueRef=useRef([]), waveRef=useRef(false), contextRef=useRef(null);
+  const audioElement=useCallback(element=>{audio.current?.dispose?.();audio.current=element?createHybridAudio(element,bridge):null;},[]);
   const toastTimer=useRef(null), refreshBusy=useRef(false), refreshPending=useRef(false), refreshSignature=useRef(null), saveChain=useRef(Promise.resolve()), navHistory=useRef([{page:'home',query:''}]), playbackHistory=useRef([]), repeatRef=useRef(false), refreshCount=useRef(0);
   const notify = message => { setToast(message);clearTimeout(toastTimer.current);toastTimer.current=setTimeout(()=>setToast(''),4500); };
   const change=useCallback(fn=>{const next=fn(stateRef.current);stateRef.current=next;setState(next);return next;},[]);
@@ -122,7 +125,7 @@ export default function App() {
     if(!buffering)return;const token=playToken.current;
     const timer=setTimeout(()=>{if(token!==playToken.current||!playingIntent.current)return;playingIntent.current=false;session.current.recorded=false;audio.current.pause();stopHls();audio.current.removeAttribute('src');audio.current.load();setBuffering(false);setPlaying(false);setPlaybackIssue('Загрузка задержалась (START_TIMEOUT).');notify('Загрузка задержалась. Нажми воспроизведение, чтобы повторить.');},20000);
     return()=>clearTimeout(timer);
-  },[buffering,current?.id]);
+  },[buffering,current?.id,playbackAttempt]);
   function measureListening(seeking=false){
     const active=audio.current&&!audio.current.paused&&!audio.current.seeking&&audio.current.readyState>=3;
     return session.current.clock.sample(performance.now(),Boolean(active),seeking);
@@ -208,17 +211,24 @@ export default function App() {
     if(history&&currentRef.current){playbackHistory.current.push(currentRef.current);if(playbackHistory.current.length>150)playbackHistory.current.shift();}
     if(list){const index=list.findIndex(t=>t.id===track.id);setPlaybackQueue(list.slice(index+1).filter(t=>t.streamable));setWaveMode(asWave);contextRef.current=playbackContext;catalogContext.current=asWave?playbackContext:null;}
     const token=++playToken.current;
-    const el=audio.current;el.onerror=null;el.pause();stopHls();el.removeAttribute('src');el.load();setPlaybackIssue('');
+    const el=audio.current;el.onerror=null;el.pause();stopHls();el.removeAttribute('src');el.load();playingIntent.current=true;setPlaybackIssue('');
     const exposure=recommendation?.exposure||recommendationFor(track);
     currentRef.current=track;setCurrent(track);setPlaying(false);setPosition(0);setDuration(track.duration);setBuffering(true);session.current={clock:new ListeningClock(),recorded:false,context:contextRef.current,surface:contextRef.current?.mood?'mood':waveRef.current?'pulse':list?'playlist':'manual',newArtist:recommendation?.newArtist===true||exposure?.features?.[5]===1,recommendation:exposure?structuredClone(exposure):null};
     try{
-      const sources=await sourcesFor(track.id);if(token!==playToken.current)return;
+      let nativeError='',lookupTimer;
+      const compatible=track.source==='youtube'&&Boolean(bridge.browserAudio);
+      let sources;
+      try{sources=await(compatible?Promise.race([sourcesFor(track.id),new Promise((_resolve,reject)=>{lookupTimer=setTimeout(()=>reject(new Error('Прямой аудиопоток не ответил (AUDIO_LOOKUP_TIMEOUT).')),6000);})]):sourcesFor(track.id));}
+      catch(error){if(!compatible)throw error;nativeError=playbackMessage(error);sources=[];}
+      finally{clearTimeout(lookupTimer);}
+      if(token!==playToken.current)return;
+      if(compatible)sources=[...new Set([...sources,'forma-browser://youtube/'+track.id.replace(/^yt_/,'' )])];
       let playerCode='';
       const trySource=index=>{
         if(token!==playToken.current)return;
-        if(index>=sources.length){playingIntent.current=false;session.current.recorded=false;setBuffering(false);setPlaying(false);el.onerror=null;stopHls();el.removeAttribute('src');const message='Не удалось воспроизвести аудио'+(playerCode?' ('+playerCode+')':'')+'. Нажми воспроизведение, чтобы повторить.';const show=detail=>{if(token===playToken.current){setPlaybackIssue(detail||message);notify(detail||message);}};if(bridge.audioError)bridge.audioError(track.id).then(show).catch(()=>show());else show();return;}
+        if(index>=sources.length){playingIntent.current=false;session.current.recorded=false;setBuffering(false);setPlaying(false);el.onerror=null;stopHls();el.removeAttribute('src');const message=(nativeError?nativeError+' ':'')+'Не удалось воспроизвести аудио'+(playerCode?' ('+playerCode+')':'')+'. Нажми воспроизведение, чтобы повторить.';const show=detail=>{if(token===playToken.current){const text=compatible?message:detail||message;setPlaybackIssue(text);notify(text);}};if(bridge.audioError)bridge.audioError(track.id).then(show).catch(()=>show());else show();return;}
         let failed=false;
-        const sourceFailed=code=>{if(failed||token!==playToken.current)return;failed=true;playerCode=typeof code==='string'?code:'MEDIA_'+(el.error?.code||'UNKNOWN');el.onerror=null;stopHls();trySource(index+1);};
+        const sourceFailed=code=>{if(failed||token!==playToken.current)return;failed=true;playerCode=typeof code==='string'?code:el.error?.message||'MEDIA_'+(el.error?.code||'UNKNOWN');el.onerror=null;stopHls();trySource(index+1);};
         el.onerror=sourceFailed;
         if(sources[index].endsWith('/hls/index.m3u8')){
           loadHls().then(Hls=>{
@@ -230,6 +240,7 @@ export default function App() {
             hls.loadSource(sources[index]);hls.attachMedia(el);
           }).catch(()=>sourceFailed('HLS_INIT'));return;
         }
+        if(sources[index].startsWith('forma-browser:'))setPlaybackAttempt(value=>value+1);
         el.src=sources[index];
         if(!playingIntent.current){setBuffering(false);return;}
         el.play().catch(e=>{if(token===playToken.current&&e.name!=='AbortError'){playingIntent.current=false;setBuffering(false);if(e.name==='NotAllowedError')notify('Нажми кнопку воспроизведения, чтобы начать.');}});
@@ -334,7 +345,7 @@ export default function App() {
 
   return <div className="app-shell" style={appearanceVariables(state.settings)} data-sidebar-collapsed={state.settings.sidebarCollapsed===true} data-palette={state.settings.palette} data-space-motion={state.settings.spaceMotion!==false} data-visuals-active={visualsActive}>
     <SpaceBackdrop/>
-    <audio ref={audio} data-track-id={current?.id} onPlaying={onPlaying} onPause={()=>{measureListening();setPlaying(false);}} onWaiting={()=>{measureListening();if(playingIntent.current)setBuffering(true);}} onCanPlay={()=>{setBuffering(false);}} onTimeUpdate={()=>{setPosition(audio.current.currentTime);}} onDurationChange={()=>{if(Number.isFinite(audio.current.duration))setDuration(audio.current.duration);}} onEnded={()=>{if(audio.current.ended&&playingIntent.current)actions.current.nextTrack('listen');}}/>
+    <audio ref={audioElement} data-track-id={current?.id} onPlaying={onPlaying} onPause={()=>{measureListening();if(audio.current?.remoteWantsPlayback===false&&!audio.current.ended)playingIntent.current=false;setPlaying(false);}} onWaiting={()=>{measureListening();if(playingIntent.current)setBuffering(true);}} onCanPlay={()=>{setBuffering(false);}} onTimeUpdate={()=>{setPosition(audio.current.currentTime);}} onDurationChange={()=>{if(Number.isFinite(audio.current.duration))setDuration(audio.current.duration);}} onEnded={()=>{if(audio.current.ended&&playingIntent.current)actions.current.nextTrack('listen');}}/>
     <aside className="sidebar" aria-label="Боковая панель" inert={Boolean(modal)}>
       <div className="sidebar-header"><button className="brand" aria-label="Forma — главная" title="Главная" onClick={()=>navigate('home')}><AudioLines size={27} strokeWidth={2.2}/><span>forma<span className="brand-dot">.</span></span></button><button className="icon-button sidebar-toggle" aria-label={state.settings.sidebarCollapsed?'Развернуть боковую панель':'Свернуть боковую панель'} title={state.settings.sidebarCollapsed?'Развернуть боковую панель':'Свернуть боковую панель'} aria-expanded={!state.settings.sidebarCollapsed} aria-controls="app-navigation" onClick={()=>updateSettings({sidebarCollapsed:!state.settings.sidebarCollapsed})}>{state.settings.sidebarCollapsed?<PanelLeftOpen size={19}/>:<PanelLeftClose size={19}/>}</button></div>
       <div className="sidebar-label">Музыка</div><nav id="app-navigation" aria-label="Основные разделы">

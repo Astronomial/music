@@ -11,7 +11,7 @@ import {installMediaFixture} from './native-media-transport.mjs';
 const project=path.resolve('.');
 const version=JSON.parse(await fs.readFile(path.join(project,'package.json'),'utf8')).version;
 const dir=await fs.mkdtemp(path.join(os.tmpdir(),'forma-desktop-'));
-await fs.writeFile(path.join(dir,'library.json'),JSON.stringify({version:1,tracks:{yt_12345678901:{id:'yt_12345678901',videoId:'12345678901',title:'HLS audio only',artist:'Test Artist',source:'youtube',genre:'House',duration:12,streamable:true,tags:[]}},likes:[],playlists:[{id:'hls-test',name:'HLS test',trackIds:['yt_12345678901']}],events:[],hidden:[],settings:{provider:'audius',audioAnalysis:false},onboarded:true}));
+await fs.writeFile(path.join(dir,'library.json'),JSON.stringify({version:1,tracks:{yt_98765432109:{id:'yt_98765432109',videoId:'98765432109',title:'Browser fallback',artist:'Test Artist',source:'youtube',genre:'House',duration:20,streamable:true,tags:[]},yt_zyxwvutsrqp:{id:'yt_zyxwvutsrqp',videoId:'zyxwvutsrqp',title:'Browser next',artist:'Test Artist',source:'youtube',genre:'House',duration:20,streamable:true,tags:[]},yt_12345678901:{id:'yt_12345678901',videoId:'12345678901',title:'HLS audio only',artist:'Test Artist',source:'youtube',genre:'House',duration:12,streamable:true,tags:[]}},likes:[],playlists:[{id:'browser-test',name:'Browser test',trackIds:['yt_98765432109','yt_zyxwvutsrqp']},{id:'hls-test',name:'HLS test',trackIds:['yt_12345678901']}],events:[],hidden:[],settings:{provider:'audius',audioAnalysis:false,offlineOnly:true},onboarded:true}));
 const executable=process.env.FORMA_ELECTRON_PATH||path.join(project,'node_modules/electron/dist',process.platform==='win32'?'electron.exe':'electron');
 const desktopEnv={...process.env,XDG_CONFIG_HOME:dir,XDG_CACHE_HOME:path.join(dir,'cache')};
 const track={id:'DesktopTest',title:'Offline integration test',user:{id:'ArtistOne',name:'Test artist'},genre:'House',duration:20,is_downloadable:true,is_streamable:true};
@@ -34,6 +34,7 @@ try{
     net.fetch=async (url,options={})=>{
       const parsed=new URL(typeof url==='string'?url:url.url);const path=parsed.pathname;
       if(parsed.hostname==='api.music.yandex.net')return Response.json({result:{title:'Public playlist',trackCount:1,tracks:[{track:{title:'Soft Focus',artists:[{name:'Test Artist'}],durationMs:200000}}]}});
+      if(path.endsWith('/player')&&JSON.parse(options.body).videoId==='98765432109')return Response.json({playabilityStatus:{status:'OK'},videoDetails:{videoId:'98765432109',title:'Browser fallback',author:'Test Artist'},streamingData:{adaptiveFormats:[]}});
       if(path.endsWith('/player')&&JSON.parse(options.body).videoId==='12345678901')return Response.json({playabilityStatus:{status:'OK'},videoDetails:{videoId:'12345678901',title:'HLS audio only',author:'Test Artist'},streamingData:{hlsManifestUrl:'https://r2.googlevideo.com/hls/master.m3u8'}});
       if(path.endsWith('/player')){const videoId=JSON.parse(options.body).videoId;return Response.json({playabilityStatus:{status:'OK'},videoDetails:{videoId,title:'Native fixture',author:'Test Artist',lengthSeconds:'20'},streamingData:{expiresInSeconds:'3600',adaptiveFormats:[{itag:140,url:'https://r1.googlevideo.com/native-audio',mimeType:'audio/mp4; codecs="mp4a.40.2"',bitrate:128000,contentLength:String(Buffer.from(streamAudio,'base64').length),audioQuality:'AUDIO_QUALITY_MEDIUM',approxDurationMs:'12000'}]}});}
       if(path.endsWith('/search')&&parsed.hostname.includes('youtube'))return Response.json(youtubeFixture);
@@ -44,7 +45,9 @@ try{
   const hlsFiles=Object.fromEntries(await Promise.all((await fs.readdir(path.join(project,'tests/fixtures/hls'))).map(async name=>[name,(await fs.readFile(path.join(project,'tests/fixtures/hls',name))).toString('base64')])));
   const transport=await app.evaluate(installMediaFixture,{hlsFiles,audio:(await fs.readFile(path.join(project,'tests/fixtures/acoustic-sample.m4a'))).toString('base64')});
   assert.ok(Object.values(transport).every(Boolean));
+  await app.evaluate(({session,net})=>session.defaultSession.protocol.handle('https',request=>{const url=new URL(request.url);if(url.hostname==='www.youtube.com'&&url.pathname==='/watch')return new Response('<!doctype html><div id="movie_player"></div><video src="forma-audio://track/DesktopTest"></video><script>const video=document.querySelector("video"),player=document.getElementById("movie_player");let id=new URL(location.href).searchParams.get("v");player.getVideoData=()=>({video_id:id});player.loadVideoById=value=>{id=value;video.currentTime=0;video.play()};player.setPlaybackQualityRange=()=>{};</script>',{headers:{'Content-Type':'text/html'}});return net.fetch(request,{bypassCustomProtocolHandlers:true});}));
   assert.equal(await page.evaluate(()=>window.forma.desktop),true);
+  await page.getByRole('button',{name:'Настройки',exact:true}).click();await page.getByRole('switch',{name:'Только скачанная музыка'}).click();
   const scriptResult=await app.evaluate(async({app})=>{const req=process.getBuiltinModule('module').createRequire(process.getBuiltinModule('path').join(app.getAppPath(),'electron/main.cjs'));return req('./signature-runtime.cjs').evaluateSignature({output:'return {n:typeof process+":"+typeof require+":"+typeof fetch};'});});assert.equal(scriptResult.n,'undefined:undefined:undefined');
   const packed=path.join(project,'release/win-unpacked/resources/app.asar');
   if(process.platform==='win32'){const packedResult=await app.evaluate(async(_electron,file)=>{const req=process.getBuiltinModule('module').createRequire(file+'/electron/main.cjs');return req('./signature-runtime.cjs').evaluateSignature({output:'return {n:"asar-wasm-ok"};'});},packed);assert.equal(packedResult.n,'asar-wasm-ok');}
@@ -72,11 +75,11 @@ try{
   await page.locator('.track-name').first().click();
   await page.waitForFunction(()=>document.querySelector('audio').currentTime>1.6);
   assert.match(await page.locator('audio').evaluate(a=>a.src),/^forma-audio:/);
-  assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].webContents.getBackgroundThrottling()),false);
+  assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().startsWith('http://127.0.0.1')).webContents.getBackgroundThrottling()),false);
   const localTime=await page.locator('audio').evaluate(a=>a.currentTime);
   await page.getByRole('button',{name:'Свернуть',exact:true}).click();
   await page.waitForFunction(t=>!document.querySelector('audio').paused&&document.querySelector('audio').currentTime>t+.8,localTime);
-  await app.evaluate(({BrowserWindow})=>{const w=BrowserWindow.getAllWindows()[0];w.restore();w.show();w.focus();});
+  await app.evaluate(({BrowserWindow})=>{const w=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().startsWith('http://127.0.0.1'));w.restore();w.show();w.focus();});
   await page.locator('audio').evaluate(a=>a.currentTime=12);
   await page.waitForFunction(()=>document.querySelector('audio').currentTime>12);
   await page.getByRole('button',{name:'Нравится текущий трек',exact:true}).click();
@@ -96,7 +99,7 @@ try{
   const youtubeTime=await page.locator('audio').evaluate(a=>a.currentTime);
   await page.getByRole('button',{name:'Свернуть',exact:true}).click();
   await page.waitForFunction(t=>!document.querySelector('audio').paused&&document.querySelector('audio').currentTime>t+.8,youtubeTime);
-  await app.evaluate(({BrowserWindow})=>{const w=BrowserWindow.getAllWindows()[0];w.restore();w.show();w.focus();});
+  await app.evaluate(({BrowserWindow})=>{const w=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().startsWith('http://127.0.0.1'));w.restore();w.show();w.focus();});
   await page.getByRole('button',{name:'Пауза',exact:true}).click();
   assert.equal(await page.locator('audio').evaluate(a=>a.paused),true);
   await page.locator('.sidebar-playlists').getByRole('button',{name:'HLS test',exact:true}).click();
@@ -107,10 +110,25 @@ try{
   const hlsTime=await page.locator('audio').evaluate(a=>a.currentTime);
   await page.getByRole('button',{name:'Свернуть',exact:true}).click();
   await page.waitForFunction(t=>!document.querySelector('audio').paused&&document.querySelector('audio').currentTime>t+.5,hlsTime);
-  await app.evaluate(({BrowserWindow})=>{const w=BrowserWindow.getAllWindows()[0];w.restore();w.show();w.focus();});
+  await app.evaluate(({BrowserWindow})=>{const w=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().startsWith('http://127.0.0.1'));w.restore();w.show();w.focus();});
   await page.getByRole('button',{name:'Пауза',exact:true}).click();
   assert.equal(await page.locator('iframe,video').count(),0);
   assert.ok(!(await app.evaluate(()=>globalThis.nativeMediaRequests)).some(r=>r.path.includes('video.m3u8')));
+  await page.locator('.sidebar-playlists').getByRole('button',{name:'Browser test',exact:true}).click();
+  await page.getByRole('button',{name:'Слушать Browser fallback',exact:true}).click();
+  await page.waitForFunction(()=>Number(document.querySelector('input[aria-label="Позиция воспроизведения"]').value)>1);
+  const browserState=()=>app.evaluate(async({BrowserWindow})=>{const w=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().startsWith('https://www.youtube.com/watch'));return {hidden:!w.isVisible(),sandbox:w.webContents.getLastWebPreferences().sandbox,...await w.webContents.executeJavaScript('({time:document.querySelector("video").currentTime,paused:document.querySelector("video").paused,id:document.getElementById("movie_player").getVideoData().video_id,node:typeof require,bridge:typeof window.forma})')};});
+  assert.equal((await browserState()).hidden,true);assert.equal((await browserState()).sandbox,true);assert.equal((await browserState()).node,'undefined');assert.equal((await browserState()).bridge,'undefined');
+  assert.equal(await page.locator('iframe,video').count(),0);
+  await page.getByRole('button',{name:'Пауза',exact:true}).click();await expect.poll(async()=>(await browserState()).paused).toBe(true);
+  const stopped=(await browserState()).time;await page.waitForTimeout(350);assert.ok((await browserState()).time-stopped<.1);
+  await page.getByRole('button',{name:'Воспроизвести',exact:true}).click();await expect.poll(async()=>(await browserState()).time).toBeGreaterThan(stopped+.3);
+  await page.getByRole('slider',{name:'Позиция воспроизведения'}).fill('10');await expect.poll(async()=>(await browserState()).time).toBeGreaterThanOrEqual(10);
+  const beforeMinimize=(await browserState()).time;await page.getByRole('button',{name:'Свернуть',exact:true}).click();await expect.poll(async()=>(await browserState()).time).toBeGreaterThan(beforeMinimize+.5);
+  await app.evaluate(({BrowserWindow})=>{const w=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().startsWith('http://127.0.0.1'));w.restore();w.show();w.focus();});
+  assert.deepEqual(await page.evaluate(()=>window.forma.sources('yt_zyxwvutsrqp')),['forma-browser://youtube/zyxwvutsrqp']);
+  await page.getByRole('slider',{name:'Позиция воспроизведения'}).fill('19.5');await expect.poll(async()=>(await browserState()).id).toBe('zyxwvutsrqp');
+  await expect(page.locator('.now-playing strong')).toHaveText('Browser next');await expect.poll(async()=>(await browserState()).paused).toBe(false);
   await page.getByRole('button',{name:'Скачанное',exact:true}).click();await page.locator('.track-name').first().click();
   await page.waitForFunction(()=>document.querySelector('audio').src.startsWith('forma-audio:')&&document.querySelector('audio').currentTime>1.3);
   await page.getByRole('button',{name:'Пауза',exact:true}).click();
@@ -170,5 +188,5 @@ try{
   assert.equal(await fs.readFile(path.join(dir,'library.json'),'utf8'),'damaged primary');assert.equal(await fs.readFile(path.join(dir,'library.json.bak'),'utf8'),'damaged backup');
   await fs.writeFile(path.join(dir,'library.json'),JSON.stringify(saved));await page.getByRole('button',{name:'Повторить загрузку'}).click();
   await expect(page.locator('.sidebar')).toBeVisible();assert.ok((await page.evaluate(()=>window.forma.load())).likes.includes('DesktopTest'));
-  console.log('PASS: real Electron sandbox/preload, native AAC + HLS audio playback through real network redirect/query ranges, HLS seeking and background, actual application bundle='+await app.evaluate(({app})=>app.getAppPath())+',  isolated signature runtime and Wi-Fi settings and approval on PC, draft does not modify library, pinned TLS/token and approved receipt survive restart, minimized playback (real local audio + real native YouTube audio protocol with controlled extractor/HTTP), explicit pause, catalogue and Yandex IPC and automatic requested-playlist import across restart (mock transport), file import, legacy downloaded file preservation, audio seeking, close-save, restart offline, deletion, damaged-profile protection and retry recovery.');
+  console.log('PASS: real Electron sandbox/preload, native AAC + HLS + browser fallback playback through real network redirect/query ranges, HLS seeking and background, actual application bundle='+await app.evaluate(({app})=>app.getAppPath())+',  isolated signature runtime and Wi-Fi settings and approval on PC, draft does not modify library, pinned TLS/token and approved receipt survive restart, minimized playback (real local audio + real native YouTube audio protocol with controlled extractor/HTTP), explicit pause, catalogue and Yandex IPC and automatic requested-playlist import across restart (mock transport), file import, legacy downloaded file preservation, audio seeking, close-save, restart offline, deletion, damaged-profile protection and retry recovery.');
 }finally{if(app)await app.close();await fs.rm(dir,{recursive:true,force:true});}
