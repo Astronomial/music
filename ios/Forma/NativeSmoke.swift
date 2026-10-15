@@ -517,6 +517,16 @@ enum NativeSmoke {
         guard model.isDisliked(other), model.player.current?.id == following.id else { throw SyncError.rejected("Rating a library track interrupted playback") }
         model.toggleDislike(other); model.player.pause()
 
+        model.play(following, list: [following])
+        try await until("last-queue-track-playing") { model.player.isPlaying }
+        model.player.seek(to: 4.6)
+        try await until("queue-naturally-ended") { model.player.error != nil && !model.player.isPlaying && !model.player.isLoading }
+        model.player.resume()
+        try await until("ended-queue-restarts-from-beginning", diagnostic: { model.player.debugPlaybackState }) {
+            model.player.isPlaying && model.player.position < 1
+        }
+        model.player.pause()
+
         let storageURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("library.json")
         defer { try? FileManager.default.removeItem(at: storageURL.deletingLastPathComponent()) }
         let storage = LibraryStorage(url: storageURL)
@@ -539,7 +549,8 @@ enum NativeSmoke {
                 "rapidSelectionCancelsOldLoad": true, "staleSearchIgnored": true, "staleLinkIgnored": true, "stalePulseIgnored": true, "homeRowsStartAdaptivePulse": true, "moodRowsKeepAdaptiveContext": true,
                 "oldSaveCannotOverwriteNewerLibrary": true, "syncBaselineBoundToPairedPC": true, "legacyBaselineMigratedSafely": true,
                 "advancedQueueMatchesNewList": true, "keychainRestoreRetriesTransientFailure": true, "cancelledSearchClearsSpinner": true,
-                "dislikeAdvancesWithSingleSignal": true, "undoAndLibraryDislikeKeepPlayback": true, "personalPulseDistinctFromMood": true]
+                "dislikeAdvancesWithSingleSignal": true, "undoAndLibraryDislikeKeepPlayback": true, "personalPulseDistinctFromMood": true,
+                "endedQueueRestartsFromBeginning": true]
     }
 }
 #endif

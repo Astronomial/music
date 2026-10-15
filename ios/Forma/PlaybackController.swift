@@ -67,6 +67,7 @@ final class PlaybackController: ObservableObject {
     private var queue: [Track] = []
     private var playedInRun: Set<String> = []
     private var pulseMode = false
+    private var queueExhausted = false
     private var mood: String?
     private var requestedPlayback = false
     private var seeking = false
@@ -215,6 +216,7 @@ final class PlaybackController: ObservableObject {
         play(track, list: [track], asPulse: true, context: mood)
     }
     private func start(_ track: Track, at seconds: Double = 0, refreshing: Bool = false) {
+        queueExhausted = false
         if !refreshing || startTiming == nil { beginTiming(source: "network") }
         let buffered = refreshing ? nil : takeBufferedItem(track.id)
         cancelExtraPreparation()
@@ -272,6 +274,7 @@ final class PlaybackController: ObservableObject {
     }
     func resume() {
         guard let current else { return }
+        if queueExhausted { start(current); return }
         requestedPlayback = true
         guard !interrupted, !mediaServicesLost else { updateNowPlaying(); return }
         if engine.currentItem == nil || engine.currentItem?.status == .failed { start(current, at: position, refreshing: true); return }
@@ -308,7 +311,7 @@ final class PlaybackController: ObservableObject {
         }
         let next = candidate()
         if let next { if !pulseMode, queue.first?.id == next.id { queue.removeFirst() }; start(next) }
-        else { pause(); error = "Очередь закончилась. Обнови каталог или выбери трек." }
+        else { queueExhausted = true; pause(); error = "Очередь закончилась. Выбери трек или начни этот заново." }
     }
     private func candidate(excluding additional: Set<String> = []) -> Track? {
         let excluded = additional.union(playedInRun).union(failedCandidates).union(current.map { [$0.id] } ?? [])
@@ -320,6 +323,7 @@ final class PlaybackController: ObservableObject {
         if let current { playedInRun.insert(current.id) }
         if !pulseMode { queue.removeAll { $0.id == ready.track.id } }
         onSelected?(ready.track)
+        queueExhausted = false
         current = ready.track; startedID = nil; prepared = nil; position = 0; duration = ready.track.duration
         clock.reset(); retryCount = 0; artworkTask?.cancel(); artworkTask = nil; artwork = nil; error = nil
         generation = UUID(); prefetchedCurrent = nil; failedCandidates = []
