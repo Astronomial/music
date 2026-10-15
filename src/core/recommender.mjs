@@ -240,7 +240,7 @@ export function rankTracks(candidates, state, options = {}) {
     if(disliked.has(track.id))score-=1000;
     score-=Math.max(0,audio.avoidance-.75)*2;
     if (ownWeight < 0) score -= Math.min(1.8, Math.abs(ownWeight) * 0.3);
-    let reason = track.source==='local'?'Из твоей локальной музыки':`Новое из ${track.source==='youtube'?'YouTube':'Audius'}`;
+    let reason = track.source==='local'?'Из твоей локальной музыки':'Новое из YouTube';
     if (contextScore) reason = track.mood||track.genre?`Под настроение · ${track.mood || track.genre}`:'Найдено в направлении подборки';
     else if (liked.has(track.id)) reason = 'Из твоих любимых';
     else if (profile.positive[`artist:${track.artistId}`]) reason = 'Ты слушаешь этого исполнителя';

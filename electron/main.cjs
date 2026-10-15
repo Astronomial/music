@@ -5,8 +5,8 @@ const { playerBrowserURL, playerRequestHeaders } = require('./player-links.cjs')
 const { Store } = require('./storage.cjs');
 const { folderFiles, importLocalFile } = require('./local.cjs');
 const { OfflineLibrary, validId } = require('./offline.cjs');
-protocol.registerSchemesAsPrivileged([{scheme:'forma-audio', privileges:{standard:true,secure:true,stream:true,supportFetchAPI:true}}]);
-let window, store, offline, api, uiServer, syncServer, coordinator, desktopBaseline, apiKey = '', closing = false, closeTimer;
+protocol.registerSchemesAsPrivileged(['forma-audio','forma-stream'].map(scheme=>({scheme,privileges:{standard:true,secure:true,stream:true,supportFetchAPI:true}})));
+let window, store, offline, youtubeAudio, uiServer, syncServer, coordinator, desktopBaseline, closing = false, closeTimer;
 // Dev smoke tests use an explicit temporary profile on all operating systems.
 const testDataArg = process.argv.find(arg=>arg.startsWith('--forma-test-data='));
 if(!app.isPackaged&&testDataArg) app.setPath('userData',path.resolve(testDataArg.slice('--forma-test-data='.length)));
@@ -14,13 +14,10 @@ if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance',()=>{ window?.restore(); window?.focus(); });
 app.whenReady().then(async () => {
   const {desktopAppID,desktopPlayerIdentity}=await import('../src/core/youtube-player-config.mjs');
-  api = await import('../src/core/audius.mjs');
-  const { normalizeTrack } = await import('../src/core/model.mjs');
   store = new Store(app.getPath('userData'));
   offline = new OfflineLibrary(path.join(app.getPath('userData'),'Music'));
   await offline.init();
   // Let the renderer show recovery actions if the profile cannot be read.
-  const state = await store.read('library.json',null).catch(()=>null); apiKey = state?.settings?.apiKey || '';
   protocol.handle('forma-audio', request => { const url = new URL(request.url); return url.hostname==='track' ? offline.respond(url.pathname.slice(1),request.headers.get('range')) : url.hostname==='art'?offline.respondArt(url.pathname.slice(1)):new Response(null,{status:404}); });
   const handle = (name, fn) => ipcMain.handle(name,(event,...args)=> {
     if (event.sender !== window?.webContents || event.senderFrame !== window?.webContents.mainFrame) throw new Error('Недопустимый источник запроса');
@@ -42,7 +39,7 @@ app.whenReady().then(async () => {
   handle('sync:reject',async id=>{await syncServer.approvals.reject(id);return syncServer.status();});
   const saveState = async state => {
     if (!state || state.version!==1 || !state.tracks || !Array.isArray(state.likes) || !Array.isArray(state.events) || !Array.isArray(state.playlists) || JSON.stringify(state).length>25*1024**2) throw new Error('Некорректная библиотека');
-    apiKey = String(state.settings?.apiKey || '').slice(0,250);
+    const {retireLegacyCatalog}=await import('../src/core/library-order.mjs');state=retireLegacyCatalog(state);
     const next=await coordinator.mutate(current=>mergeDesktop(current||state,desktopBaseline||state,state));
     desktopBaseline=structuredClone(state);
     if(JSON.stringify(next)!==JSON.stringify(state))window?.webContents.send('sync:changed',{state:next,base:state});
@@ -52,7 +49,6 @@ app.whenReady().then(async () => {
   handle('state:close',async state=> {
     await saveState(state);await coordinator.queue;await store.queue;clearTimeout(closeTimer);closing=true;window.close();
   });
-  handle('audius:request',(route,params)=>api.requestAudius(route,params,net.fetch,apiKey));
   const { YouTubeCatalog } = await import('../src/core/youtube.mjs');
   const catalog=new YouTubeCatalog(async()=>{
     const {Innertube}=await import('youtubei.js');
@@ -87,24 +83,19 @@ app.whenReady().then(async () => {
     finally{if(importController===controller)importController=null;}
   });
   handle('yandex:cancel',()=>importController?.abort());
-  handle('audio:sources',id=> {
-    if (!validId(id)) throw new Error('Некорректный трек');
-    return offline.manifest[id] ? [`forma-audio://track/${id}`] : api.API_HOSTS.map(host=>api.apiURL(host,`/tracks/${id}/stream`,apiKey?{api_key:apiKey}:{}));
+  youtubeAudio=new (require('./youtube-audio.cjs').YouTubeAudio)((input,options)=>net.fetch(input,options));
+  protocol.handle('forma-stream',request=>{
+    const u=new URL(request.url);
+    return u.hostname==='youtube'?youtubeAudio.respond(u.pathname.slice(1),request):new Response(null,{status:404});
   });
+  handle('audio:sources',async id=> {
+    if(typeof id!=='string')throw new Error('Некорректный трек');
+    if(validId(id)&&offline.manifest[id])return [`forma-audio://track/${id}`];
+    if(/^yt_[A-Za-z0-9_-]{11}$/.test(id)){const videoID=id.slice(3);await youtubeAudio.resolve(videoID);return [`forma-stream://youtube/${videoID}`];}
+    throw new Error('Трек недоступен. Найди версию в поиске YouTube.');
+  });
+  handle('audio:prepare',ids=>{if(!Array.isArray(ids))throw new Error('Некорректная очередь');return youtubeAudio.prepare(ids.slice(0,3));});
   handle('offline:list',()=>offline.list());
-  handle('offline:download',async id => {
-    if (!validId(id)) throw new Error('Некорректный трек');
-    const fresh = normalizeTrack(await api.requestAudius(`/tracks/${id}`,{},net.fetch,apiKey));
-    return offline.download(fresh,async signal=> {
-      let lastError;
-      for (const host of api.API_HOSTS) try {
-        const response = await net.fetch(api.apiURL(host,`/tracks/${id}/download`,apiKey?{api_key:apiKey}:{}),{signal,headers:apiKey?{'x-api-key':apiKey}:{}});
-        if (response.ok) return response;
-        await response.body?.cancel(); lastError=new Error(`Audius: ${response.status}`);
-      } catch(e) { lastError=e; if(signal.aborted) throw e; }
-      throw lastError;
-    },progress=>window?.webContents.send('offline:progress',progress));
-  });
   handle('offline:remove',id=>offline.remove(id));
   handle('offline:cancel',id=>offline.cancel(id));
   handle('folder:open',()=>shell.openPath(offline.dir));
@@ -132,7 +123,7 @@ app.whenReady().then(async () => {
   window.webContents.on('will-navigate',(e,url)=>{if(url!==entry){e.preventDefault();openPlayerLink(url);}});
   window.webContents.session.setPermissionRequestHandler((_wc,_permission,cb)=>cb(false));
   window.webContents.session.webRequest.onHeadersReceived((details,callback)=> {
-    if(details.url===entry) callback({responseHeaders:{...details.responseHeaders,'Content-Security-Policy':["default-src 'self'; script-src 'self' https://www.youtube.com https://s.ytimg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob: forma-audio:; media-src 'self' https: forma-audio: blob:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; frame-src https://www.youtube.com https://www.youtube-nocookie.com"]}});
+    if(details.url===entry) callback({responseHeaders:{...details.responseHeaders,'Content-Security-Policy':["default-src 'self'; script-src 'self' https://www.youtube.com https://s.ytimg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob: forma-audio:; media-src 'self' forma-stream: forma-audio: blob:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; frame-src https://www.youtube.com https://www.youtube-nocookie.com"]}});
     else callback({responseHeaders:details.responseHeaders});
   });
   app.setAppUserModelId(desktopAppID);
@@ -140,4 +131,4 @@ app.whenReady().then(async () => {
   await window.loadURL(entry);
 });
 app.on('window-all-closed',()=>app.quit());
-app.on('before-quit',()=>{syncServer?.stop({persist:false});uiServer?.close();for(const id of offline?.active.keys() || []) offline.cancel(id);});
+app.on('before-quit',()=>{syncServer?.stop({persist:false});uiServer?.close();youtubeAudio?.close();for(const id of offline?.active.keys() || []) offline.cancel(id);});

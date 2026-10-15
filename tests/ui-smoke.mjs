@@ -1,3 +1,4 @@
+import {installAudioFixture} from './audio-fixture.mjs';
 import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -12,14 +13,15 @@ const titles=['Soft Focus','Night Current','Between the Lines','Slow Motion','Mo
 const tracks=titles.map((title,i)=>({id:'Test'+i,title,user:{id:'Artist'+i,name:['Test Artist One','Test Artist Two','Test Artist Three'][i%3]},genre:['House','Electronic','Ambient'][i%3],mood:i%2?'Peaceful':'Upbeat',duration:120+i*17,tags:'melodic,chill',is_streamable:true,is_downloadable:true,play_count:3000+i*200,favorite_count:500+i*10,artwork:{}}));
 function wav(seconds=90){const rate=8000,b=Buffer.alloc(44+rate*2*seconds);b.write('RIFF',0);b.writeUInt32LE(b.length-8,4);b.write('WAVEfmt ',8);b.writeUInt32LE(16,16);b.writeUInt16LE(1,20);b.writeUInt16LE(1,22);b.writeUInt32LE(rate,24);b.writeUInt32LE(rate*2,28);b.writeUInt16LE(2,32);b.writeUInt16LE(16,34);b.write('data',36);b.writeUInt32LE(b.length-44,40);for(let i=44;i<b.length;i+=2)b.writeInt16LE(Math.round(Math.sin(i/16)*1800),i);return b;}
 const audio=wav();
-await page.route(/https:\/\/.*\/v1\//,async route=>{
-  const u=new URL(route.request().url());
-  if(u.pathname.endsWith('/stream')){await route.fulfill({status:200,contentType:'audio/wav',body:audio,headers:{'accept-ranges':'bytes'}});return;}
-  let data=tracks;
-  if(u.pathname.endsWith('/users/search')){await route.fulfill({json:{data:[{id:'Artist0',name:'Test Artist One',handle:'testone',track_count:4}]}});return;}
-  if(u.pathname.endsWith('/search')){const q=u.searchParams.get('query');const g=u.searchParams.get('genre');data=tracks.filter(t=>(!q||`${t.title} ${t.user.name}`.toLowerCase().includes(q.toLowerCase()))&&(!g||t.genre===g));}
-  await route.fulfill({json:{data}});
-});
+await page.addInitScript(({tracks})=>{
+ const songs=tracks.map((t,i)=>({...t,id:'yt_'+String(i).padStart(11,'0'),videoId:String(i).padStart(11,'0'),artist:t.user.name,artistId:t.user.id,source:'youtube',streamable:true,downloadable:false,tags:['melodic','chill'],artwork:''}));
+ window.forma={desktop:false,load:async()=>JSON.parse(localStorage.getItem('forma-library')),save:async s=>localStorage.setItem('forma-library',JSON.stringify(s)),downloads:async()=>({}),catalogRequest:async(route,p)=>{
+  if(route==='/users/search')return [{id:'Artist0',name:'Test Artist One',handle:'testone',track_count:4}];
+  if(route.startsWith('/users/'))return songs.filter(t=>t.artistId===route.split('/')[2]);
+  const q=(p?.query||'').toLowerCase();return q.includes('focus')?songs:songs.filter(t=>!q||`${t.title} ${t.artist}`.toLowerCase().includes(q)||q.includes(t.genre.toLowerCase()));
+ },exportProfile:async()=>true};
+},{tracks});
+await page.addInitScript(installAudioFixture);
 try{
   await page.goto(base);
   await page.getByRole('heading',{name:'Как звучит твой мир?'}).waitFor();
@@ -89,7 +91,7 @@ try{
   const old=await page.locator('.now-playing strong').innerText();
   await page.getByRole('button',{name:'Следующий трек',exact:true}).click();
   await page.waitForFunction(old=>document.querySelector('.now-playing strong').textContent!==old,old);
-  await page.getByRole('button',{name:'Настройка Пульса',exact:true}).click();
+  await page.getByRole('button',{name:'Настроить Пульс',exact:true}).click();
   await page.getByRole('heading',{name:'Настройка Пульса'}).waitFor();
   await page.getByRole('button',{name:'Постепенно шире',exact:true}).click();
   await page.getByRole('button',{name:'Больше английской',exact:true}).click();
@@ -138,7 +140,7 @@ try{
   assert.equal(await page.locator('.app-shell').getAttribute('data-palette'),'ocean');
   assert.equal(await page.locator('.app-shell').getAttribute('data-space-motion'),'false');
   assert.equal(await page.locator('.galaxy-disk').evaluate(el=>getComputedStyle(el).animationName),'none');
-  await page.getByRole('button',{name:'Настройка Пульса',exact:true}).click();
+  await page.getByRole('button',{name:'Настроить Пульс',exact:true}).click();
   assert.equal(await page.getByRole('button',{name:'Для концентрации',exact:true}).getAttribute('aria-pressed'),'true');
   assert.equal(await page.getByRole('button',{name:'Без вокала',exact:true}).getAttribute('aria-pressed'),'true');
   assert.equal(await page.getByRole('slider',{name:'Разнообразие артистов',exact:true}).inputValue(),'1');

@@ -1,3 +1,4 @@
+import {installAudioFixture} from './audio-fixture.mjs';
 import {chromium} from '@playwright/test';
 import assert from 'node:assert/strict';
 const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
@@ -7,21 +8,17 @@ await page.addInitScript(()=>{
   const state={version:1,tracks:Object.fromEntries(tracks.map(t=>[t.id,t])),likes:tracks.slice(0,30).map(t=>t.id),playlists:[],events:[],hidden:[],settings:{provider:'youtube',genres:['House'],preferredArtists:['Favourite']},onboarded:true};
   window.savedState=state;window.trackFixture=state.tracks;
   window.forma={desktop:false,load:async()=>state,save:async s=>{window.savedState=s;},downloads:async()=>({}),onProgress:()=>()=>{},onBeforeClose:()=>()=>{},catalogRequest:async()=>[],request:async()=>[],sources:async()=>[]};
-  window.YT={Player:class{
-    constructor(node,options){this.options=options;this.id='';this.state=2;window.fixturePlayer=this;const frame=document.createElement('iframe');frame.src='about:blank';node.replaceWith(frame);this.frame=frame;setTimeout(()=>options.events.onReady({target:this}),0);}
-    loadVideoById({videoId}){this.id=videoId;this.playVideo();}cueVideoById({videoId}){this.id=videoId;this.pauseVideo();}
-    playVideo(){this.state=1;this.options.events.onStateChange({data:1});}pauseVideo(){this.state=2;this.options.events.onStateChange({data:2});}
-    getCurrentTime(){return 0;}getDuration(){return 200;}getPlayerState(){return this.state;}getVideoData(){return {video_id:this.id};}setVolume(){}destroy(){this.frame.remove();}
-  }};
+
 });
+await page.addInitScript(installAudioFixture);
 try{
   await page.goto(process.env.FORMA_TEST_URL||'http://localhost:5173');
   await page.locator('.for-you .track-name').first().click();
-  await page.waitForFunction(()=>window.fixturePlayer?.state===1&&!!window.fixturePlayer.id);
+  await page.waitForFunction(()=>window.nativeAudio?.state===1&&!!window.nativeAudio.id);
   const sequence=[];
   for(let i=0;i<18;i++){
-    const id=await page.evaluate(()=>window.fixturePlayer.id);sequence.push(await page.evaluate(id=>window.trackFixture['yt_'+id],id));
-    if(i<17){await page.getByRole('button',{name:'Следующий трек',exact:true}).click();await page.waitForFunction(previous=>window.fixturePlayer.id!==previous&&window.fixturePlayer.state===1,id);}
+    const id=await page.evaluate(()=>window.nativeAudio.id);sequence.push(await page.evaluate(id=>window.trackFixture['yt_'+id],id));
+    if(i<17){await page.getByRole('button',{name:'Следующий трек',exact:true}).click();await page.waitForFunction(previous=>window.nativeAudio.id!==previous&&window.nativeAudio.state===1,id);}
   }
   assert.equal(new Set(sequence.map(t=>t.id)).size,18);
   assert.ok(new Set(sequence.map(t=>t.artist)).size>=14);

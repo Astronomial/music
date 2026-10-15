@@ -11,17 +11,21 @@ export function useVisualActivity(){
   return visible;
 }
 
-// One 3.2-second flight per four-second slot; paths cover the whole window.
+// A 3.2-second flight every second; paths cover the whole window.
 // Coordinates and CSS timing stay stable across playback and page renders.
 const METEOR_PATHS=[
   [-4,5,28,58,110,.8], [34,-4,35,44,95,.7], [74,10,34,40,125,.75],
   [-3,48,25,48,92,.8], [33,39,32,45,112,.75], [61,54,24,36,84,.7],
   [8,-5,38,54,124,.8], [16,72,20,55,94,.7], [47,19,27,40,116,.8],
-  [-2,28,29,62,104,.75], [8,59,19,50,96,.7], [43,82,20,48,114,.8]
+  [-2,28,29,62,104,.75], [8,59,19,50,96,.7], [43,82,20,48,114,.8],
+  [82,-3,30,42,108,.8], [15,23,27,60,120,.7], [67,32,33,45,94,.8],
+  [-3,66,22,54,104,.75], [41,-4,36,56,126,.8], [19,47,26,48,96,.7],
+  [58,4,30,42,114,.8], [4,84,18,45,88,.7], [32,61,24,52,110,.8],
+  [86,52,28,35,98,.75], [3,13,31,62,122,.8], [53,74,22,44,106,.75]
 ].map(([x,y,angle,distance,tail,light],i)=>({
   '--meteor-x':x+'%','--meteor-y':y+'%','--meteor-angle':angle+'deg',
   '--meteor-distance':`min(${distance}vw, 90vh)`,'--meteor-tail':tail+'px',
-  '--meteor-light':light,'--meteor-delay':(i*4-.8)+'s'
+  '--meteor-light':light,'--meteor-delay':(i-24)+'s'
 }));
 
 export const SpaceBackdrop=memo(function SpaceBackdrop(){

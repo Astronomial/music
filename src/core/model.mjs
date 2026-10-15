@@ -5,7 +5,7 @@ export function normalizeTrack(t) {
   const artwork = t.artwork || {};
   const download = t.download || {};
   return {
-    source:t.source||'audius',videoId:t.videoId||'',relatedTo:t.relatedTo||[],directRelatedTo:t.directRelatedTo||[],retrievalSources:t.retrievalSources||[],discoveryGenres:t.discoveryGenres||[],discoveryMoods:t.discoveryMoods||[],discoveryEnergy:t.discoveryEnergy||[],discoveryVocals:t.discoveryVocals||[],discoveryLanguages:t.discoveryLanguages||[],language:typeof t.language==='string'?t.language.slice(0,20):'',discoveredAt:Number.isFinite(t.discoveredAt)?t.discoveredAt:0,soundProfile:t.soundProfile||null,album:t.album||'',
+    source:t.source||'legacy',videoId:t.videoId||'',relatedTo:t.relatedTo||[],directRelatedTo:t.directRelatedTo||[],retrievalSources:t.retrievalSources||[],discoveryGenres:t.discoveryGenres||[],discoveryMoods:t.discoveryMoods||[],discoveryEnergy:t.discoveryEnergy||[],discoveryVocals:t.discoveryVocals||[],discoveryLanguages:t.discoveryLanguages||[],language:typeof t.language==='string'?t.language.slice(0,20):'',discoveredAt:Number.isFinite(t.discoveredAt)?t.discoveredAt:0,soundProfile:t.soundProfile||null,album:t.album||'',
     id: String(t.id), title: t.title || 'Без названия', artist: t.user?.name || t.artist || 'Неизвестный исполнитель',
     artistId: String(t.user?.id || t.artistId || ''), genre: t.genre || '', mood: t.mood || '',
     tags: (Array.isArray(t.tags) ? t.tags : String(t.tags || '').split(',')).map(x => x.trim().toLowerCase()).filter(Boolean).slice(0, 30),

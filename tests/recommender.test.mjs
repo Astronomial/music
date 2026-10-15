@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { initialState, normalizeTrack, recordEvent } from '../src/core/model.mjs';
 import { rankTracks, eventWeight, buildProfile, trackSimilarity } from '../src/core/recommender.mjs';
-import { apiURL, requestAudius, collectCandidates, API_HOSTS } from '../src/core/audius.mjs';
 const now=1800000000000;
 const track=(id,genre,artist=id,extra={})=>({id,title:id,artist,artistId:artist,genre,mood:'',tags:[],streamable:true,duration:200,favoriteCount:0,...extra});
 function setup(){const s=initialState();s.tracks={a:track('a','House','one'),b:track('b','House','two'),c:track('c','Rock','three')};return s;}
@@ -54,18 +53,4 @@ test('download and stream gating are respected when parsing API responses',()=>{
   assert.equal(normalizeTrack({id:'a',is_stream_gated:true}).streamable,false);
   assert.equal(normalizeTrack({id:'a',is_downloadable:true}).downloadable,true);
   assert.equal(normalizeTrack({id:'a',artwork:{'480x480':'https://image'},tags:'house, melodic'}).artwork,'https://image');
-});
-test('API routes cannot target arbitrary hosts or traversal paths',()=>{
-  assert.throws(()=>apiURL('https://evil.example','/tracks/search'));
-  assert.throws(()=>apiURL(API_HOSTS[0],'/tracks/../../users'));
-  assert.match(apiURL(API_HOSTS[0],'/tracks/search',{query:'a&b'}),/query=a%26b/);
-});
-test('API retries failed nodes and supplies the optional free API key',async()=>{
-  let calls=0;const result=await requestAudius('/tracks/search',{},async(url,options)=>{calls++;assert.equal(options.headers['x-api-key'],'free-key');return calls===1?new Response('',{status:503}):Response.json({data:[{id:'a'}]});},'free-key');
-  assert.equal(calls,2);assert.equal(result[0].id,'a');
-});
-test('candidate retrieval expands into preferred genres, artists and underground tracks',async()=>{
-  const s=setup();s.likes=['a'];const routes=[];
-  const candidates=await collectCandidates(s,async(route,params)=>{routes.push([route,params]);if(route.includes('underground'))throw new Error('one node failed');return[{id:'X',title:'new',genre:'House',user:{id:'artist'}}];});
-  assert.equal(candidates.length,1);assert.ok(routes.some(([p,q])=>p==='/tracks/search'&&q.genre==='House'));assert.ok(routes.some(([p])=>p==='/users/one/tracks'));
 });

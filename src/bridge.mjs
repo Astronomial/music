@@ -1,4 +1,3 @@
-import { requestAudius, API_HOSTS, apiURL } from './core/audius.mjs';
 import { requestPublicYandexPlaylist } from './core/yandex.mjs';
 let importController;
 export const bridge = window.forma || {
@@ -7,11 +6,10 @@ export const bridge = window.forma || {
   cancelImport: () => importController?.abort(),
   load: async () => { try { return JSON.parse(localStorage.getItem('forma-library')); } catch { return null; } },
   save: async state => localStorage.setItem('forma-library', JSON.stringify(state)),
-  request: (path,params) => { let state; try { state=JSON.parse(localStorage.getItem('forma-library')); } catch {} return requestAudius(path,params,fetch,state?.settings?.apiKey); },
-  catalogRequest:(path,params,provider)=>{if(provider==='youtube')throw new Error('Поиск YouTube доступен в Windows-приложении.');return bridge.request(path,params);},
+  catalogRequest:async()=>{throw new Error('Поиск YouTube доступен в Windows-приложении.');},
   openYouTube:id=>{if(/^[\w-]{11}$/.test(id))window.open('https://www.youtube.com/watch?v='+id,'_blank','noopener');},
   importLocal:async()=>{throw new Error('Локальные файлы доступны в Windows-приложении.');},
-  sources: async id => API_HOSTS.map(host=>apiURL(host,`/tracks/${id}/stream`)),
+  sources:async()=>{throw new Error('Воспроизведение доступно в Windows-приложении.');},
   downloads: async () => ({}),
   download: async () => { throw new Error('Скачивание на диск доступно в Windows-приложении Forma.'); },
   onProgress: () => () => {},

@@ -15,9 +15,9 @@
 /* Full-window, short white trails inspired by the quiet Grok starfield. */
 .cosmic-meteors{position:absolute;inset:0;pointer-events:none}
 .meteor-origin{position:absolute;left:var(--meteor-x);top:var(--meteor-y);width:0;height:0;transform:rotate(var(--meteor-angle));pointer-events:none}
-.shooting-star{display:block;position:absolute;right:0;top:0;width:var(--meteor-tail);height:1px;border-radius:50%;opacity:0;background:linear-gradient(90deg,transparent,#e8e9f235 35%,#f7f7ffb3 85%,#fff);animation:meteor-flight 48s linear var(--meteor-delay) infinite;pointer-events:none}
+.shooting-star{display:block;position:absolute;right:0;top:0;width:var(--meteor-tail);height:1px;border-radius:50%;opacity:0;background:linear-gradient(90deg,transparent,#e8e9f235 35%,#f7f7ffb3 85%,#fff);animation:meteor-flight 24s linear var(--meteor-delay) infinite;pointer-events:none}
 .shooting-star::after{content:'';position:absolute;right:-1px;top:-.5px;width:2px;height:2px;border-radius:50%;background:#fff;box-shadow:0 0 5px #eeeaff80}
-@keyframes meteor-flight{0%{opacity:0;transform:translateX(0)}.4%{opacity:var(--meteor-light)}4.5%{opacity:var(--meteor-light)}6.66%{opacity:0;transform:translateX(var(--meteor-distance))}100%{opacity:0;transform:translateX(var(--meteor-distance))}}
+@keyframes meteor-flight{0%{opacity:0;transform:translateX(0)}.8%{opacity:var(--meteor-light)}9%{opacity:var(--meteor-light)}13.33%{opacity:0;transform:translateX(var(--meteor-distance))}100%{opacity:0;transform:translateX(var(--meteor-distance))}}
 @keyframes star-breathe{0%,100%{opacity:.15}50%{opacity:.8}}
 .sidebar{background:linear-gradient(180deg,#0d07168f,#08050d9e);border-right-color:#b387f51a;backdrop-filter:none}
 .brand>svg{filter:drop-shadow(0 0 8px #bc8cff55)}
@@ -26,7 +26,6 @@
 .nav-item.selected{background:linear-gradient(100deg,rgba(var(--accent-rgb),.16),rgba(var(--accent-rgb),.025));border:1px solid rgba(var(--accent-rgb),.12);padding:12px 11px;box-shadow:inset 3px 0 rgba(var(--accent-rgb),.6),0 0 24px rgba(var(--accent-rgb),.025)}
 .search-field{background:#130b1a9c;border-color:#c5a7ef20}
 .player{background:linear-gradient(180deg,#100a19b3,#08050ec7);border-color:#b38bd028;backdrop-filter:none}
-.youtube-panel{background:#08050ebf;border-left-color:#b491d91c}
 .page-intro .eyebrow{color:#c5a4f4}
 /* The Pulse is a free-standing scene, with no card or rectangular backdrop. */
 .pulse-stage{position:relative;isolation:isolate;min-height:400px;margin:-12px 0 8px;overflow:hidden;text-align:center}
@@ -48,7 +47,7 @@
 @keyframes galaxy-heartbeat{0%,100%{opacity:.75;transform:scale(.9)}50%{opacity:1;transform:scale(1.2)}}
 .mix-art{width:100%;aspect-ratio:auto;background-color:#130b1f99;box-shadow:inset 0 1px #e1c0ff14;border-color:#bc99ef24}
 .mix-art::after{content:none}
-.mix-art>h3{position:absolute;z-index:2;left:18px;bottom:22px;margin:0;max-width:calc(100% - 60px);font-size:calc(25px * var(--text-scale));line-height:1.12;letter-spacing:-.65px;font-weight:500}.mix-card>p{margin-top:12px}.sidebar-label{letter-spacing:.2px;text-transform:none;font-weight:500}.settings-card p,.page-intro p{max-width:72ch}.youtube-panel>.eyebrow{letter-spacing:0;text-transform:none}
+.mix-art>h3{position:absolute;z-index:2;left:18px;bottom:22px;margin:0;max-width:calc(100% - 60px);font-size:calc(25px * var(--text-scale));line-height:1.12;letter-spacing:-.65px;font-weight:500}.mix-card>p{margin-top:12px}.sidebar-label{letter-spacing:.2px;text-transform:none;font-weight:500}.settings-card p,.page-intro p{max-width:72ch}{letter-spacing:0;text-transform:none}
 .mix-sage{background:radial-gradient(ellipse at 80% 0%,#7380c12c,transparent 90%),#100e1c99}
 .mix-sand{background:radial-gradient(ellipse at 90% 10%,#bd89c443,transparent 85%),#1b0e2599}
 .mix-lilac{background:radial-gradient(ellipse at 85% 0%,#9360df3b,transparent 90%),#170c2599}
@@ -117,3 +116,5 @@
 .startup-recovery{-webkit-app-region:drag}.recovery-content{-webkit-app-region:no-drag}
 
 .pulse-settings-modal>.settings-card{margin-bottom:22px}
+
+.downloaded-indicator{display:inline-flex;align-items:center;justify-content:center;width:32px;color:var(--accent)}

@@ -1,8 +1,9 @@
+import {installAudioFixture} from './audio-fixture.mjs';
 import {chromium,expect} from '@playwright/test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
-const source=await fs.readFile('tests/youtube-ui-smoke.mjs','utf8'),start=source.indexOf('await page.addInitScript(()=>{')+'await page.addInitScript(()=>{'.length,end=source.indexOf('\n});\ntry{',start),fixture=source.slice(start,end);
+const source=await fs.readFile('tests/youtube-ui-smoke.mjs','utf8'),start=source.indexOf('await page.addInitScript(()=>{')+'await page.addInitScript(()=>{'.length,end=source.indexOf('\n});',start),fixture=source.slice(start,end);
 const page=await browser.newPage({viewport:{width:1440,height:1050}}),errors=[];
 page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error'&&/same key|unique.*key/.test(m.text()))errors.push(m.text());});
 await page.addInitScript(fixture);
@@ -15,6 +16,7 @@ await page.addInitScript(({playlist})=>{
  window.forma.save=async s=>{window.savedState=s;return save(s);};
 },{playlist});
 const base=process.env.FORMA_TEST_URL||'http://localhost:5173';
+await page.addInitScript(installAudioFixture);
 try{
  await page.goto(base);await page.locator('.track-row').first().waitFor();
  await expect(page.getByRole('button',{name:'Назад',exact:true})).toBeDisabled();
@@ -27,20 +29,20 @@ try{
  const search=page.getByRole('textbox',{name:'Поиск треков и исполнителей'});await search.fill('Night');await page.locator('.best-match').waitFor();await expect(page.locator('.best-cover .cover svg')).toBeVisible();
  await page.locator('.sidebar').getByRole('button',{name:'Любимые треки',exact:true}).click();await page.getByRole('button',{name:'Назад',exact:true}).click();await expect(search).toHaveValue('Night');await page.locator('.best-match').waitFor();
  await page.getByRole('button',{name:'Очистить поиск'}).click();await expect(search).toHaveValue('');await page.getByRole('button',{name:'Назад',exact:true}).click();await expect(page.locator('#pulse-title')).toBeVisible();
- await page.getByRole('button',{name:'Слушать Пульс',exact:true}).click();await page.waitForFunction(()=>window.testYTPlayer?.state===1);
- assert.equal(await page.locator('audio').evaluate(a=>a.volume),.23);assert.equal(await page.evaluate(()=>window.testYTPlayer.volume),23);
- await page.getByRole('button',{name:'Выключить звук'}).click();await page.getByRole('button',{name:'Включить звук'}).click();assert.equal(await page.evaluate(()=>window.testYTPlayer.volume),23);
+ await page.getByRole('button',{name:'Слушать Пульс',exact:true}).click();await page.waitForFunction(()=>window.nativeAudio?.state===1);
+ assert.equal(await page.locator('audio').evaluate(a=>a.volume),.23);assert.equal(await page.evaluate(()=>window.nativeAudio.volume),23);
+ await page.getByRole('button',{name:'Выключить звук'}).click();await page.getByRole('button',{name:'Включить звук'}).click();assert.equal(await page.evaluate(()=>window.nativeAudio.volume),23);
  await page.locator('.mix-card').filter({hasText:'Спокойствие'}).click();await page.getByRole('button',{name:'Слушать подборку',exact:true}).click();await page.waitForFunction(()=>window.savedState?.events.findLast(e=>e.type==='play')?.surface==='mood');
  await page.locator('.sidebar').getByRole('button',{name:'Главная',exact:true}).click();await page.getByRole('button',{name:'Слушать Пульс',exact:true}).click();await page.waitForFunction(()=>window.savedState?.events.findLast(e=>e.type==='play')?.surface==='pulse');
- const sidebarToggle=page.getByRole('button',{name:'Развернуть боковую панель'});await sidebarToggle.focus();await page.keyboard.press('Space');await expect(page.locator('.app-shell')).toHaveAttribute('data-sidebar-collapsed','false');assert.equal(await page.evaluate(()=>window.testYTPlayer.state),1);
- const like=page.getByRole('button',{name:'Нравится текущий трек',exact:true});await like.focus();await page.keyboard.press('Space');await expect(like).toHaveAttribute('aria-pressed','true');assert.equal(await page.evaluate(()=>window.testYTPlayer.state),1);
+ const sidebarToggle=page.getByRole('button',{name:'Развернуть боковую панель'});await sidebarToggle.focus();await page.keyboard.press('Space');await expect(page.locator('.app-shell')).toHaveAttribute('data-sidebar-collapsed','false');assert.equal(await page.evaluate(()=>window.nativeAudio.state),1);
+ const like=page.getByRole('button',{name:'Нравится текущий трек',exact:true});await like.focus();await page.keyboard.press('Space');await expect(like).toHaveAttribute('aria-pressed','true');assert.equal(await page.evaluate(()=>window.nativeAudio.state),1);
  const create=page.getByRole('button',{name:'Создать плейлист',exact:true});await create.click();await expect(page.getByRole('textbox',{name:'Название плейлиста',exact:true})).toBeFocused();await expect(page.locator('.main-shell')).toHaveAttribute('inert','');await page.keyboard.press('Escape');await expect(create).toBeFocused();
- const pulse=page.getByRole('button',{name:'Настройка Пульса',exact:true});await pulse.click();const modal=page.getByRole('dialog');await expect(modal).toBeVisible();
+ const pulse=page.getByRole('button',{name:'Настроить Пульс',exact:true});await pulse.click();const modal=page.getByRole('dialog');await expect(modal).toBeVisible();
  await modal.getByRole('button',{name:'Сбросить настройки Пульса'}).focus();await page.keyboard.press('Tab');await expect(modal.getByRole('button',{name:'Свернуть настройки Пульса'})).toBeFocused();await page.keyboard.press('Shift+Tab');await expect(modal.getByRole('button',{name:'Сбросить настройки Пульса'})).toBeFocused();
- await page.keyboard.press('Escape');await expect(pulse).toBeFocused();assert.equal(await page.evaluate(()=>window.testYTPlayer.state),1);
+ await page.keyboard.press('Escape');await expect(pulse).toBeFocused();assert.equal(await page.evaluate(()=>window.nativeAudio.state),1);
  await search.fill('Test Artist');await page.locator('.track-row').nth(2).waitFor();await page.locator('.artist-card').first().click();await page.locator('.artist-hero').waitFor();await page.keyboard.press('Alt+ArrowLeft');await page.locator('.best-match').waitFor();await expect(search).toHaveValue('Test Artist');const firstRow=page.locator('.track-row').first(),title=await firstRow.locator('strong').innerText(),opener=firstRow.getByRole('button',{name:'Действия с треком '+title,exact:true});
  await opener.click();await page.getByRole('button',{name:'Добавить в плейлист',exact:true}).click();await page.keyboard.press('Escape');await expect(opener).toBeFocused();
- await firstRow.locator('.track-number').click();await page.waitForFunction(()=>window.testYTPlayer.state===1);
+ await firstRow.locator('.track-number').click();await page.waitForFunction(()=>window.nativeAudio.state===1);
  const lastRow=page.locator('.track-row').last(),lastTitle=await lastRow.locator('strong').innerText();
  for(let i=0;i<2;i++){await lastRow.getByRole('button',{name:'Действия с треком '+lastTitle,exact:true}).click();await page.getByRole('button',{name:'Добавить в очередь',exact:true}).click();}
  const queue=page.getByRole('button',{name:'Очередь воспроизведения',exact:true});await queue.click();await expect(page.getByRole('button',{name:'Закрыть очередь'})).toBeFocused();await expect(page.locator('.queue-track')).toHaveCount(4);

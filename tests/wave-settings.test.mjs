@@ -4,7 +4,6 @@ import {initialState,normalizeTrack,mergeTracks} from '../src/core/model.mjs';
 import {rankTracks,buildProfile} from '../src/core/recommender.mjs';
 import {waveSettings,DEFAULT_WAVE_SETTINGS,genresOf,preferenceAffinity,matchesArtist} from '../src/core/wave-settings.mjs';
 import {collectYouTubeCandidates} from '../src/core/catalog.mjs';
-import {collectCandidates,apiURL,API_HOSTS} from '../src/core/audius.mjs';
 const now=1800000000000;
 const track=(id,genre='House',artist=id,extra={})=>normalizeTrack({id,title:id,genre,artist,artistId:artist,...extra});
 const ids=(tracks,state)=>rankTracks(tracks,state,{now,seed:1}).map(r=>r.track.id);
@@ -73,9 +72,4 @@ test('unselected playlist and blocked artist do not become YouTube related seeds
   const s=initialState();s.tracks={a:track('a','House','Allowed',{source:'youtube',videoId:'abcdefghijk'}),b:track('b','House','Blocked',{source:'youtube',videoId:'12345678901'})};s.playlists=[{id:'p1',trackIds:['a']},{id:'p2',trackIds:['b']}];s.settings.playlistSource='selected';s.settings.seedPlaylistIds=['p1'];const routes=[];
   await collectYouTubeCandidates(s,async route=>{routes.push(route);return[];});assert.ok(routes.includes('/related/abcdefghijk'));assert.equal(routes.includes('/related/12345678901'),false);
   s.settings.blockedArtists=['Allowed'];routes.length=0;await collectYouTubeCandidates(s,async route=>{routes.push(route);return[];});assert.equal(routes.some(r=>r.startsWith('/related/')),false);
-});
-test('Audius keeps character query context across duplicate responses and uses valid native routes',async()=>{
-  const s=initialState();s.settings.mood='calm';s.settings.vocals='instrumental';s.settings.preferredArtists=['Björk'];s.tracks={a:track('a','House','local_Test',{tags:['piano']})};s.likes=['a'];const queries=[];
-  const result=await collectCandidates(s,async(route,p)=>{apiURL(API_HOSTS[0],route,p);if(p.query)queries.push(p.query);return [track('same','House')];});
-  assert.ok(queries.includes('Björk'));assert.ok(queries.some(q=>q.includes('calm relaxing instrumental music')));assert.deepEqual(result[0].discoveryMoods,['calm']);assert.deepEqual(result[0].discoveryVocals,['instrumental']);
 });

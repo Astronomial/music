@@ -17,7 +17,7 @@ export function youtubeArtist(item) {
 }
 function nodes(page){return [...(page.contents||[])].flatMap(s=>s.contents||[]);}
 
-// Public catalogue metadata only. Playback always goes through the official embedded player.
+// Public catalogue metadata. Native audio playback is handled in the main process.
 export class YouTubeCatalog {
   constructor(createClient){this.createClient=createClient;this.client=null;this.searches=new Map();this.artists=new Map();this.relatedCache=new Map();}
   async music(){if(!this.client)this.client=Promise.resolve(this.createClient()).catch(e=>{this.client=null;throw e;});return (await this.client).music;}

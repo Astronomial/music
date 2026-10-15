@@ -41,7 +41,7 @@ class OfflineLibrary {
     const temp = this.file(id)+'.part'; let handle;
     try {
       const response = await fetchAudio(controller.signal);
-      if (!response.ok || !response.body) throw new Error('Audius не разрешил загрузку или файл недоступен');
+      if (!response.ok || !response.body) throw new Error('Файл недоступен для загрузки');
       const total = Number(response.headers.get('content-length')) || 0;
       if (total > 350 * 1024**2) throw new Error('Размер файла превышает 350 МБ');
       handle = await fs.open(temp,'w');
