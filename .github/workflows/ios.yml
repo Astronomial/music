@@ -68,6 +68,10 @@ jobs:
             ios/native-smoke-console.txt
             ios/native-layout.png
             ios/native-design/
+            ios/native-startup.txt
+            ios/native-failure.png
+            ios/native-system-log.txt
+            ios/native-process-sample.txt
           if-no-files-found: error
       - name: Publish iOS download
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'

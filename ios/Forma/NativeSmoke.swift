@@ -99,11 +99,21 @@ private final class TransientKeychainProbe: @unchecked Sendable {
 }
 @MainActor
 enum NativeSmoke {
+    private static var startupStages = Set<String>()
+    static func noteStartup(_ stage: String) {
+        guard ProcessInfo.processInfo.arguments.contains("--forma-smoke"), startupStages.insert(stage).inserted else { return }
+        print("Forma startup: \(stage)")
+        let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let file = directory.appendingPathComponent("native-startup.txt")
+        let previous = (try? String(contentsOf: file, encoding: .utf8)) ?? ""
+        try? (previous + stage + "\n").write(to: file, atomically: true, encoding: .utf8)
+    }
     private static var started = false
     static var miniFrame: CGRect = .zero
     private static var fixtureResolver: FixtureResolver!
     private static var fixtureCatalog: FixtureCatalog!
     static func makeModel() -> AppModel {
+        noteStartup("fixture-model-begin")
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let url = dir.appendingPathComponent("fixture.wav")
         let format = AVAudioFormat(standardFormatWithSampleRate: 22050, channels: 1)!
@@ -113,9 +123,10 @@ enum NativeSmoke {
         do { let file = try AVAudioFile(forWriting: url, settings: format.settings); try file.write(from: buffer) } catch { fatalError("Cannot write native audio fixture") }
         fixtureResolver = FixtureResolver(url: url)
         fixtureCatalog = FixtureCatalog()
-        return AppModel(playbackResolver: fixtureResolver, catalog: fixtureCatalog)
+        let model = AppModel(playbackResolver: fixtureResolver, catalog: fixtureCatalog)
+        noteStartup("fixture-model-created"); return model
     }
-    static func startOnce(model: AppModel) { guard !started else { return }; started = true; Task { await run(model: model) } }
+    static func startOnce(model: AppModel) { noteStartup("root-appeared"); guard !started else { return }; started = true; Task { await run(model: model) } }
     static func run(model: AppModel) async {
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let report = dir.appendingPathComponent("smoke-result.json")

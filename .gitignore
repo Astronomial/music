@@ -22,3 +22,9 @@ ios/Forma-iOS-SHA256SUMS.txt
 
 /ios/native-smoke-console.txt
 /ios/native-design/
+/ios/native-startup.txt
+/ios/native-failure.png
+/ios/native-system-log.txt
+/ios/native-process-sample.txt
+/ios/native-screenshot-log.txt
+/ios/native-sample-log.txt

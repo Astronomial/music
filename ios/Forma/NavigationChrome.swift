@@ -21,10 +21,12 @@ struct TabBarLabels: UIViewRepresentable {
             guard let bar = find(window) else { return }
             let names = ["Главная", "Поиск", "Библиотека", "Настройки"]
             for (index, item) in (bar.items ?? []).enumerated() where index < names.count {
-                item.accessibilityLabel = names[index]
-                item.accessibilityIdentifier = "tab-\(index)"
-                item.title = compact ? "" : names[index]
-                item.imageInsets = compact ? UIEdgeInsets(top: 5, left: 0, bottom: -5, right: 0) : .zero
+                let title = compact ? "" : names[index]
+                let insets = compact ? UIEdgeInsets(top: 5, left: 0, bottom: -5, right: 0) : .zero
+                if item.accessibilityLabel != names[index] { item.accessibilityLabel = names[index] }
+                if item.accessibilityIdentifier != "tab-\(index)" { item.accessibilityIdentifier = "tab-\(index)" }
+                if item.title != title { item.title = title }
+                if item.imageInsets != insets { item.imageInsets = insets }
             }
         }
     }

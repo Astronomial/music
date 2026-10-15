@@ -7,6 +7,7 @@ with tempfile.TemporaryDirectory(prefix='forma-simulator-') as directory:
     device = None
     launch = None
     container = None
+    passed = False
     console = root/'ios/native-smoke-console.txt'
     stream = console.open('w')
     try:
@@ -97,7 +98,23 @@ with tempfile.TemporaryDirectory(prefix='forma-simulator-') as directory:
                     break
             time.sleep(1)
         else: raise RuntimeError('Native simulator smoke timed out')
+        passed = True
     finally:
+        if container and (container/'Documents/native-startup.txt').exists():
+            shutil.copy2(container/'Documents/native-startup.txt', root/'ios/native-startup.txt')
+            print((container/'Documents/native-startup.txt').read_text(), flush=True)
+        if device and not passed:
+            def diagnose(args, name, timeout=20):
+                try:
+                    result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+                    (root/'ios'/name).write_text((result.stdout + result.stderr)[-60000:])
+                except Exception as error: (root/'ios'/name).write_text(str(error))
+            diagnose(['xcrun','simctl','io',device,'screenshot',str(root/'ios/native-failure.png')], 'native-screenshot-log.txt')
+            diagnose(['xcrun','simctl','spawn',device,'log','show','--last','6m','--style','compact','--predicate','process == "Forma"'], 'native-system-log.txt')
+            processes = subprocess.run(['pgrep','-x','Forma'], capture_output=True, text=True)
+            if processes.stdout.strip():
+                pid = processes.stdout.strip().splitlines()[-1]
+                diagnose(['sample',pid,'3','-file',str(root/'ios/native-process-sample.txt')], 'native-sample-log.txt')
         if container and (container/'Documents/design-audit').is_dir():
             shutil.copytree(container/'Documents/design-audit', root/'ios/native-design', dirs_exist_ok=True)
         if launch and launch.poll() is None:

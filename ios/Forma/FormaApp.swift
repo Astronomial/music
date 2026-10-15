@@ -6,7 +6,7 @@ struct FormaApp: App {
     @StateObject private var model = AppModel()
     init() {
 #if DEBUG && targetEnvironment(simulator)
-        if ProcessInfo.processInfo.arguments.contains("--forma-smoke") { _model = StateObject(wrappedValue: NativeSmoke.makeModel()) }
+        if ProcessInfo.processInfo.arguments.contains("--forma-smoke") { NativeSmoke.noteStartup("app-init"); _model = StateObject(wrappedValue: NativeSmoke.makeModel()) }
 #endif
     }
     var body: some Scene {
