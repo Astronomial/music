@@ -8,7 +8,7 @@ struct PlaylistsView: View {
     @State private var name = ""
     var body: some View {
         List {
-            NavigationLink { LibraryView(model: model) } label: { Label("Любимое · \(model.liked.count)", systemImage: "heart.fill").font(.headline).padding(.vertical, 12) }.listRowBackground(FormaTheme.panel)
+            NavigationLink { LibraryView(model: model) } label: { Label("Любимое · \(model.liked.count)", systemImage: "heart.fill").font(.headline).padding(.vertical, 12) }.listRowBackground(CosmicPanelBackground(radius: 12))
             Section("Плейлисты") {
                 ForEach(model.library.playlists) { playlist in
                     NavigationLink { PlaylistView(model: model, playlistID: playlist.id) } label: {
@@ -16,9 +16,9 @@ struct PlaylistsView: View {
                             Artwork(track: model.playlistTracks(playlist.id).first)
                             VStack(alignment: .leading, spacing: 5) { Text(playlist.name).font(.headline); Text("\(playlist.trackIDs.count) треков").font(.subheadline).foregroundStyle(.secondary) }
                         }.padding(.vertical, 4)
-                    }.listRowBackground(FormaTheme.panel).contextMenu { Button("Удалить плейлист", role: .destructive) { model.deletePlaylist(playlist.id) } }
+                    }.listRowBackground(CosmicPanelBackground(radius: 12)).contextMenu { Button("Удалить плейлист", role: .destructive) { model.deletePlaylist(playlist.id) } }
                 }
-                if model.library.playlists.isEmpty { Text("Создай плейлист кнопкой «+» или перенеси с ПК в настройках.").foregroundStyle(.secondary).listRowBackground(FormaTheme.panel) }
+                if model.library.playlists.isEmpty { Text("Создай плейлист кнопкой «+» или перенеси с ПК в настройках.").foregroundStyle(.secondary).listRowBackground(CosmicPanelBackground(radius: 12)) }
             }
         }.scrollContentBackground(.hidden).cosmicBackground().navigationTitle("Библиотека")
             .toolbar { Button { create = true } label: { Image(systemName: "plus") }.accessibilityLabel("Создать плейлист") }

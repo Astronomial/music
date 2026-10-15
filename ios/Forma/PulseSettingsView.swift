@@ -107,11 +107,12 @@ struct PulseSettingsView: View {
                 Button("Авторы и лицензии") { showLicenses = true }.font(.subheadline)
             }.padding(20)
         }.cosmicBackground().navigationTitle("Настройка Пульса").navigationBarTitleDisplayMode(.inline)
+            .environment(\.cosmosVisible, !showLicenses)
             .toolbar { Button("Готово") { dismiss() } }
             .onAppear { preferredArtistText = model.library.settings.preferredArtists.joined(separator: ", "); excludedArtistText = model.library.settings.excludedArtists.joined(separator: ", ") }
             .onChange(of: model.library.settings.preferredArtists) { _, names in if artistNames(preferredArtistText) != names { preferredArtistText = names.joined(separator: ", ") } }
             .onChange(of: model.library.settings.excludedArtists) { _, names in if artistNames(excludedArtistText) != names { excludedArtistText = names.joined(separator: ", ") } }
-            .sheet(isPresented: $showLicenses) { NavigationStack { ScrollView { Text(licenses).font(.footnote.monospaced()).textSelection(.enabled).padding(20) }.navigationTitle("Открытый код").toolbar { Button("Закрыть") { showLicenses = false } } } }
+            .sheet(isPresented: $showLicenses) { NavigationStack { ScrollView { Text(licenses).font(.footnote.monospaced()).textSelection(.enabled).padding(20) }.cosmicBackground().navigationTitle("Открытый код").toolbar { Button("Закрыть") { showLicenses = false } } }.environment(\.cosmosVisible, true) }
     }
     private func artistBinding(preferred: Bool) -> Binding<String> {
         Binding(get: { preferred ? preferredArtistText : excludedArtistText }, set: { text in

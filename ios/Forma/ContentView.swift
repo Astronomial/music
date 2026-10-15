@@ -27,11 +27,12 @@ struct ContentView: View {
         }
         .background(TabBarLabels(compact: compactNavigation).frame(width: 0, height: 0))
         .tint(FormaTheme.color(palette))
+        .environment(\.cosmosVisible, sheet == nil)
         .sheet(item: $sheet) { destination in
             NavigationStack {
                 if destination == .player { NowPlayingView(model: model) }
                 else { PulseSettingsView(model: model) }
-            }.modifier(AppMessageAlert(model: model)).presentationDetents([.large]).presentationDragIndicator(.visible)
+            }.environment(\.cosmosVisible, true).modifier(AppMessageAlert(model: model)).presentationDetents([.large]).presentationDragIndicator(.visible)
         }
         .modifier(AppMessageAlert(model: model, enabled: sheet == nil))
         .task {
@@ -105,8 +106,7 @@ struct HomeView: View {
                                 Text(mix.title).font(.headline).multilineTextAlignment(.leading)
                                 Text("\(model.moodTracks(mix).count) треков").font(.subheadline).foregroundStyle(.secondary)
                             }.frame(maxWidth: .infinity, minHeight: 124, alignment: .leading).padding(16)
-                                .background(FormaTheme.panel, in: RoundedRectangle(cornerRadius: 20))
-                                .overlay(RoundedRectangle(cornerRadius: 20).stroke(.white.opacity(0.08), lineWidth: 1))
+                                .background { CosmicPanelBackground(radius: 20) }
                         }.foregroundStyle(.primary).buttonStyle(ResponsiveButtonStyle()).accessibilityHint(mix.subtitle)
                     }
                 }
@@ -145,7 +145,7 @@ struct TrackRow: View {
                 ForEach(model.library.playlists) { playlist in Button(playlist.name) { model.add(track, to: playlist.id) } }
             } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44).contentShape(Rectangle()) }.accessibilityLabel("Действия с треком \(track.title)")
         }.padding(.vertical, 6).padding(.horizontal, 8)
-            .background(FormaTheme.panel.opacity(0.45), in: RoundedRectangle(cornerRadius: 16))
+            .background { CosmicPanelBackground(radius: 16, opacity: 0.45) }
     }
 }
 @MainActor

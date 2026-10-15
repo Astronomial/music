@@ -10,15 +10,23 @@ enum FormaTheme {
     }
     static let colors: [Color] = [.mint, .orange, .purple, .blue, .teal, .indigo]
 }
+struct CosmicPanelBackground: View {
+    var radius: CGFloat = 24
+    var opacity: Double = 1
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    var body: some View {
+        RoundedRectangle(cornerRadius: radius).fill(reduceTransparency ? FormaTheme.background : FormaTheme.panel.opacity(opacity))
+            .overlay(RoundedRectangle(cornerRadius: radius).stroke(.white.opacity(0.08 * opacity), lineWidth: 1))
+            .allowsHitTesting(false).accessibilityHidden(true)
+    }
+}
 @MainActor
 struct GlassPanel<Content: View>: View {
     let content: Content
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     init(@ViewBuilder content: () -> Content) { self.content = content() }
     var body: some View {
         content.frame(maxWidth: .infinity, alignment: .leading).padding(20)
-            .background(reduceTransparency ? FormaTheme.background : FormaTheme.panel, in: RoundedRectangle(cornerRadius: 24))
-            .overlay(RoundedRectangle(cornerRadius: 24).stroke(.white.opacity(0.08), lineWidth: 1))
+            .background { CosmicPanelBackground() }
     }
 }
 @MainActor

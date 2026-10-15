@@ -1,16 +1,25 @@
 import SwiftUI
 
+private struct CosmicVisibilityKey: EnvironmentKey { static let defaultValue = true }
+extension EnvironmentValues {
+    var cosmosVisible: Bool {
+        get { self[CosmicVisibilityKey.self] }
+        set { self[CosmicVisibilityKey.self] = newValue }
+    }
+}
+
 /// Decorative drawing is isolated from the player and pauses outside the visible scene.
 struct CosmicBackground: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.cosmosVisible) private var cosmosVisible
     @AppStorage("forma.starMotion") private var starMotion = true
     @State private var visible = false
     private static let stars: [CGPoint] = (0..<130).map { index in
         CGPoint(x: Double((index * 761 + 137) % 997) / 997,
                 y: Double((index * 433 + 89) % 991) / 991)
     }
-    private var paused: Bool { !visible || scenePhase != .active || reduceMotion || !starMotion }
+    private var paused: Bool { !visible || !cosmosVisible || scenePhase != .active || reduceMotion || !starMotion }
     var body: some View {
         ZStack {
             FormaTheme.background
@@ -57,9 +66,10 @@ extension View {
 struct PulseGalaxy: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.cosmosVisible) private var cosmosVisible
     @AppStorage("forma.starMotion") private var starMotion = true
     @State private var visible = false
-    private var moving: Bool { visible && scenePhase == .active && !reduceMotion && starMotion }
+    private var moving: Bool { visible && cosmosVisible && scenePhase == .active && !reduceMotion && starMotion }
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 20, paused: !moving)) { timeline in
             Image("PulseGalaxy").resizable().scaledToFit()
@@ -95,7 +105,7 @@ struct PulseHero: View {
                     .disabled(model.isRestoringLibrary || model.isStartingPulse)
                     .accessibilityIdentifier("personal-pulse-play")
                 Button(action: settings) { Image(systemName: "slider.horizontal.3").frame(width: 48, height: 48) }
-                    .buttonStyle(ResponsiveButtonStyle()).background(FormaTheme.panel, in: Circle())
+                    .buttonStyle(ResponsiveButtonStyle()).background { CosmicPanelBackground(radius: 24) }
                     .accessibilityLabel("Настроить Пульс")
             }.padding(.top, 18)
         }.frame(maxWidth: .infinity).padding(.bottom, 22)
