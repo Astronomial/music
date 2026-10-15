@@ -22,6 +22,7 @@ test('HLS-only player response selects audio, proxies init/segments and never ex
   const root=await a.respondHls(id,'index.m3u8',new Request('https://forma.test'));assert.equal(root.status,200);const text=await root.text();assert.ok(!text.includes('googlevideo.com'));assert.ok(!text.includes('secret'));assert.ok(text.includes('forma-stream://youtube/'+id+'/hls/'));
   for(const uri of [text.match(/URI="([^"]+)"/)[1],text.split('\n').find(l=>l.startsWith('forma-stream:'))]){const key=new URL(uri).pathname.split('/').at(-1);const r=await a.respondHls(id,key,new Request(uri));assert.equal(r.status,200);assert.deepEqual(new Uint8Array(await r.arrayBuffer()),audio);}
   assert.ok(!seen.some(s=>s.includes('video.m3u8')));
+  assert.equal(seen.filter(s=>s.endsWith('/audio.m3u8')).length,1,'a prepared VOD manifest must not be downloaded again on playback');
   assert.equal((await a.respondHls('12345678901',[...a.hls.resources.keys()][0],new Request('https://forma.test'))).status,410);
  }finally{a.close();}
 });

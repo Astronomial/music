@@ -50,7 +50,7 @@ class YouTubeAudio {
       entry.promise=this.scope.run({signal:controller.signal},async()=>{
         if(this.createConfiguredClient)return this.createConfiguredClient();
         const {Innertube}=await import('youtubei.js');
-        return Innertube.create({retrieve_player:false,retrieve_innertube_config:false,generate_session_locally:false,fetch:(input,options)=>this.youtubeFetch(input,options)});
+        return Innertube.create({retrieve_player:false,retrieve_innertube_config:false,generate_session_locally:false,fail_fast:true,fetch:(input,options)=>this.youtubeFetch(input,options)});
       }).catch(e=>{if(this.configuredClient===entry)this.configuredClient=null;throw e;}).finally(()=>this.controllers.delete(controller));
       this.configuredClient=entry;
     }
@@ -154,8 +154,9 @@ class YouTubeAudio {
       if(key==='index.m3u8'){
         const source=await this.resolve(id);if(source.kind!=='hls')return new Response(null,{status:404});
         const {manifestText}=require('./hls-audio.cjs');
-        const response=await this.mediaFetch(source,null,request.signal);
-        return new Response(this.hls.rewrite(id,{...source,url:response.url||source.url},await manifestText(response)),{headers:{'Content-Type':'application/vnd.apple.mpegurl','Cache-Control':'no-store'}});
+        let playlist=source.playlist,url=source.url;
+        if(!playlist){const response=await this.mediaFetch(source,null,request.signal);url=response.url||url;playlist=await manifestText(response);}
+        return new Response(this.hls.rewrite(id,{...source,url},playlist),{headers:{'Content-Type':'application/vnd.apple.mpegurl','Cache-Control':'no-store'}});
       }
       if(!/^[a-f0-9]{32}(?:\.m3u8)?$/.test(key))return new Response(null,{status:404});
       return await this.hls.respond(id,key.replace(/\.m3u8$/,''),request);

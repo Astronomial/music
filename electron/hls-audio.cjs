@@ -44,7 +44,7 @@ class HlsAudio {
       if(![200,206].includes(probe.status)){await probe.body?.cancel();throw invalid('HLS_SEGMENT_HTTP_'+probe.status);}
       const reader=probe.body?.getReader();if(!reader)throw invalid('HLS_EMPTY');
       try{let head=Buffer.alloc(0);while(head.length<12){const{value,done}=await reader.read();if(done)break;head=Buffer.concat([head,Buffer.from(value.subarray(0,12-head.length))]);}if(!head.length||!(head[0]===0x47||head[0]===0xff&&((head[1]||0)&0xf0)===0xf0||['ftyp','styp','moof'].includes(head.subarray(4,8).toString())||probe.headers.get('content-type')?.startsWith('audio/')))throw invalid('HLS_NOT_AUDIO');}finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
-      return{...selected,kind:'hls',mime:'application/vnd.apple.mpegurl'};
+      return{...selected,kind:'hls',mime:'application/vnd.apple.mpegurl',...(playlist.includes('#EXT-X-ENDLIST')?{playlist}:{})};
     }catch(e){signal?.throwIfAborted();last=e;}
     throw last||invalid('HLS_NO_AUDIO_VARIANT');
   }
