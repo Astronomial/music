@@ -13,6 +13,10 @@ wav.writeUInt32LE(16,16);wav.writeUInt16LE(1,20);wav.writeUInt16LE(1,22);
 wav.writeUInt32LE(22050,24);wav.writeUInt32LE(44100,28);wav.writeUInt16LE(2,32);wav.writeUInt16LE(16,34);
 wav.write('data',36);wav.writeUInt32LE(samples*2,40);
 for(let i=0;i<samples;i++)wav.writeInt16LE(Math.round(Math.sin(i*440*2*Math.PI/22050)*650),44+i*2);
+// Hold each distinct asset for four seconds, including across cancelled range
+// probes. Delaying every probe independently makes startup 8/12/16 seconds
+// depending on AVFoundation's probing strategy rather than the player's work.
+const audioReleaseAt=new Map();
 const audioServer=http.createServer((request,response)=>{
   const range=/^bytes=(\d+)-(\d*)$/.exec(request.headers.range||'');
   const start=range?Math.min(wav.length-1,Number(range[1])):0;
@@ -20,7 +24,11 @@ const audioServer=http.createServer((request,response)=>{
   const bytes=wav.subarray(start,Math.max(start,end)+1);
   response.writeHead(range?206:200,{'Content-Type':'audio/wav','Accept-Ranges':'bytes','Content-Length':bytes.length,...(range?{'Content-Range':`bytes ${start}-${Math.max(start,end)}/${wav.length}`}:{})});
   response.flushHeaders();
-  const timer=setTimeout(()=>response.end(bytes),4000);
+  const key=request.url;
+  if(!audioReleaseAt.has(key))audioReleaseAt.set(key,Date.now()+4000);
+  const hold=Math.max(0,audioReleaseAt.get(key)-Date.now());
+  console.log('Audio fixture range: '+JSON.stringify({asset:key,start,end,holdMilliseconds:hold}));
+  const timer=setTimeout(()=>response.end(bytes),hold);
   response.on('close',()=>clearTimeout(timer));
 });
 await new Promise(resolve=>audioServer.listen(0,'127.0.0.1',resolve));

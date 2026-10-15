@@ -14,4 +14,3 @@
 IPA без подписи, iOS 17+ / arm64, сборка 15. Установи поверх прежней Forma с теми же Apple ID и **фактическим Bundle ID** в Sideloadly; не удаляй приложение. [Установка с Windows](https://github.com/Astronomial/music/blob/main/ios/INSTALL_WINDOWS.md).
 
 Проверки используют нативный симулятор, AVFoundation, контролируемое аудио и сетевые ответы. Живой YouTube, физический iPhone и реальный VPN требуют проверки на устройстве.
-
