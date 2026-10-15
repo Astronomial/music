@@ -9,6 +9,7 @@ enum NativeDesignAudit {
     static var selectTab: ((Int) -> Void)?
     static var present: ((String?) -> Void)?
     static var largeText: ((Bool) -> Void)?
+    static var playerTextSize: DynamicTypeSize?
     static func run(model: AppModel) async throws -> [String: Any] {
         guard let selectTab, let present, let largeText,
               let window = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).flatMap(\.windows).first(where: \.isKeyWindow) else {
@@ -70,12 +71,13 @@ enum NativeDesignAudit {
         selectTab(0); largeText(false); try await settle()
         present("player"); try await settle(); try snapshot("player")
         largeText(true); try await settle(); try snapshot("player-large-text")
+        guard playerTextSize == .accessibility3 else { throw SyncError.rejected("Large-text audit did not reach the presented player") }
         largeText(false)
         present(nil); try await settle()
         present("pulse"); try await settle(); try snapshot("pulse-settings")
         present(nil); try await settle()
         return ["nativeDesignScreens": captures, "compactTabsKeepVoiceOverNames": true, "nativeTabSelectionVerified": true,
-                "largeTextMiniPlayerAboveTabs": true, "galaxyTexture1024": true]
+                "largeTextMiniPlayerAboveTabs": true, "largeTextPlayerVerified": true, "galaxyTexture1024": true]
     }
 }
 #endif

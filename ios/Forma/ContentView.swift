@@ -26,15 +26,19 @@ struct ContentView: View {
                 .tabItem { Image(systemName: "gearshape"); Text(compactNavigation ? "" : "Настройки") }.tag(3)
         }
         .background(TabBarLabels(compact: compactNavigation).frame(width: 0, height: 0))
-        .tint(FormaTheme.color(palette))
         .environment(\.cosmosVisible, sheet == nil)
         .sheet(item: $sheet) { destination in
             NavigationStack {
                 if destination == .player { NowPlayingView(model: model) }
                 else { PulseSettingsView(model: model) }
-            }.environment(\.cosmosVisible, true).modifier(AppMessageAlert(model: model)).presentationDetents([.large]).presentationDragIndicator(.visible)
+            }.environment(\.cosmosVisible, true).tint(FormaTheme.color(palette)).modifier(AppMessageAlert(model: model))
+#if DEBUG && targetEnvironment(simulator)
+                .environment(\.dynamicTypeSize, auditingLargeText ? .accessibility3 : systemTypeSize)
+#endif
+                .presentationDetents([.large]).presentationDragIndicator(.visible)
         }
         .modifier(AppMessageAlert(model: model, enabled: sheet == nil))
+        .tint(FormaTheme.color(palette))
         .task {
             guard !ProcessInfo.processInfo.arguments.contains("--forma-smoke") else { return }
             while (!model.player.networkPolicy.known || model.isRestoringLibrary), !Task.isCancelled { try? await Task.sleep(nanoseconds: 50_000_000) }
@@ -104,7 +108,7 @@ struct HomeView: View {
                                 Image(systemName: ["leaf", "sun.max", "moon", "bolt", "sparkles", "moon.stars"][index]).font(.title2).foregroundStyle(FormaTheme.colors[index]).accessibilityHidden(true)
                                 Spacer(minLength: 16)
                                 Text(mix.title).font(.headline).multilineTextAlignment(.leading)
-                                Text("\(model.moodTracks(mix).count) треков").font(.subheadline).foregroundStyle(.secondary)
+                                Text(trackCountText(model.moodTracks(mix).count)).font(.subheadline).foregroundStyle(.secondary)
                             }.frame(maxWidth: .infinity, minHeight: 124, alignment: .leading).padding(16)
                                 .background { CosmicPanelBackground(radius: 20) }
                         }.foregroundStyle(.primary).buttonStyle(ResponsiveButtonStyle()).accessibilityHint(mix.subtitle)
@@ -158,7 +162,7 @@ struct MoodView: View {
             VStack(alignment: .leading, spacing: 20) {
                 Text(mix.title).font(.largeTitle.bold())
                 Text(mix.subtitle).foregroundStyle(.secondary)
-                Button { model.startPulse(mood: mix.id) } label: { Label("Слушать подборку", systemImage: "play.fill") }.buttonStyle(.borderedProminent).foregroundStyle(FormaTheme.background).disabled(tracks.isEmpty)
+                Button { model.startPulse(mood: mix.id) } label: { Label("Слушать подборку", systemImage: "play.fill") }.buttonStyle(.borderedProminent).primaryActionForeground().disabled(tracks.isEmpty)
                 if tracks.isEmpty { EmptyState(title: model.isRefreshing ? "Подбираем треки…" : "Пока нет подходящих треков", text: "Обнови подборки на главной или добавь любимую музыку.") }
                 ForEach(tracks) { track in TrackRow(model: model, track: track) { model.playRecommendation(track, mood: mix.id) } }
             }.padding(20)
@@ -203,7 +207,7 @@ struct LibraryView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 12) {
                 if model.liked.isEmpty { EmptyState(title: "Здесь будет любимое", text: "Сохраняй треки сердечком — они станут основой Пульса.") }
-                else { Button { if let first = model.liked.first { model.play(first, list: model.liked) } } label: { Label("Слушать любимое", systemImage: "play.fill") }.buttonStyle(.borderedProminent).foregroundStyle(FormaTheme.background) }
+                else { Button { if let first = model.liked.first { model.play(first, list: model.liked) } } label: { Label("Слушать любимое", systemImage: "play.fill") }.buttonStyle(.borderedProminent).primaryActionForeground() }
                 ForEach(model.liked) { track in TrackRow(model: model, track: track) { model.play(track, list: model.liked) } }
             }.padding(20)
         }.cosmicBackground().navigationTitle("Любимое")

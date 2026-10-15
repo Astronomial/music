@@ -10,6 +10,18 @@ enum FormaTheme {
     }
     static let colors: [Color] = [.mint, .orange, .purple, .blue, .teal, .indigo]
 }
+struct PrimaryActionForeground: ViewModifier {
+    @Environment(\.isEnabled) private var enabled
+    func body(content: Content) -> some View { content.foregroundStyle(enabled ? FormaTheme.background : Color.secondary) }
+}
+extension View {
+    func primaryActionForeground() -> some View { modifier(PrimaryActionForeground()) }
+}
+func trackCountText(_ count: Int) -> String {
+    let number = max(0, count), last = max(0, count) % 10, lastTwo = max(0, count) % 100
+    let word = (11...14).contains(lastTwo) ? "треков" : last == 1 ? "трек" : (2...4).contains(last) ? "трека" : "треков"
+    return "\(number) \(word)"
+}
 struct CosmicPanelBackground: View {
     var radius: CGFloat = 24
     var opacity: Double = 1

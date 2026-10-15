@@ -1,8 +1,8 @@
-# Forma iOS 1.6.0
+# Forma iOS 1.6.1
 
 Нативная **SwiftUI + AVQueuePlayer** для iPhone и iPad, **iOS 17+**, включая iOS 18. YouTube/YouTube Music, персональный Пульс, плейлисты, подборки по настроению и обмен с Windows. Аккаунт YouTube, музыкальная подписка и обязательный сервер не требуются.
 
-**[Скачать IPA для подписи](https://github.com/Astronomial/music/releases/download/ios-v1.6.0/Forma-iOS-1.6.0-unsigned.ipa)** · **[Установка с Windows](INSTALL_WINDOWS.md)** · [Лицензии](THIRD_PARTY.md)
+**[Скачать IPA для подписи](https://github.com/Astronomial/music/releases/download/ios-v1.6.1/Forma-iOS-1.6.1-unsigned.ipa)** · **[Установка с Windows](INSTALL_WINDOWS.md)** · [Лицензии](THIRD_PARTY.md)
 
 Устанавливай поверх прежней Forma с теми же Apple ID и фактическим Bundle ID Sideloadly. Бесплатная личная подпись обычно действует 7 дней; повторная подпись с прежним идентификатором сохраняет данные.
 
@@ -14,7 +14,7 @@
 
 ## Главная и Пульс
 
-В 1.6.0 галактика Пульса, звёздный фон и полупрозрачные панели перенесены с Windows. В **Настройки → Оформление** доступны палитра, движение и навигация только иконками. Дизлайк текущего трека включает следующий без двойного обучения. [Проверка дизайна](DESIGN_REVIEW_1_6.md).
+В 1.6.1 галактика Пульса, звёздный фон и полупрозрачные панели перенесены с Windows. В **Настройки → Оформление** доступны палитра, движение и навигация только иконками. Дизлайк текущего трека включает следующий без двойного обучения. [Проверка дизайна](DESIGN_REVIEW_1_6.md).
 
 Главная и все шесть подборок учитывают общий профиль: любимые треки, выбранные плейлисты, дослушивания, слышимые пропуски и дизлайки. Поиск использует жанры и исполнителей из библиотеки; русскоязычное предпочтение применяется до отбора соседей и разнообразия. Нажатие на рекомендованный трек запускает адаптивный Пульс с настроением выбранной подборки. [Алгоритм](../docs/recommendations.md) · [Проверки](../docs/RELEASE_VALIDATION_1_10.md).
 
@@ -75,7 +75,7 @@ xcodebuild -project ios/Forma.xcodeproj -scheme Forma \
   -derivedDataPath ios/.derived-data CODE_SIGNING_ALLOWED=NO build
 ```
 
-После добавления Swift-файлов/ресурсов обнови проект командой `python3 ios/Scripts/generate_project.py`. GitHub Actions упаковывает `Release-iphoneos/Forma.app` в Payload и IPA; при публикации main размещает IPA и SHA-256 в релизе `ios-v1.6.0`.
+После добавления Swift-файлов/ресурсов обнови проект командой `python3 ios/Scripts/generate_project.py`. GitHub Actions упаковывает `Release-iphoneos/Forma.app` в Payload и IPA; при публикации main размещает IPA и SHA-256 в релизе `ios-v1.6.1`.
 
 | Модуль | Назначение |
 | --- | --- |

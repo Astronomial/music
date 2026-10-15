@@ -14,17 +14,17 @@ struct PlaylistsView: View {
                     NavigationLink { PlaylistView(model: model, playlistID: playlist.id) } label: {
                         HStack(spacing: 14) {
                             Artwork(track: model.playlistTracks(playlist.id).first)
-                            VStack(alignment: .leading, spacing: 5) { Text(playlist.name).font(.headline); Text("\(playlist.trackIDs.count) треков").font(.subheadline).foregroundStyle(.secondary) }
+                            VStack(alignment: .leading, spacing: 5) { Text(playlist.name).font(.headline); Text(trackCountText(playlist.trackIDs.count)).font(.subheadline).foregroundStyle(.secondary) }
                         }.padding(.vertical, 4)
                     }.listRowBackground(CosmicPanelBackground(radius: 12)).contextMenu { Button("Удалить плейлист", role: .destructive) { model.deletePlaylist(playlist.id) } }
                 }
                 if model.library.playlists.isEmpty { Text("Создай плейлист кнопкой «+» или перенеси с ПК в настройках.").foregroundStyle(.secondary).listRowBackground(CosmicPanelBackground(radius: 12)) }
-            }
+            }.textCase(nil)
         }.scrollContentBackground(.hidden).cosmicBackground().navigationTitle("Библиотека")
             .toolbar { Button { create = true } label: { Image(systemName: "plus") }.accessibilityLabel("Создать плейлист") }
             .alert("Новый плейлист", isPresented: $create) {
                 TextField("Название", text: $name)
-                Button("Создать") { model.createPlaylist(name); name = "" }
+                Button("Создать") { model.createPlaylist(name); name = "" }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 Button("Отмена", role: .cancel) {}
             }
     }
@@ -41,9 +41,9 @@ struct PlaylistView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
                 Text(title).font(.largeTitle.bold())
-                Text("\(tracks.count) треков").foregroundStyle(.secondary)
+                Text(trackCountText(tracks.count)).foregroundStyle(.secondary)
                 HStack {
-                    Button { if let first = tracks.first { model.play(first, list: tracks) } } label: { Label("Слушать", systemImage: "play.fill") }.buttonStyle(.borderedProminent).foregroundStyle(FormaTheme.background)
+                    Button { if let first = tracks.first { model.play(first, list: tracks) } } label: { Label("Слушать", systemImage: "play.fill") }.buttonStyle(.borderedProminent).primaryActionForeground()
                     Button { model.startPulse(playlistID: playlistID) } label: { Label("Пульс", systemImage: "waveform") }.buttonStyle(.bordered)
                 }.disabled(tracks.isEmpty)
                 ForEach(tracks) { track in
@@ -57,7 +57,7 @@ struct PlaylistView: View {
             .toolbar { Button("Изменить") { name = title; rename = true } }
             .alert("Название плейлиста", isPresented: $rename) {
                 TextField("Название", text: $name)
-                Button("Сохранить") { model.renamePlaylist(playlistID, name: name) }; Button("Отмена", role: .cancel) {}
+                Button("Сохранить") { model.renamePlaylist(playlistID, name: name) }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty); Button("Отмена", role: .cancel) {}
             }
     }
 }

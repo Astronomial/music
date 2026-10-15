@@ -31,7 +31,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Toggle("Анализировать звучание", isOn: $soundAnalysis).onChange(of: soundAnalysis) { _, _ in model.soundPolicyChanged() }
                         Toggle("Анализ по мобильной сети", isOn: $soundCellular).disabled(!soundAnalysis).onChange(of: soundCellular) { _, _ in model.soundPolicyChanged() }
-                        Text("Проанализировано: \(model.library.tracks.values.filter { $0.soundProfile != nil }.count) треков").font(.footnote).foregroundStyle(.secondary)
+                        Text("Проанализировано: \(trackCountText(model.library.tracks.values.filter { $0.soundProfile != nil }.count))").font(.footnote).foregroundStyle(.secondary)
                         DisclosureGroup("Как работает анализ") {
                             Text("Учитываются темп, ритм и энергия. До 6 МБ на трек, 12 треков в час. Временное аудио удаляется после обработки.").font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
                         }
@@ -76,8 +76,9 @@ private struct WiFiSettingsView: View {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Синхронизация с ПК").font(.title2.bold())
                 Text("Нужна общая Wi-Fi сеть. На ПК: Настройки → Подключить iPhone. Обмен — после подтверждения на одном из устройств.").foregroundStyle(.secondary)
-                TextField("Вставь код подключения", text: $code, axis: .vertical).textInputAutocapitalization(.never).autocorrectionDisabled().textFieldStyle(.roundedBorder)
-                Button("Подключить ПК") { Task { await model.pairPC(code) } }.buttonStyle(.borderedProminent).foregroundStyle(FormaTheme.background).disabled(model.isSyncing || code.isEmpty || !model.canSynchronizePC)
+                TextField("Код подключения", text: $code, prompt: Text("Код подключения").foregroundColor(Color.white.opacity(0.65))).foregroundStyle(.primary)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled().textFieldStyle(.roundedBorder)
+                Button("Подключить ПК") { Task { await model.pairPC(code) } }.buttonStyle(.borderedProminent).primaryActionForeground().disabled(model.isSyncing || code.isEmpty || !model.canSynchronizePC)
                 if let host = model.pcHost {
                     Text("ПК: \(host)").font(.subheadline)
                     if let proposal = model.syncProposal {
@@ -85,7 +86,7 @@ private struct WiFiSettingsView: View {
                         WiFiChangesView(title: "На ПК", summary: proposal.summary.toPC)
                         WiFiChangesView(title: "На iPhone", summary: proposal.summary.toPhone)
                         if proposal.status == .pending {
-                            Button("Применить на обоих устройствах") { Task { await model.approveExchange() } }.buttonStyle(.borderedProminent).foregroundStyle(FormaTheme.background).disabled(model.isSyncing || !model.canSynchronizePC)
+                            Button("Применить на обоих устройствах") { Task { await model.approveExchange() } }.buttonStyle(.borderedProminent).primaryActionForeground().disabled(model.isSyncing || !model.canSynchronizePC)
                         }
                         Button("Отклонить обмен", role: .destructive) { Task { await model.rejectExchange() } }.disabled(model.isSyncing || !model.canSynchronizePC || proposal.status == .approved || proposal.status == .committing)
                         Button("Проверить решение на ПК") { Task { await model.synchronize(showErrors: true) } }.disabled(model.isSyncing || !model.canSynchronizePC)

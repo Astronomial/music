@@ -1,4 +1,4 @@
-# Дизайн iOS 1.6.0
+# Дизайн iOS 1.6.1
 
 Критерии: [frontend-design](https://github.com/anthropics/skills/blob/main/skills/frontend-design/SKILL.md) и [композиция Windows](../docs/DESIGN_COSMOS.md). Общий визуальный язык перенесён на нативные элементы iOS, с нижними вкладками вместо панели ПК.
 
