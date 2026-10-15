@@ -7,6 +7,7 @@ import path from 'node:path';
 import https from 'node:https';
 import {portableLibrary} from '../src/core/sync.mjs';
 import {musicSearchResponse} from './fixtures-youtube.mjs';
+import {installMediaFixture} from './native-media-transport.mjs';
 const project=path.resolve('.');
 const dir=await fs.mkdtemp(path.join(os.tmpdir(),'forma-desktop-'));
 await fs.writeFile(path.join(dir,'library.json'),JSON.stringify({version:1,tracks:{},likes:[],playlists:[],events:[],hidden:[],settings:{provider:'audius',audioAnalysis:false},onboarded:true}));
@@ -31,13 +32,13 @@ try{
       const parsed=new URL(typeof url==='string'?url:url.url);const path=parsed.pathname;
       if(parsed.hostname==='api.music.yandex.net')return Response.json({result:{title:'Public playlist',trackCount:1,tracks:[{track:{title:'Soft Focus',artists:[{name:'Test Artist'}],durationMs:200000}}]}});
       if(path.endsWith('/player')){const videoId=JSON.parse(options.body).videoId;return Response.json({playabilityStatus:{status:'OK'},videoDetails:{videoId,title:'Native fixture',author:'Test Artist',lengthSeconds:'20'},streamingData:{expiresInSeconds:'3600',adaptiveFormats:[{itag:140,url:'https://r1.googlevideo.com/native-audio',mimeType:'audio/mp4; codecs="mp4a.40.2"',bitrate:128000,contentLength:String(Buffer.from(streamAudio,'base64').length),audioQuality:'AUDIO_QUALITY_MEDIUM',approxDurationMs:'12000'}]}});}
-      if(parsed.hostname==='r1.googlevideo.com')return new Response(null,{status:302,headers:{location:'https://r2.googlevideo.com/native-audio'}});
-      if(parsed.hostname==='r2.googlevideo.com'){const bytes=Buffer.from(streamAudio,'base64'),range=parsed.searchParams.get('range'),[start,end]=range?range.split('-').map(Number):[0,bytes.length-1],part=bytes.subarray(start,Math.min(end+1,bytes.length));return new Response(part,{headers:{'Content-Type':'application/octet-stream','Content-Length':String(part.length)}});}
       if(path.endsWith('/search')&&parsed.hostname.includes('youtube'))return Response.json(youtubeFixture);
       if(path.endsWith('/download'))return new Response(Buffer.from(audio,'base64'),{headers:{'content-length':String(Buffer.from(audio,'base64').length)}});
       return Response.json({data:/\/tracks\/DesktopTest$/.test(path)?track:[track]});
     };
   },{track,audio:wav().toString('base64'),streamAudio:(await fs.readFile(path.join(project,'tests/fixtures/acoustic-sample.m4a'))).toString('base64'),youtubeFixture:musicSearchResponse()});
+  const transport=await app.evaluate(installMediaFixture,{project,audio:(await fs.readFile(path.join(project,'tests/fixtures/acoustic-sample.m4a'))).toString('base64')});
+  assert.ok(Object.values(transport).every(Boolean));
   assert.equal(await page.evaluate(()=>window.forma.desktop),true);
   const scriptResult=await app.evaluate(async({app})=>{const req=process.getBuiltinModule('module').createRequire(process.getBuiltinModule('path').join(app.getAppPath(),'electron/main.cjs'));return req('./signature-runtime.cjs').evaluateSignature({output:'return {n:typeof process+":"+typeof require+":"+typeof fetch};'});});assert.equal(scriptResult.n,'undefined:undefined:undefined');
   const packed=path.join(project,'release/win-unpacked/resources/app.asar');
@@ -82,6 +83,9 @@ try{
   await page.locator('.track-name').filter({hasText:'Soft Focus'}).first().click();
   await page.waitForFunction(()=>document.querySelector('audio').currentTime>.5);
   assert.match(await page.locator('audio').evaluate(a=>a.src),/^forma-stream:\/\/youtube\//);
+  const requests=await app.evaluate(()=>globalThis.nativeMediaRequests.filter(r=>r.path.includes('googlevideo.com')));
+  assert.ok(requests.some(r=>r.path.startsWith('/r1.googlevideo.com/')));assert.ok(requests.some(r=>r.path.startsWith('/r2.googlevideo.com/')&&r.range==='0-1023'));
+  assert.ok(requests.every(r=>r.headers.origin==='https://www.youtube.com'&&r.headers['user-agent']&&!r.headers.referer));
   assert.equal(await page.locator('iframe,video,.youtube-panel').count(),0);
   await page.getByRole('slider',{name:'Позиция воспроизведения'}).fill('5');await page.waitForFunction(()=>document.querySelector('audio').currentTime>=5);
   const youtubeTime=await page.locator('audio').evaluate(a=>a.currentTime);

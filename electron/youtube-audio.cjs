@@ -14,7 +14,7 @@ const isAudioHeader=(type,bytes)=>type.startsWith('audio/')||type==='application
   bytes?.length>=4&&bytes[0]===0x1a&&bytes[1]===0x45&&bytes[2]===0xdf&&bytes[3]===0xa3);
 
 class YouTubeAudio {
-  constructor(fetch,createClient,{createPlayer}={}){this.fetch=fetch;this.createClient=createClient;this.createPlayer=createPlayer;this.client=null;this.player=null;this.cache=new Map();this.diagnostics=new Map();this.scope=new AsyncLocalStorage();this.controllers=new Set();}
+  constructor(fetch,createClient,{createPlayer,fetchMedia=fetch}={}){this.fetch=fetch;this.fetchMedia=fetchMedia;this.createClient=createClient;this.createPlayer=createPlayer;this.client=null;this.player=null;this.cache=new Map();this.diagnostics=new Map();this.scope=new AsyncLocalStorage();this.controllers=new Set();}
   youtubeFetch(input,options={}){
     const u=new URL(typeof input==='string'?input:input.url||input.href);
     if(u.protocol!=='https:'||!(/(^|\.)youtube\.com$/.test(u.hostname)||u.hostname==='youtubei.googleapis.com'))throw fail('INVALID_API_HOST');
@@ -43,11 +43,13 @@ class YouTubeAudio {
   }
   async mediaFetch(source,range,signal){
     let url=streamURL(source.url);if(range)url.searchParams.set('range',range);
-    const headers={Accept:'*/*','Accept-Encoding':'identity',Origin:'https://www.youtube.com',Referer:'https://www.youtube.com/',...(source.userAgent?{'User-Agent':source.userAgent}:{})};
+    // Chromium rejects a raw Referer header in main-process requests before
+    // contacting the server (ERR_BLOCKED_BY_CLIENT). Origin and client UA are safe.
+    const headers={Accept:'*/*','Accept-Encoding':'identity',Origin:'https://www.youtube.com',...(source.userAgent?{'User-Agent':source.userAgent}:{})};
     for(let redirects=0;redirects<=3;redirects++){
       signal?.throwIfAborted();
       const connect=new AbortController(),timer=setTimeout(()=>connect.abort(),15000);let response;
-      try{response=await this.fetch(url.href,{credentials:'omit',redirect:'manual',signal:AbortSignal.any([connect.signal,...(signal?[signal]:[])]),headers});}finally{clearTimeout(timer);}
+      try{response=await this.fetchMedia(url.href,{credentials:'omit',redirect:'manual',signal:AbortSignal.any([connect.signal,...(signal?[signal]:[])]),headers});}finally{clearTimeout(timer);}
       if([301,302,303,307,308].includes(response.status)){
         const location=response.headers.get('location');await response.body?.cancel();
         if(!location||redirects===3)throw fail('CDN_REDIRECT');

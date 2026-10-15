@@ -83,7 +83,7 @@ app.whenReady().then(async () => {
     finally{if(importController===controller)importController=null;}
   });
   handle('yandex:cancel',()=>importController?.abort());
-  youtubeAudio=new (require('./youtube-audio.cjs').YouTubeAudio)((input,options)=>net.fetch(input,options));
+  youtubeAudio=new (require('./youtube-audio.cjs').YouTubeAudio)((input,options)=>net.fetch(input,options),undefined,{fetchMedia:(input,options)=>require('./media-fetch.cjs').mediaFetch(net,input,options)});
   protocol.handle('forma-stream',request=>{
     const u=new URL(request.url);
     return u.hostname==='youtube'?youtubeAudio.respond(u.pathname.slice(1),request):new Response(null,{status:404});
