@@ -1,3 +1,4 @@
+import {publicationAgeDays} from './search.mjs';
 import {normalizeTrack} from './model.mjs';
 
 export const validVideoID=id=>typeof id==='string'&&/^[\w-]{11}$/.test(id);
@@ -39,14 +40,14 @@ export class YouTubeCatalog {
   async orderedSearch(query,order,offset=0){
     const key=`ordered:${order}:${query}`;let entry=this.searches.get(key);
     if(!entry||Date.now()-entry.at>300000){
-      entry={at:Date.now(),pages:[],promise:(async()=>{const client=await (this.client||(await this.music(),this.client));const {YT}=await import('youtubei.js');return new YT.Search(client.actions,await client.actions.execute('/search',{query,params:order==='recent'?'CAISAhAB':'CAMSAhAB',client:'WEB'}));})()};
+      entry={at:Date.now(),pages:[],promise:(async()=>{const client=await (this.client||(await this.music(),this.client));const {YT}=await import('youtubei.js');return new YT.Search(client.actions,await client.actions.execute('/search',{query,params:order==='recent'?'EgQIBBAB':'CAMSAhAB',client:'WEB'}));})()};
       this.searches.set(key,entry);if(this.searches.size>60)this.searches.delete(this.searches.keys().next().value);
     }
     const pageIndex=Math.floor(offset/40);
     try{
       if(!entry.pages.length)entry.pages.push(await entry.promise);
       while(entry.pages.length<=pageIndex){const last=entry.pages.at(-1);if(!last.has_continuation)return {items:[],hasMore:false};entry.nextPromise||=last.getContinuation();const next=await entry.nextPromise;if(entry.pages.at(-1)===last){entry.pages.push(next);entry.nextPromise=null;}}
-      const page=entry.pages[pageIndex];return {items:page.videos.map(i=>youtubeTrack(i)).filter(t=>t&&t.duration>0&&t.duration<=1200),hasMore:page.has_continuation};
+      const page=entry.pages[pageIndex];return {items:(order==='recent'?[...page.videos].sort((a,b)=>publicationAgeDays(a.published?.text)-publicationAgeDays(b.published?.text)):page.videos).map(i=>youtubeTrack(i)).filter(t=>t&&t.duration>0&&t.duration<=1200),hasMore:page.has_continuation};
     }catch(error){this.searches.delete(key);throw error;}
   }
   async artist(id,offset=0){

@@ -8,7 +8,7 @@
 
 Получение аудио неофициальное и может перестать работать после изменений YouTube. Поддержка потоков, отмена старого выбора, перемотка и фон проверены на контролируемом аудио в настоящем Electron; это не проверка доступности сервиса на конкретном подключении.
 
-[Скачать Windows 1.15.5](https://github.com/Astronomial/music/releases/download/win-v1.16.0/Forma-1.16.0-Windows-x64.exe).
+[Скачать Windows 1.15.5](https://github.com/Astronomial/music/releases/download/win-v1.16.1/Forma-1.16.1-Windows-x64.exe).
 
 ## Архив: встроенный плеер версий 1.10–1.14
 

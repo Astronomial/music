@@ -78,3 +78,12 @@ export async function searchColumns(query,request,{offset=0,localTracks=[],offli
   const recent=column(0),popular=column(1),artists=settled[2].status==='fulfilled'?settled[2].value.map(normalizeArtist):[];
   return {recent,popular,tracks:[...new Map([...recent,...popular].map(t=>[t.id,t])).values()],artists,partial:settled.some(r=>r.status==='rejected'),hasMore:settled.slice(0,2).some(r=>r.status==='fulfilled'&&Boolean(r.value.hasMore))};
 }
+
+export function publicationAgeDays(text){
+  const value=String(text||'').toLowerCase().replace(/ё/g,'е');
+  if(/yesterday|вчера/.test(value))return 1;if(/just now|только что/.test(value))return 0;
+  const match=value.match(/(\d+(?:[.,]\d+)?)\s*(minute|минут|hour|час|day|дн|день|дня|week|недел|month|месяц|year|год|лет)/u);
+  if(!match)return Infinity;
+  const n=Number(match[1].replace(',','.')),unit=match[2];
+  return n*(/minute|минут/.test(unit)?1/1440:/hour|час/.test(unit)?1/24:/week|недел/.test(unit)?7:/month|месяц/.test(unit)?30:/year|год|лет/.test(unit)?365:1);
+}

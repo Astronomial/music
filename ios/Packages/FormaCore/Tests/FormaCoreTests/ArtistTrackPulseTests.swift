@@ -11,6 +11,11 @@ final class ArtistTrackPulseTests: XCTestCase {
         let ranked = PulseEngine.rank(Array(library.tracks.values), library: library, trackID: seed.id)
         XCTAssertEqual(ranked.map(\.id), [near.id]); XCTAssertTrue(TrackPulse.sameSong(seed, remix)); XCTAssertEqual(library.likedIDs, [other.id])
     }
+    func testPublicationLabels() {
+        XCTAssertEqual(CatalogParser.publicationAgeDays("3 недели назад"), 21)
+        XCTAssertEqual(CatalogParser.publicationAgeDays("2 days ago"), 2)
+        XCTAssertEqual(CatalogParser.publicationAgeDays("unknown"), .infinity)
+    }
     func testChannelMetadataSurvivesOldProfilesAndMerges() throws {
         let old = Data(#"{"videoID":"near0000001","title":"Песня","artist":"Артист"}"#.utf8)
         var track = try JSONDecoder().decode(Track.self, from: old); XCTAssertNil(track.artistID)

@@ -202,6 +202,7 @@ struct SearchView: View {
     private func searchColumn(_ title: String, tracks: [Track]) -> some View {
         LazyVStack(alignment: .leading, spacing: 10) {
             Text(title).font(.headline).lineLimit(2).frame(minHeight: 44, alignment: .leading)
+            Text(title == "Свежие релизы" ? "За последний месяц" : "По популярности").font(.caption).foregroundStyle(.secondary)
             ForEach(tracks) { track in TrackRow(model: model, track: track, compact: true) { model.play(track, list: tracks) } }
         }.frame(maxWidth: .infinity, alignment: .topLeading)
     }

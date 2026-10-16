@@ -37,7 +37,7 @@ try{
       if(path.endsWith('/player')&&JSON.parse(options.body).videoId==='98765432109')return Response.json({playabilityStatus:{status:'OK'},videoDetails:{videoId:'98765432109',title:'Browser fallback',author:'Test Artist'},streamingData:{adaptiveFormats:[]}});
       if(path.endsWith('/player')&&JSON.parse(options.body).videoId==='12345678901')return Response.json({playabilityStatus:{status:'OK'},videoDetails:{videoId:'12345678901',title:'HLS audio only',author:'Test Artist'},streamingData:{hlsManifestUrl:'https://r2.googlevideo.com/hls/master.m3u8'}});
       if(path.endsWith('/player')){const videoId=JSON.parse(options.body).videoId;return Response.json({playabilityStatus:{status:'OK'},videoDetails:{videoId,title:'Native fixture',author:'Test Artist',lengthSeconds:'20'},streamingData:{expiresInSeconds:'3600',adaptiveFormats:[{itag:140,url:'https://r1.googlevideo.com/native-audio',mimeType:'audio/mp4; codecs="mp4a.40.2"',bitrate:128000,contentLength:String(Buffer.from(streamAudio,'base64').length),audioQuality:'AUDIO_QUALITY_MEDIUM',approxDurationMs:'12000'}]}});}
-      if(path.endsWith('/search')&&parsed.hostname.includes('youtube'))return Response.json(['CAISAhAB','CAMSAhAB'].includes(JSON.parse(options.body||'{}').params)?webFixture:youtubeFixture);
+      if(path.endsWith('/search')&&parsed.hostname.includes('youtube'))return Response.json(['EgQIBBAB','CAMSAhAB'].includes(JSON.parse(options.body||'{}').params)?webFixture:youtubeFixture);
       if(path.endsWith('/download'))return new Response(Buffer.from(audio,'base64'),{headers:{'content-length':String(Buffer.from(audio,'base64').length)}});
       return Response.json({data:/\/tracks\/DesktopTest$/.test(path)?track:[track]});
     };

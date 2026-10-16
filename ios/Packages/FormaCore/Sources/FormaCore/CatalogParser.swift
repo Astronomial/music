@@ -2,21 +2,34 @@ import Foundation
 
 public enum CatalogParser {
     /// Tolerates new wrappers, but accepts only known song/panel renderer shapes.
-    public static func tracks(from data: Data) throws -> [Track] {
+    public static func tracks(from data: Data, recentFirst: Bool = false) throws -> [Track] {
         guard data.count <= 8 * 1024 * 1024 else { throw ParseError.tooLarge }
         let json = try JSONSerialization.jsonObject(with: data)
-        var found: [Track] = [], seen = Set<String>()
+        var found: [Track] = [], seen = Set<String>(), ages: [String: Double] = [:]
         func visit(_ value: Any, depth: Int) {
             guard depth < 80, found.count < 200 else { return }
             if let object = value as? [String: Any] {
                 if let renderer = object["musicResponsiveListItemRenderer"] as? [String: Any], let track = song(renderer), seen.insert(track.id).inserted { found.append(track) }
-                if let renderer = object["videoRenderer"] as? [String: Any], let track = video(renderer), seen.insert(track.id).inserted { found.append(track) }
+                if let renderer = object["videoRenderer"] as? [String: Any], let track = video(renderer), seen.insert(track.id).inserted { found.append(track); ages[track.id] = publicationAgeDays(text(renderer["publishedTimeText"])) }
                 if let renderer = object["playlistPanelVideoRenderer"] as? [String: Any], let track = panel(renderer), seen.insert(track.id).inserted { found.append(track) }
                 for key in object.keys.sorted() { visit(object[key]!, depth: depth + 1) }
             } else if let array = value as? [Any] { for item in array { visit(item, depth: depth + 1) } }
         }
         visit(json, depth: 0)
-        return found
+        return recentFirst ? found.enumerated().sorted { let a = ages[$0.element.id] ?? .infinity, b = ages[$1.element.id] ?? .infinity; return a == b ? $0.offset < $1.offset : a < b }.map(\.element) : found
+    }
+    public static func publicationAgeDays(_ text: String) -> Double {
+        let text = text.lowercased().replacingOccurrences(of: "ё", with: "е")
+        if text.contains("yesterday") || text.contains("вчера") { return 1 }
+        if text.contains("just now") || text.contains("только что") { return 0 }
+        guard let regex = try? NSRegularExpression(pattern: #"(\d+(?:[.,]\d+)?)\s*(minute|минут|hour|час|day|дн|день|дня|week|недел|month|месяц|year|год|лет)"#), let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)), let nr = Range(match.range(at: 1), in: text), let ur = Range(match.range(at: 2), in: text), let n = Double(text[nr].replacingOccurrences(of: ",", with: ".")) else { return .infinity }
+        let unit = String(text[ur])
+        if unit.hasPrefix("minute") || unit.hasPrefix("минут") { return n / 1440 }
+        if unit.hasPrefix("hour") || unit.hasPrefix("час") { return n / 24 }
+        if unit.hasPrefix("week") || unit.hasPrefix("недел") { return n * 7 }
+        if unit.hasPrefix("month") || unit.hasPrefix("месяц") { return n * 30 }
+        if unit.hasPrefix("year") || unit.hasPrefix("год") || unit.hasPrefix("лет") { return n * 365 }
+        return n
     }
     public enum ParseError: Error { case tooLarge }
     static func text(_ object: Any?) -> String {

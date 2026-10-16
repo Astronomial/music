@@ -53,8 +53,8 @@ actor YouTubeCatalog: MusicCatalogProviding {
         guard !query.isEmpty else { return [] }
         let key = "ordered:\(recent):\(query)"
         if let hit = cache[key], Date().timeIntervalSince(hit.0) < 300 { return hit.1 }
-        let data = try await request("search", body: ["query": query, "params": recent ? "CAISAhAB" : "CAMSAhAB"], web: true)
-        let tracks = try await Task.detached(priority: .userInitiated) { try CatalogParser.tracks(from: data) }.value
+        let data = try await request("search", body: ["query": query, "params": recent ? "EgQIBBAB" : "CAMSAhAB"], web: true)
+        let tracks = try await Task.detached(priority: .userInitiated) { try CatalogParser.tracks(from: data, recentFirst: recent) }.value
         if cache.count >= 40 { cache.removeAll() }; cache[key] = (Date(), tracks)
         return tracks
     }

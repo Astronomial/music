@@ -4,7 +4,7 @@ import {initialState,normalizeTrack,mergeTracks} from '../src/core/model.mjs';
 import {rankTracks} from '../src/core/recommender.mjs';
 import {sameSong,trackPulseContext} from '../src/core/track-pulse.mjs';
 import {artistTracks} from '../src/core/artist-catalog.mjs';
-import {searchColumns} from '../src/core/search.mjs';
+import {publicationAgeDays,searchColumns} from '../src/core/search.mjs';
 import {YouTubeCatalog} from '../src/core/youtube.mjs';
 
 const track=(id,title,extra={})=>normalizeTrack({id:'yt_'+id,videoId:id,source:'youtube',title,artist:'Артист',duration:180,...extra});
@@ -30,7 +30,10 @@ test('search columns preserve independent server orders and survive partial fail
 test('installed parser receives real upload-date/view-count filters and keeps author channels',async()=>{
   const {Innertube}=await import('youtubei.js');const calls=[];
   const raw={contents:{twoColumnSearchResultsRenderer:{primaryContents:{sectionListRenderer:{contents:[{itemSectionRenderer:{contents:[{videoRenderer:{videoId:'near0000001',title:{runs:[{text:'Песня'}]},ownerText:{runs:[{text:'Артист',navigationEndpoint:{browseEndpoint:{browseId:'UCabcdefghijklmnop'}}}]},lengthText:{simpleText:'3:00'},viewCountText:{simpleText:'12345 views'},thumbnail:{thumbnails:[{url:'https://i.ytimg.com/test.jpg'}]}}}]}}]}}}}};
+  const items=raw.contents.twoColumnSearchResultsRenderer.primaryContents.sectionListRenderer.contents[0].itemSectionRenderer.contents;items[0].videoRenderer.publishedTimeText={simpleText:'3 weeks ago'};const newer=structuredClone(items[0]);newer.videoRenderer.videoId='diff0000001';newer.videoRenderer.publishedTimeText={simpleText:'2 days ago'};items.push(newer);
   const c=new YouTubeCatalog(()=>Innertube.create({generate_session_locally:true,retrieve_player:false,retrieve_innertube_config:false,fetch:async(input,options)=>{calls.push(JSON.parse(options?.body||await input.clone().text()));return Response.json(raw);}}));
   const recent=await c.request('/tracks/search',{query:'Артист',sort_method:'recent'}),popular=await c.request('/tracks/search',{query:'Артист',sort_method:'popular'});
-  assert.deepEqual(calls.map(c=>c.params),['CAISAhAB','CAMSAhAB']);assert.ok(calls.every(c=>c.context.client.clientName==='WEB'));assert.equal(recent.items[0].artistId,'yt_UCabcdefghijklmnop');assert.equal(popular.items[0].playCount,12345);
+  assert.deepEqual(calls.map(c=>c.params),['EgQIBBAB','CAMSAhAB']);assert.deepEqual([...Buffer.from(calls[0].params,'base64')],[18,4,8,4,16,1]);assert.equal(recent.items[0].videoId,'diff0000001');assert.equal(popular.items[0].videoId,'near0000001');assert.ok(calls.every(c=>c.context.client.clientName==='WEB'));assert.equal(recent.items[0].artistId,'yt_UCabcdefghijklmnop');assert.equal(popular.items[0].playCount,12345);
 });
+
+test('publication labels are ordered by actual time units, unknown dates stay unknown',()=>{assert.equal(publicationAgeDays('3 недели назад'),21);assert.equal(publicationAgeDays('2 days ago'),2);assert.equal(publicationAgeDays('5 часов назад'),5/24);assert.equal(publicationAgeDays('???'),Infinity);});
