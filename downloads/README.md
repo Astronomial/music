@@ -8,3 +8,5 @@
 
 
 Для iPhone: [IPA и установка с Windows](../ios/INSTALL_WINDOWS.md). Библиотека передаётся по домашней сети только после просмотра и подтверждения пакета на ПК или телефоне: [инструкция](../docs/WIFI_SYNC.md). Google-аккаунт не нужен.
+
+[Проверка Windows 1.16.1 и новых возможностей](../docs/ARTISTS_AND_TRACK_PULSE.md). SHA-256: `94f6134d363ca1ffdee0ebcf7271dc4540f55de7ca1f5cdcb5042b35dfd0c013`.

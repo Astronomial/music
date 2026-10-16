@@ -1,0 +1,21 @@
+{
+  "version": "1.16.1",
+  "size": 92569932,
+  "sha256": "94f6134d363ca1ffdee0ebcf7271dc4540f55de7ca1f5cdcb5042b35dfd0c013",
+  "architecture": "x64",
+  "byteMatchedFiles": 7,
+  "lineEndingMatchedFiles": 48,
+  "browserPlaybackFallbackIncluded": true,
+  "artistAndTrackPulseModulesIncluded": true,
+  "sourceCommit": "14a0327806e923a3dd39428460d4bb1290ed2fab",
+  "workflow": "https://github.com/Astronomial/music/actions/runs/38849613813",
+  "unitTestsPassed": 159,
+  "uiScenariosPassed": 7,
+  "nativeWindowsPassed": true,
+  "packagedWindowsExePassed": true,
+  "artistAndTrackPulseUI": true,
+  "monthFilterAndPublicationOrder": true,
+  "githubAndManifestDigestsMatch": true,
+  "liveYouTubeTested": false,
+  "liveYouTubeLimitation": "Execution environment blocks YouTube; raw catalogue fixtures and controlled media were used."
+}

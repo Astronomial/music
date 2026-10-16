@@ -1,0 +1,23 @@
+{
+  "version": "1.7.0",
+  "size": 5675939,
+  "sha256": "f808a2ccde64c8c8e2edc13482c591e0987ea3adc84eb73776414158912ccd13",
+  "architecture": "arm64",
+  "minimumIOS": "17.0",
+  "backgroundAudioDeclared": true,
+  "build": "16",
+  "sourceCommit": "60f96e2905103e2e5beeb5078841477d0d4e694e",
+  "workflow": "https://github.com/Astronomial/music/actions/runs/38849571087",
+  "coreTestsPassed": 88,
+  "extractionTestsPassed": 23,
+  "optimizedPerformanceTestsPassed": 2,
+  "simulatorBuildPassed": true,
+  "deviceReleaseBuildPassed": true,
+  "nativeSimulatorPassed": true,
+  "artistNavigationAndTrackPulseAssertionsPassed": true,
+  "nativeDesignScreens": 15,
+  "searchNormalAndLargeTextVisuallyInspected": true,
+  "githubAndManifestDigestsMatch": true,
+  "liveYouTubeTested": false,
+  "liveYouTubeLimitation": "Execution environment blocks YouTube; controlled catalogue and media fixtures used."
+}
