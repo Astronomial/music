@@ -36,4 +36,4 @@ test('installed parser receives real upload-date/view-count filters and keeps au
   assert.deepEqual(calls.map(c=>c.params),['EgQIBBAB','CAMSAhAB']);assert.deepEqual([...Buffer.from(calls[0].params,'base64')],[18,4,8,4,16,1]);assert.equal(recent.items[0].videoId,'diff0000001');assert.equal(popular.items[0].videoId,'near0000001');assert.ok(calls.every(c=>c.context.client.clientName==='WEB'));assert.equal(recent.items[0].artistId,'yt_UCabcdefghijklmnop');assert.equal(popular.items[0].playCount,12345);
 });
 
-test('publication labels are ordered by actual time units, unknown dates stay unknown',()=>{assert.equal(publicationAgeDays('3 недели назад'),21);assert.equal(publicationAgeDays('2 days ago'),2);assert.equal(publicationAgeDays('5 часов назад'),5/24);assert.equal(publicationAgeDays('???'),Infinity);});
+test('publication labels are ordered by actual time units, unknown dates stay unknown',()=>{assert.equal(publicationAgeDays('3 недели назад'),21);assert.equal(publicationAgeDays('2 days ago'),2);assert.ok(Math.abs(publicationAgeDays('5 часов назад')-5/24)<1e-10);assert.equal(publicationAgeDays('???'),Infinity);});
