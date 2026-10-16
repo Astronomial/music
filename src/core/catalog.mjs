@@ -1,3 +1,4 @@
+import {sameSong} from './track-pulse.mjs';
 import {tasteGenres,discoveryQuery} from './discovery-search.mjs';
 import {normalizeTrack} from './model.mjs';
 import {selectRetrievalAnchors,playlistSeedState,rankTracks} from './recommender.mjs';
@@ -5,6 +6,15 @@ import {artistIndex} from './diversity.mjs';
 import {MOOD_MIXES,moodSeedQuery} from './mood-mixes.mjs';
 import {waveSettings,waveQuery,retrievalContext,matchesArtist,genresOf,blockedByPreferences} from './wave-settings.mjs';
 export async function collectYouTubeCandidates(state,request,{context=null,onBatch,round=0}={}){
+  if(context?.trackId){
+    const seed=state.tracks[context.trackId];if(!seed?.videoId)return [];
+    const first=(await request('/related/'+seed.videoId,{})).map(raw=>{const t=normalizeTrack(raw);return {...t,relatedTo:[...new Set([...t.relatedTo,seed.id])],directRelatedTo:[...new Set([...t.directRelatedTo,seed.id])]};});onBatch?.(first);
+    const branches=first.filter(t=>t.videoId&&!sameSong(t,seed)).slice(0,3);
+    const extra=await Promise.allSettled(branches.map(t=>request('/related/'+t.videoId,{})));
+    const found=new Map(first.map(t=>[t.id,t]));
+    for(const result of extra)if(result.status==='fulfilled')for(const raw of result.value){const t=normalizeTrack(raw);if(!found.has(t.id))found.set(t.id,{...t,relatedTo:[...new Set([...t.relatedTo,seed.id])]});}
+    const all=[...found.values()];onBatch?.(all);return all;
+  }
   const source=playlistSeedState(state,context),settings=waveSettings(state.settings),anchors=selectRetrievalAnchors(source,{limit:12});
   const seeds=anchors.filter(t=>t.source==='youtube').slice(0,6);
   const language=settings.languagePreference;

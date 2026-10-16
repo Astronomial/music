@@ -13,7 +13,7 @@ await page.addInitScript(()=>{
 await page.addInitScript(installAudioFixture);
 try{
   await page.goto(process.env.FORMA_TEST_URL||'http://localhost:5173');
-  await page.locator('.for-you .track-name').first().click();
+  await page.locator('.for-you .track-title').first().click();
   await page.waitForFunction(()=>window.nativeAudio?.state===1&&!!window.nativeAudio.id);
   const sequence=[];
   for(let i=0;i<18;i++){

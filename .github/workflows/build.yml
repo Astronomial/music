@@ -2,7 +2,7 @@ name: Check and build Forma
 on:
   push:
     branches: [main]
-    paths-ignore: ['downloads/**', 'artifacts/**', '**.md']
+    paths-ignore: ['downloads/**', 'artifacts/**', '**.md', 'ios/**', '.github/workflows/ios.yml']
   pull_request:
   workflow_dispatch:
 permissions:

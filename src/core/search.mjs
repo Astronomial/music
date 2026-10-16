@@ -62,3 +62,19 @@ export async function searchCatalog(query,request,{offset=0,localTracks=[],offli
   const tracks=[...combined.values()].map(t=>({t,score:trackSearchScore(t,query)})).filter(r=>r.score>=0.35).sort((a,b)=>b.score-a.score||(b.t.favoriteCount||0)-(a.t.favoriteCount||0)).map(r=>r.t);
   return {tracks,artists,hasMore:trackResult.status==='fulfilled'&&(trackResult.value.hasMore??remote.length===40)||artistTracks.some(r=>r.status==='fulfilled'&&(r.value.hasMore??r.value.length===40)),partial:results.some(r=>r.status==='rejected')};
 }
+
+// Ordered columns come from independent server-side searches; unknown dates are never invented.
+export async function searchColumns(query,request,{offset=0,localTracks=[],offline=false,signal}={}){
+  query=String(query).trim().slice(0,160);signal?.throwIfAborted();
+  if(!query)return {tracks:[],artists:[],recent:[],popular:[],hasMore:false};
+  if(offline){const result=searchLocal(localTracks,query);return {...result,recent:[...result.tracks].sort((a,b)=>(Date.parse(b.releaseDate)||0)-(Date.parse(a.releaseDate)||0)),popular:[...result.tracks].sort((a,b)=>b.playCount-a.playCount||b.favoriteCount-a.favoriteCount)};}
+  const settled=await Promise.allSettled([
+    request('/tracks/search',{query,offset,sort_method:'recent'}),
+    request('/tracks/search',{query,offset,sort_method:'popular'}),
+    request('/users/search',{query,offset:0})
+  ]);signal?.throwIfAborted();
+  if(settled.every(r=>r.status==='rejected'))throw Error('Поиск временно недоступен. Попробуй ещё раз.');
+  const column=i=>settled[i].status==='fulfilled'?settled[i].value.map(normalizeTrack).filter(t=>t.streamable):[];
+  const recent=column(0),popular=column(1),artists=settled[2].status==='fulfilled'?settled[2].value.map(normalizeArtist):[];
+  return {recent,popular,tracks:[...new Map([...recent,...popular].map(t=>[t.id,t])).values()],artists,partial:settled.some(r=>r.status==='rejected'),hasMore:settled.slice(0,2).some(r=>r.status==='fulfilled'&&Boolean(r.value.hasMore))};
+}

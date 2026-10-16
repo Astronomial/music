@@ -9,6 +9,7 @@ enum NativeDesignAudit {
     static var selectTab: ((Int) -> Void)?
     static var present: ((String?) -> Void)?
     static var largeText: ((Bool) -> Void)?
+    static var searchQuery: ((String) -> Void)?
     static var playerTextSize: DynamicTypeSize?
     static func run(model: AppModel) async throws -> [String: Any] {
         guard let selectTab, let present, let largeText,
@@ -70,6 +71,12 @@ enum NativeDesignAudit {
         for tab in 0..<4 {
             selectTab(tab); try await settle(); try await snapshot("\(tab)-standard"); try verifyTabs(tab, compact: false)
         }
+        selectTab(1); try await settle(); searchQuery?("fast")
+        try await Task.sleep(nanoseconds: 1_000_000_000)
+        guard !model.recentSearchResults.isEmpty, !model.popularSearchResults.isEmpty else { throw SyncError.rejected("Search columns did not populate") }
+        try await snapshot("search-columns")
+        largeText(true); try await settle(); try await snapshot("search-columns-large-text")
+        largeText(false); searchQuery?("")
         defaults.set(true, forKey: "forma.compactNavigation")
         for tab in 0..<4 {
             selectTab(tab); try await settle(); try await snapshot("\(tab)-compact"); try verifyTabs(tab, compact: true)

@@ -100,7 +100,7 @@ public enum PulseEngine {
     }
     public static func rank(_ candidates: [Track], library: Library, limit: Int = 30,
                             mood: String? = nil, exclude: Set<String> = [], allowRecent: Bool = false,
-                            now: Date = Date(), currentID: String? = nil, index: RankingIndex? = nil, playlistID: String? = nil) -> [Recommendation] {
+                            now: Date = Date(), currentID: String? = nil, index: RankingIndex? = nil, playlistID: String? = nil, trackID: String? = nil) -> [Recommendation] {
         if let playlistID, !library.playlists.contains(where: { $0.id == playlistID && !$0.trackIDs.isEmpty }) { return [] }
         var profileSource = library
         if let playlistID, let playlist = library.playlists.first(where: { $0.id == playlistID }) {
@@ -108,6 +108,9 @@ public enum PulseEngine {
             profileSource.likedIDs = []; profileSource.playlists = [playlist]; profileSource.settings.genres = []; profileSource.settings.playlistSource = "all"
             profileSource.events = library.events.filter { seeds.contains($0.trackID) || !(Set(library.tracks[$0.trackID]?.relatedTo ?? [])).isDisjoint(with: seeds) }
         }
+        let trackSeed = trackID.flatMap { library.tracks[$0] }
+        if trackID != nil && trackSeed == nil { return [] }
+        if let trackSeed { profileSource = TrackPulse.profile(library, seed: trackSeed) }
         let prepared = index ?? makeIndex(candidates, library: library)
         let vectors = prepared.vectors, orderedVectors = prepared.orderedVectors, artistNames = prepared.artists
         let familiarIDs = Set(library.likedIDs + library.playlists.flatMap(\.trackIDs) + library.events.filter { [FeedbackKind.play, .listen, .skip].contains($0.kind) && $0.at <= now && now.timeIntervalSince($0.at) < 30 * 86400 }.map(\.trackID))
@@ -146,6 +149,7 @@ public enum PulseEngine {
             if Task.isCancelled { return [] }
             guard VideoID.isValid(track.id), seen.insert(track.id).inserted, !exclude.contains(track.id),
                   !excludedArtists.contains(fold(track.artist)), !hidden.contains(track.id), !PulseDiversity.blocked(track, settings: library.settings), library.settings.includeLibrary || !saved.contains(track.id), allowRecent || !recent.contains(track.id) else { continue }
+            if let trackSeed, TrackPulse.fit(track, seed: trackSeed) <= 0.1 { continue }
             if let context, (prepared.moods[track.id]?[context] ?? 0) <= 0 { continue }
             let vector = orderedVectors[track.id] ?? []
             let metadataAffinity = 0.4 * similarity(vector, positive) + 0.6 * (seedTracks.map { similarity(vector, vectors[$0.id] ?? [:]) * min(1, (trackWeights[$0.id] ?? 0) / 3) }.max() ?? 0)
@@ -180,6 +184,7 @@ public enum PulseEngine {
             var score = preferred + genrePreference + PulseDirections.score(track, settings: library.settings) + affinity * 2.2 - similarity(vector, negative) * 1.65 * min(1, negativeEvidence / 8) + session
             score += known ? (1 - discovery) * 0.12 : discovery * (0.2 + affinity * 0.45)
             score += (consumption.mean - 0.5) * 1.6 + learned.correction * 1.4 + exploration + neighbour * 0.65 + language * 0.15 + contextScore
+            if let trackSeed { score += 4 * TrackPulse.fit(track, seed: trackSeed) }
             if disliked.contains(track.id) { score -= 1000 }
             if let avoidance = library.dislikedIDs.suffix(24).compactMap({ SoundProfile.similarity(track.soundProfile, library.tracks[$0]?.soundProfile) }).max() { score -= max(0, avoidance - 0.75) * 2 }
             score -= min(1.8, max(0, -(trackWeights[track.id] ?? 0)) * 0.3)
@@ -188,6 +193,7 @@ public enum PulseEngine {
             var reason = known ? "Из твоей библиотеки" : newArtist && neighbour >= 0.24 ? "Новый исполнитель · рядом с \(matched?.artist ?? "твоим вкусом")" : lane == "stretch" && !seedTracks.isEmpty ? "Небольшой шаг в новое направление" : affinity > 0.1 ? "В твоём вкусе" : "Новое из YouTube"
             if context != nil { reason = "Под настроение · " + reason.lowercased() }
             if (soundFit ?? 0) >= 0.78 { reason = "Похожее звучание · анализ аудио" }
+            if let trackSeed { reason = "Похоже на «\(trackSeed.title)»" }
             ranked.append(Recommendation(track: track, score: score, reason: reason, newArtist: newArtist, known: known, nearby: nearby, languageFit: language, taste: max(affinity, neighbour * 0.65), exposure: RecommendationContext(features: snapshot, lane: lane), scoredAt: now))
         }
         ranked.sort { $0.score == $1.score ? $0.id < $1.id : $0.score > $1.score }

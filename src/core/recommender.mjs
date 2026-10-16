@@ -1,3 +1,4 @@
+import {trackPulseFit,sameSong} from './track-pulse.mjs';
 const DAY = 86400000;
 import {createSoundMatcher} from './sound-profile.mjs';
 import {waveSettings,genresOf,blockedByPreferences,preferenceAffinity,activeSeedPlaylists} from './wave-settings.mjs';
@@ -17,6 +18,7 @@ export function playlistPulseContext(state,id){
   return {playlistId:id,playlistName:playlist.name,discovery:0.75};
 }
 export function playlistSeedState(state,context){
+  if(context?.trackId){const id=context.trackId;return {...state,likes:[id],playlists:[],events:state.events.filter(e=>e.trackId===id||state.tracks[e.trackId]?.relatedTo?.includes(id)),settings:{...state.settings,genres:[],playlistSource:'all',seedPlaylistIds:[]}};}
   if(!context?.playlistId)return state;
   const playlist=state.playlists.find(p=>p.id===context.playlistId);
   const seeds=new Set(playlist?.trackIds||[]);
@@ -193,7 +195,8 @@ export function rankTracks(candidates, state, options = {}) {
   const recentRecordings=new Set(state.events.filter(e=>e.type==='play'&&e.at<=now&&now-e.at<settings.repeatCooldown*3600000&&state.tracks[e.trackId]).map(e=>recordingKey(state.tracks[e.trackId],artistKeys)));
   const spacing=artistSpacing(settings.artistDiversity);
   const unique = new Map(candidates.map(t => [t.id, t]));
-  const ranked = [...unique.values()].filter(t => t.streamable && !banned.has(t.id) && (allowRecent || !recentRecordings.has(recordingKey(t,artistKeys))) && !blockedByPreferences(t,settings) && (settings.includeLibrary||!library.has(t.id)) && (allowRecent || !recent.has(t.id)) && (!context?.mood||moodEvidence(t,context)>0)).map(track => {
+  const seedTrack=context?.trackId?state.tracks[context.trackId]:null;
+  const ranked = [...unique.values()].filter(t => (!context?.trackId||seedTrack&&!sameSong(t,seedTrack)&&trackPulseFit(t,seedTrack)>.1) && t.streamable && !banned.has(t.id) && (allowRecent || !recentRecordings.has(recordingKey(t,artistKeys))) && !blockedByPreferences(t,settings) && (settings.includeLibrary||!library.has(t.id)) && (allowRecent || !recent.has(t.id)) && (!context?.mood||moodEvidence(t,context)>0)).map(track => {
     const vector = features(track);
     if(!affinities.has(track)){
       const signature=JSON.stringify([Object.entries(vector),track.bpm||0]);
@@ -235,6 +238,7 @@ export function rankTracks(candidates, state, options = {}) {
     const learned=predictContext(contextual,snapshotFeatures);
     const exploration=discovery*((predicted.uncertainty+learned.uncertainty)/2)*(.08+neighbourhoodFit.fit*.35);
     let score = 2.2 * affinity - 1.65 * avoidance + novelty + session + learning+exploration+popular*.04+noise*.03+contextScore+preference.score+neighbourhoodFit.fit*.65+learned.correction*1.4+language.fit*.15;
+    if(seedTrack)score+=4*trackPulseFit(track,seedTrack);
     if(!nearby&&anchors.length)score-=settings.explorationStyle==='nearby'?.35:settings.explorationStyle==='balanced'?.15:0;
     const ownWeight = profile.weights.get(track.id) || 0;
     if(disliked.has(track.id))score-=1000;
@@ -257,6 +261,7 @@ export function rankTracks(candidates, state, options = {}) {
     if(newArtist&&neighbourhoodFit.match&&neighbourhoodFit.fit>=.24&&!context?.playlistId&&!context?.mood)reason=`Новый исполнитель · рядом с ${neighbourhoodFit.match.artist}`;
     const lane=known?'familiar':nearby?'nearby':'stretch';
     if(lane==='stretch'&&anchors.length&&!context?.mood&&!context?.playlistId)reason='Небольшой шаг в новое направление';
+    if(seedTrack)reason='Похоже на «'+seedTrack.title+'»';
     return {track,score,reason,vector,known,newArtist,nearby,languageFit:language.fit,artistKeys:keys,recording:recordingKey(track,artistKeys),genres:genresOf(track).values,signals:{taste:affinity,neighbourhood:neighbourhoodFit.fit,corroboration:neighbourhoodFit.corroboration,session,predictedEnjoyment:predicted.mean,learnedContext:learned.mean,learningConfidence:learned.confidence,uncertainty:predicted.uncertainty,context:contextScore,language:language.source},lane,exposure:{version:CONTEXT_VERSION,features:snapshotFeatures,lane}};
   });
   // Deduplicate recordings across uploads before MMR; keep the best playable match.

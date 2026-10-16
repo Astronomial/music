@@ -484,6 +484,15 @@ enum NativeSmoke {
         try await until("cancelled-search-started") { await fixtureCatalog.uncancellableSearchStarted }
         cancelledSearch.cancel(); await cancelledSearch.value
         guard !model.isSearching, model.searchResults.map(\.id) == [tracks[1].id] else { throw SyncError.rejected("Cancelled search left a spinner or replaced existing results") }
+        guard model.recentSearchResults.map(\.id) == [tracks[1].id], model.popularSearchResults.map(\.id) == [tracks[1].id] else { throw SyncError.rejected("Search columns lost independent results") }
+        let artistTracks = try await model.tracksForArtist(tracks[1])
+        guard artistTracks.contains(where: { $0.id == tracks[1].id }) else { throw SyncError.rejected("Artist navigation returned no songs") }
+        model.startTrackPulse(tracks[1])
+        try await until("track-pulse-playing") { model.player.isPlaying && model.player.current?.id == tracks[1].id }
+        guard model.pulseTrackID == tracks[1].id, !model.isPersonalPulse else { throw SyncError.rejected("Track Pulse lost its seed") }
+        model.play(tracks[3], list: [tracks[3]])
+        try await Task.sleep(nanoseconds: 200_000_000)
+        guard model.pulseTrackID == nil, model.player.current?.id == tracks[3].id else { throw SyncError.rejected("Delayed track Pulse replaced manual playback") }
         let link = Task { await model.openYouTube("abcdefghijk") }
         try await until("link-description-started") { await fixtureCatalog.descriptionStarted }
         model.play(tracks[3], list: [tracks[3]]); await link.value

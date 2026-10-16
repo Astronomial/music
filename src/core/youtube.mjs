@@ -8,7 +8,7 @@ export function youtubeTrack(item,relatedTo=[]) {
   const artist=artists.map(a=>a.name).filter(Boolean).join(', ')||item.author?.name||item.author||'Неизвестный исполнитель';
   const pictures=item.thumbnails||item.thumbnail||[];
   const artwork=Array.isArray(pictures)?pictures.at(-1)?.url||'':pictures.contents?.at(-1)?.url||'';
-  return normalizeTrack({id:`yt_${videoId}`,videoId,source:'youtube',title:String(item.title),artist:String(artist),artistId:artists[0]?.channel_id?`yt_${artists[0].channel_id}`:`name_${String(artist).toLowerCase()}`,duration:item.duration?.seconds||0,artwork,album:item.album?.name||'',relatedTo,permalink:`https://www.youtube.com/watch?v=${videoId}`,downloadable:false});
+  return normalizeTrack({id:`yt_${videoId}`,videoId,source:'youtube',title:String(item.title),artist:String(artist),artistId:(artists[0]?.channel_id||item.author?.id)?`yt_${artists[0]?.channel_id||item.author.id}`:`name_${String(artist).toLowerCase()}`,duration:item.duration?.seconds||0,playCount:Number(String(item.view_count?.text||'').replace(/[^0-9]/g,''))||0,artwork,album:item.album?.name||'',relatedTo,permalink:`https://www.youtube.com/watch?v=${videoId}`,downloadable:false});
 }
 export function youtubeArtist(item) {
   const id=item.id||item.endpoint?.payload?.browseId;
@@ -36,6 +36,19 @@ export class YouTubeCatalog {
     // Attach pagination metadata to the array for IPC-safe adapters (also represented in the result envelope).
     return {items:result,hasMore:page.result.has_continuation};
   }
+  async orderedSearch(query,order,offset=0){
+    const key=`ordered:${order}:${query}`;let entry=this.searches.get(key);
+    if(!entry||Date.now()-entry.at>300000){
+      entry={at:Date.now(),pages:[],promise:(async()=>{const client=await (this.client||(await this.music(),this.client));const {YT}=await import('youtubei.js');return new YT.Search(client.actions,await client.actions.execute('/search',{query,params:order==='recent'?'CAISAhAB':'CAMSAhAB',client:'WEB'}));})()};
+      this.searches.set(key,entry);if(this.searches.size>60)this.searches.delete(this.searches.keys().next().value);
+    }
+    const pageIndex=Math.floor(offset/40);
+    try{
+      if(!entry.pages.length)entry.pages.push(await entry.promise);
+      while(entry.pages.length<=pageIndex){const last=entry.pages.at(-1);if(!last.has_continuation)return {items:[],hasMore:false};entry.nextPromise||=last.getContinuation();const next=await entry.nextPromise;if(entry.pages.at(-1)===last){entry.pages.push(next);entry.nextPromise=null;}}
+      const page=entry.pages[pageIndex];return {items:page.videos.map(i=>youtubeTrack(i)).filter(t=>t&&t.duration>0&&t.duration<=1200),hasMore:page.has_continuation};
+    }catch(error){this.searches.delete(key);throw error;}
+  }
   async artist(id,offset=0){
     if(!/^yt_UC[\w-]{10,80}$/.test(id))throw new Error('Некорректный исполнитель.');
     let entry=this.artists.get(id);
@@ -61,6 +74,7 @@ export class YouTubeCatalog {
   async request(route,params={}){
     const query=String(params.query||params.genre||'').trim().slice(0,160),offset=Math.max(0,Math.min(800,Number(params.offset)||0));
     try{
+      if(route==='/tracks/search'&&query&&['recent','popular'].includes(params.sort_method))return await this.orderedSearch(query,params.sort_method,offset);
       if(route==='/tracks/search'&&query)return await this.search(query,'song',offset);
       if(route==='/users/search'&&query)return await this.search(query,'artist',0);
       const artist=/^\/users\/(yt_UC[\w-]{10,80})\/tracks$/.exec(route);if(artist)return await this.artist(artist[1],offset);

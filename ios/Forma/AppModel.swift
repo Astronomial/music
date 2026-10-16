@@ -8,6 +8,9 @@ import FormaCore
 final class AppModel: ObservableObject {
     @Published private(set) var library = Library()
     @Published private(set) var recommendations: [Recommendation] = []
+    @Published private(set) var recentSearchResults: [Track] = []
+    @Published private(set) var popularSearchResults: [Track] = []
+    @Published private(set) var pulseTrackID: String?
     @Published private(set) var searchResults: [Track] = []
     @Published private(set) var completedSearchQuery = ""
     @Published private(set) var isRefreshing = false
@@ -42,12 +45,13 @@ final class AppModel: ObservableObject {
     private var saveRevision: UInt64 = 0
     private var moodCache: [String: [Recommendation]] = [:]
     private var pulseCache: [Recommendation] = []
+    private var pulseCacheTrackID: String?
     private var pulseCachePlaylistID: String?
     private var selectedContexts: [String: RecommendationContext] = [:]
     private var activeContext: RecommendationContext?
     private var playbackIndex: PulseEngine.RankingIndex?
     @Published private(set) var pulsePlaylistID: String?
-    var isPersonalPulse: Bool { player.selectionSurface == "pulse" && pulsePlaylistID == nil }
+    var isPersonalPulse: Bool { player.selectionSurface == "pulse" && pulsePlaylistID == nil && pulseTrackID == nil }
     private var searchGeneration = UUID()
     private var recommendationGeneration = UUID()
     private var pulseGeneration = UUID()
@@ -102,8 +106,9 @@ final class AppModel: ObservableObject {
         player.pulseNext = { [weak self] excluded, mood in
             guard let self else { return nil }
             if let id = self.pulsePlaylistID, !self.library.playlists.contains(where: { $0.id == id }) { return nil }
-            let source = mood.flatMap { self.moodCache[$0] } ?? (self.pulseCachePlaylistID == self.pulsePlaylistID ? self.pulseCache : self.recommendations)
+            let source = mood.flatMap { self.moodCache[$0] } ?? (self.pulseCachePlaylistID == self.pulsePlaylistID && self.pulseCacheTrackID == self.pulseTrackID ? self.pulseCache : self.pulseTrackID == nil ? self.recommendations : [])
             guard let choice = PulseEngine.selectCached(source, library: self.selectionLibrary(), exclude: excluded, currentID: self.player.current?.id, index: self.playbackIndex, mood: mood) else { return nil }
+            if let seed = self.pulseTrackID.flatMap({ self.library.tracks[$0] }), TrackPulse.fit(choice.track, seed: seed) <= 0.1 { return nil }
             if let exposure = choice.exposure { self.selectedContexts[choice.id] = exposure }
             return choice.track
         }
@@ -232,6 +237,7 @@ final class AppModel: ObservableObject {
             let seeds = Set(source.trackIDs)
             snapshot.events = snapshot.events.filter { seeds.contains($0.trackID) || !(Set(snapshot.tracks[$0.trackID]?.relatedTo ?? [])).isDisjoint(with: seeds) }
         }
+        if let id = pulseTrackID, let seed = snapshot.tracks[id] { return TrackPulse.profile(snapshot, seed: seed) }
         return snapshot
     }
     private func selectionLibrary() -> Library {
@@ -243,7 +249,7 @@ final class AppModel: ObservableObject {
         let exposure = self.context(for: track)
         selectedContexts.removeAll()
         if let exposure { selectedContexts[track.id] = exposure }
-        let hadPlaylist = pulsePlaylistID != nil; pulsePlaylistID = nil
+        let hadPlaylist = pulsePlaylistID != nil || pulseTrackID != nil; pulsePlaylistID = nil; pulseTrackID = nil
         player.play(track, list: list, context: context)
         if hadPlaylist { updateRecommendations() }
     }
@@ -254,7 +260,7 @@ final class AppModel: ObservableObject {
         let source = mood.flatMap { moodCache[$0] } ?? recommendations
         selectedContexts.removeAll()
         if let exposure = source.first(where: { $0.id == track.id })?.exposure { selectedContexts[track.id] = exposure }
-        let hadPlaylist = pulsePlaylistID != nil; pulsePlaylistID = nil
+        let hadPlaylist = pulsePlaylistID != nil || pulseTrackID != nil; pulsePlaylistID = nil; pulseTrackID = nil
         player.play(track, list: [track], asPulse: true, context: mood)
         if hadPlaylist { updateRecommendations() }
     }
@@ -262,13 +268,13 @@ final class AppModel: ObservableObject {
         guard !isRestoringLibrary else { return }
         pulseWork?.cancel(); linkTask?.cancel(); soundTask?.cancel()
         selectedContexts.removeAll(); isStartingPulse = true
-        let changedProfile = pulsePlaylistID != playlistID
+        let changedProfile = pulsePlaylistID != playlistID || pulseTrackID != nil; pulseTrackID = nil
         pulsePlaylistID = playlistID
         if changedProfile { updateRecommendations() }
         let snapshot = library, excluded = player.current.map { Set([$0.id]) } ?? []
         let token = UUID(); pulseGeneration = token
         let cached = mood.flatMap { moodCache[$0] } ?? pulseCache
-        if playlistID == nil, pulseCachePlaylistID == nil, let first = PulseEngine.selectCached(cached, library: snapshot, exclude: excluded, currentID: player.current?.id, index: playbackIndex, mood: mood) {
+        if playlistID == nil, pulseCachePlaylistID == nil, pulseCacheTrackID == nil, let first = PulseEngine.selectCached(cached, library: snapshot, exclude: excluded, currentID: player.current?.id, index: playbackIndex, mood: mood) {
             if let exposure = first.exposure { selectedContexts[first.id] = exposure }
             isStartingPulse = false; player.startPulse(first.track, mood: mood); return
         }
@@ -280,12 +286,42 @@ final class AppModel: ObservableObject {
             guard pulseGeneration == token else { return }
             isStartingPulse = false
             guard let first = result.first else { message = "Пока нет подходящих треков. Обнови подборки или найди музыку в поиске."; return }
-            pulseCache = result
+            pulseCache = result; pulseCacheTrackID = nil
             pulseCachePlaylistID = playlistID
             if let mood { moodCache[mood] = result }
             if let exposure = first.exposure { selectedContexts[first.id] = exposure }
             player.startPulse(first.track, mood: mood)
             if let playlistID { await refreshFromPlaylist(playlistID) }
+        }
+    }
+    func tracksForArtist(_ track: Track) async throws -> [Track] {
+        let local = library.tracks.values.filter { PulseEngine.fold($0.artist) == PulseEngine.fold(track.artist) }
+        guard player.networkPolicy.reachable else { return Array(local) }
+        let tracks = try await catalog.artistTracks(track)
+        try Task.checkCancellation(); merge(tracks)
+        return tracks.isEmpty ? Array(local) : tracks
+    }
+    func startTrackPulse(_ track: Track) {
+        guard !isRestoringLibrary else { return }
+        pulseWork?.cancel(); linkTask?.cancel(); soundTask?.cancel()
+        let token = UUID(); pulseGeneration = token
+        pulsePlaylistID = nil; pulseTrackID = track.id; selectedContexts.removeAll()
+        library.merge([track]); pulseCache = []; pulseCachePlaylistID = nil; pulseCacheTrackID = track.id
+        isStartingPulse = false; player.play(track, list: [track], asPulse: true)
+        updateRecommendations()
+        Task {
+            do {
+                let nearby = try await catalog.related(to: track)
+                guard pulseGeneration == token, pulseTrackID == track.id else { return }
+                merge(nearby)
+                for bridge in nearby.filter({ !TrackPulse.sameSong($0, track) }).prefix(2) {
+                    guard pulseGeneration == token, !Task.isCancelled else { return }
+                    if let extra = try? await catalog.related(to: bridge) {
+                        guard pulseGeneration == token else { return }
+                        merge(extra.map { item in var result = item; result.relatedTo = Array(Set(result.relatedTo + [track.id])); return result })
+                    }
+                }
+            } catch { if pulseGeneration == token { message = error.localizedDescription } }
         }
     }
     private func refreshFromPlaylist(_ id: String) async {
@@ -377,15 +413,22 @@ final class AppModel: ObservableObject {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let token = UUID(); searchGeneration = token
         defer { if searchGeneration == token { isSearching = false } }
-        if query.count < 2 { searchResults = []; completedSearchQuery = query; isSearching = false; return }
+        if query.count < 2 { searchResults = []; recentSearchResults = []; popularSearchResults = []; completedSearchQuery = query; isSearching = false; return }
         isSearching = true
         do {
-            let tracks = try await catalog.search(query)
+            async let recent = try? catalog.orderedSearch(query, recent: true)
+            async let popular = try? catalog.orderedSearch(query, recent: false)
+            let response = await (recent, popular)
+            try Task.checkCancellation()
+            guard response.0 != nil || response.1 != nil else { throw YouTubeCatalog.CatalogError.unavailable }
+            let columns = (response.0 ?? [], response.1 ?? [])
+            let tracks = (columns.0 + columns.1).reduce(into: [Track]()) { result, track in if !result.contains(where: { $0.id == track.id }) { result.append(track) } }
             guard searchGeneration == token, !Task.isCancelled else { return }
+            recentSearchResults = columns.0; popularSearchResults = columns.1
             searchResults = tracks; completedSearchQuery = query; merge(tracks)
             if player.networkPolicy.canPrewarmExtraTracks { await audioResolver.prewarm(videoIDs: Array(tracks.prefix(3).map(\.id))) }
         } catch is CancellationError { }
-        catch { if searchGeneration == token, !Task.isCancelled { message = error.localizedDescription; searchResults = []; completedSearchQuery = query } }
+        catch { if searchGeneration == token, !Task.isCancelled { message = error.localizedDescription; searchResults = []; recentSearchResults = []; popularSearchResults = []; completedSearchQuery = query } }
     }
     func openYouTube(_ value: String) async {
         let token = UUID(); pulseGeneration = token; pulseWork?.cancel(); linkTask?.cancel(); soundTask?.cancel()
@@ -410,7 +453,7 @@ final class AppModel: ObservableObject {
     }
     private func updateRecommendations() {
         let token = UUID(); recommendationGeneration = token
-        let snapshot = library, playlistID = pulsePlaylistID
+        let snapshot = library, playlistID = pulsePlaylistID, trackID = pulseTrackID
         recommendationTask?.cancel(); rankingWork?.cancel()
         recommendationTask = Task {
             try? await Task.sleep(nanoseconds: 120_000_000)
@@ -419,14 +462,14 @@ final class AppModel: ObservableObject {
                 let candidates = Array(snapshot.tracks.values)
                 let index = PulseEngine.makeIndex(candidates, library: snapshot)
                 let home = BilingualDiscovery.rankHome(candidates, library: snapshot, limit: 40, index: index)
-                let next = PulseEngine.rank(candidates, library: snapshot, limit: 60, index: index, playlistID: playlistID)
+                let next = PulseEngine.rank(candidates, library: snapshot, limit: 60, index: index, playlistID: playlistID, trackID: trackID)
                 let moods = Dictionary(uniqueKeysWithValues: MoodMix.all.map { ($0.id, BilingualDiscovery.rankHome(candidates, library: snapshot, limit: 30, mood: $0.id, allowRecent: true, index: index)) })
                 return (home, next, moods, index)
             }
             rankingWork = work
             let result = await work.value
-            guard recommendationGeneration == token, !Task.isCancelled, playlistID == pulsePlaylistID else { return }
-            recommendations = result.0; pulseCache = result.1; pulseCachePlaylistID = playlistID; moodCache = result.2; playbackIndex = result.3
+            guard recommendationGeneration == token, !Task.isCancelled, playlistID == pulsePlaylistID, trackID == pulseTrackID else { return }
+            recommendations = result.0; pulseCache = result.1; pulseCacheTrackID = trackID; pulseCachePlaylistID = playlistID; moodCache = result.2; playbackIndex = result.3
             player.refreshPreparedSelection()
             if player.current == nil, player.networkPolicy.canPrewarmExtraTracks { await audioResolver.prewarm(videoIDs: Array(pulseCache.prefix(3).map(\.id))) }
         }

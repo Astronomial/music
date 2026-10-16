@@ -128,28 +128,45 @@ struct TrackRow: View {
     @ObservedObject var model: AppModel
     let track: Track
     var reason: String? = nil
+    var compact = false
     let play: () -> Void
+    @State private var showArtist = false
     var body: some View {
-        HStack(spacing: 12) {
-            Button(action: play) {
-                HStack(spacing: 12) {
-                    Artwork(track: track)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(track.title).font(.body.weight(.medium)).lineLimit(2)
-                        Text(track.artist).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+        Group {
+            if compact {
+                VStack(alignment: .leading, spacing: 8) {
+                    Button(action: play) { VStack(alignment: .leading, spacing: 8) { Artwork(track: track, size: 68); Text(track.title).font(.subheadline.bold()).lineLimit(2).frame(maxWidth: .infinity, minHeight: 36, alignment: .leading) } }.foregroundStyle(.primary).buttonStyle(ResponsiveButtonStyle()).accessibilityLabel("Слушать \(track.title)")
+                    artist
+                    HStack { like; Spacer(minLength: 0); menu }
+                }
+            } else {
+                HStack(spacing: 10) {
+                    Button(action: play) { Artwork(track: track) }.buttonStyle(ResponsiveButtonStyle()).accessibilityLabel("Слушать \(track.title)")
+                    VStack(alignment: .leading, spacing: 3) {
+                        Button(action: play) { Text(track.title).font(.body.weight(.medium)).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading) }.foregroundStyle(.primary).buttonStyle(ResponsiveButtonStyle())
+                        artist
                         if let reason { Text(reason).font(.caption).foregroundStyle(FormaTheme.accent).lineLimit(1) }
                     }.frame(maxWidth: .infinity, alignment: .leading)
-                }.contentShape(Rectangle())
-            }.foregroundStyle(.primary).buttonStyle(ResponsiveButtonStyle()).accessibilityLabel("Слушать \(track.artist) — \(track.title)").accessibilityHint(reason ?? "")
-            Button { model.toggleLike(track) } label: { Image(systemName: model.isLiked(track) ? "heart.fill" : "heart").foregroundStyle(model.isLiked(track) ? FormaTheme.accent : .secondary).frame(width: 44, height: 44).contentShape(Rectangle()) }
-                .buttonStyle(ResponsiveButtonStyle()).accessibilityLabel(model.isLiked(track) ? "Убрать из любимого" : "Добавить в любимое")
-            Menu {
-                Button(model.isDisliked(track) ? "Снять дизлайк" : "Не нравится", systemImage: "hand.thumbsdown") { model.toggleDislike(track) }
-                if model.library.playlists.isEmpty { Text("Создай плейлист в библиотеке") }
-                ForEach(model.library.playlists) { playlist in Button(playlist.name) { model.add(track, to: playlist.id) } }
-            } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44).contentShape(Rectangle()) }.accessibilityLabel("Действия с треком \(track.title)")
-        }.padding(.vertical, 6).padding(.horizontal, 8)
-            .background { CosmicPanelBackground(radius: 16, opacity: 0.45) }
+                    like; menu
+                }
+            }
+        }.padding(.vertical, 6).padding(.horizontal, 8).background { CosmicPanelBackground(radius: 16, opacity: 0.45) }
+            .sheet(isPresented: $showArtist) { NavigationStack { ArtistView(model: model, artistTrack: track).toolbar { Button("Готово") { showArtist = false } } }.tint(FormaTheme.accent) }
+    }
+    private var artist: some View {
+        Button { showArtist = true } label: { Text(track.artist).font(compact ? .caption : .subheadline).foregroundStyle(.secondary).lineLimit(compact ? 2 : 1).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle()) }.buttonStyle(ResponsiveButtonStyle()).accessibilityLabel("К исполнителю \(track.artist)")
+    }
+    private var like: some View {
+        Button { model.toggleLike(track) } label: { Image(systemName: model.isLiked(track) ? "heart.fill" : "heart").foregroundStyle(model.isLiked(track) ? FormaTheme.accent : .secondary).frame(width: 44, height: 44) }.buttonStyle(ResponsiveButtonStyle()).accessibilityLabel(model.isLiked(track) ? "Убрать из любимого" : "Добавить в любимое")
+    }
+    private var menu: some View {
+        Menu {
+            Button("Перейти к исполнителю", systemImage: "person.crop.circle") { showArtist = true }
+            Button("Пульс по треку", systemImage: "waveform") { model.startTrackPulse(track) }
+            Button(model.isDisliked(track) ? "Снять дизлайк" : "Не нравится", systemImage: "hand.thumbsdown") { model.toggleDislike(track) }
+            if model.library.playlists.isEmpty { Text("Создай плейлист в библиотеке") }
+            ForEach(model.library.playlists) { playlist in Button(playlist.name) { model.add(track, to: playlist.id) } }
+        } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }.accessibilityLabel("Действия с треком \(track.title)")
     }
 }
 @MainActor
@@ -173,10 +190,21 @@ struct MoodView: View {
 @MainActor
 struct SearchView: View {
     @ObservedObject var model: AppModel
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var query = ""
     @State private var showLink = false
     @State private var link = ""
     private var normalizedQuery: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
+    @ViewBuilder private var columns: some View {
+        searchColumn("Свежие релизы", tracks: model.recentSearchResults)
+        searchColumn("Популярные", tracks: model.popularSearchResults)
+    }
+    private func searchColumn(_ title: String, tracks: [Track]) -> some View {
+        LazyVStack(alignment: .leading, spacing: 10) {
+            Text(title).font(.headline).lineLimit(2).frame(minHeight: 44, alignment: .leading)
+            ForEach(tracks) { track in TrackRow(model: model, track: track, compact: true) { model.play(track, list: tracks) } }
+        }.frame(maxWidth: .infinity, alignment: .topLeading)
+    }
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 8) {
@@ -184,11 +212,15 @@ struct SearchView: View {
                 else if model.isSearching || model.completedSearchQuery != normalizedQuery { ProgressView("Ищем музыку…").padding() }
                 if normalizedQuery.count >= 2, model.completedSearchQuery == normalizedQuery {
                     if !model.isSearching, model.searchResults.isEmpty { EmptyState(title: "Ничего не найдено", text: "Уточни запрос или открой ссылку YouTube.") }
-                    ForEach(model.searchResults) { track in TrackRow(model: model, track: track) { model.play(track, list: model.searchResults) } }
+                    if typeSize.isAccessibilitySize { VStack(alignment: .leading, spacing: 20) { columns } }
+                    else { HStack(alignment: .top, spacing: 12) { columns } }
                 }
             }.padding(20)
         }.cosmicBackground().navigationTitle("Поиск")
             .searchable(text: $query, prompt: "Трек или исполнитель")
+#if DEBUG && targetEnvironment(simulator)
+            .onAppear { NativeDesignAudit.searchQuery = { query = $0 } }
+#endif
             .task(id: query) {
                 do { try await Task.sleep(nanoseconds: 350_000_000); try Task.checkCancellation(); await model.search(query) } catch { }
             }

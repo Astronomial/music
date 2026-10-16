@@ -1,8 +1,10 @@
-# Forma iOS 1.6.1
+# Forma iOS 1.7.0
+
+В **1.7.0** добавлены страницы исполнителей, два столбца поиска (свежие публикации и популярные результаты) и **«Пульс по треку»** в меню песни и полном плеере. Одинаковые песни, каверы и ремиксы исходного трека исключаются из продолжения.
 
 Нативная **SwiftUI + AVQueuePlayer** для iPhone и iPad, **iOS 17+**, включая iOS 18. YouTube/YouTube Music, персональный Пульс, плейлисты, подборки по настроению и обмен с Windows. Аккаунт YouTube, музыкальная подписка и обязательный сервер не требуются.
 
-**[Скачать IPA для подписи](https://github.com/Astronomial/music/releases/download/ios-v1.6.1/Forma-iOS-1.6.1-unsigned.ipa)** · **[Установка с Windows](INSTALL_WINDOWS.md)** · [Лицензии](THIRD_PARTY.md)
+**[Скачать IPA для подписи](https://github.com/Astronomial/music/releases/download/ios-v1.7.0/Forma-iOS-1.7.0-unsigned.ipa)** · **[Установка с Windows](INSTALL_WINDOWS.md)** · [Лицензии](THIRD_PARTY.md)
 
 Устанавливай поверх прежней Forma с теми же Apple ID и фактическим Bundle ID Sideloadly. Бесплатная личная подпись обычно действует 7 дней; повторная подпись с прежним идентификатором сохраняет данные.
 

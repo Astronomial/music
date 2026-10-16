@@ -69,6 +69,7 @@ struct NowPlayingView: View {
     @Environment(\.dynamicTypeSize) private var typeSize
     private var contextTitle: String {
         if let mood = player.selectionMood { return MoodMix.all.first { $0.id == mood }?.title ?? "Подборка" }
+        if let id = model.pulseTrackID, let track = model.library.tracks[id] { return "Пульс · " + track.title }
         if let playlistID = model.pulsePlaylistID { return model.library.playlists.first { $0.id == playlistID }?.name ?? "Пульс" }
         return player.selectionSurface == "pulse" ? "Пульс" : "Сейчас играет"
     }
@@ -78,7 +79,7 @@ struct NowPlayingView: View {
             ScrollView {
                 VStack(spacing: 20) {
                     Artwork(track: player.current, size: max(100, min(bounds.size.width - 48, min(bounds.size.height * 0.36, 300)))).accessibilityHidden(true)
-                    VStack(spacing: 10) { Text(player.current?.title ?? "Музыка ждёт тебя").font(.title2.bold()).multilineTextAlignment(.center); Text(player.current?.artist ?? "YouTube").foregroundStyle(.secondary) }
+                    VStack(spacing: 10) { Text(player.current?.title ?? "Музыка ждёт тебя").font(.title2.bold()).multilineTextAlignment(.center); if let track = player.current { NavigationLink { ArtistView(model: model, artistTrack: track) } label: { Text(track.artist).foregroundStyle(.secondary) }.accessibilityLabel("К исполнителю \(track.artist)") } }
                     if let error = player.error {
                         GlassPanel { VStack(spacing: 12) { Text(error).font(.subheadline); Button("Повторить") { player.resume() }.buttonStyle(.bordered) } }
                     }
@@ -107,6 +108,7 @@ struct NowPlayingView: View {
                         Image(systemName: "speaker.wave.3.fill").foregroundStyle(.secondary)
                     }
                     if let track = player.current {
+                        Button { model.startTrackPulse(track) } label: { Label("Пульс по треку", systemImage: "waveform") }.buttonStyle(.bordered)
                         if typeSize.isAccessibilitySize { VStack(spacing: 12) { ratings(track) } }
                         else { HStack(spacing: 12) { ratings(track) } }
                     }

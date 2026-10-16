@@ -5,6 +5,7 @@ public struct Track: Codable, Hashable, Identifiable, Sendable {
     public let videoID: String
     public var title: String
     public var artist: String
+    public var artistID: String?
     public var duration: Double
     public var artworkURL: URL?
     public var genres: [String]
@@ -19,18 +20,19 @@ public struct Track: Codable, Hashable, Identifiable, Sendable {
     public var soundProfile: SoundProfile?
 
     public init(videoID: String, title: String, artist: String, duration: Double = 0,
-                artworkURL: URL? = nil, genres: [String] = [], moodHints: [String] = [], relatedTo: [String] = [], directRelatedTo: [String] = [], discoveryLanguages: [String] = [], genre: String = "", mood: String = "", tags: [String] = [], language: String = "") {
+                artworkURL: URL? = nil, artistID: String? = nil, genres: [String] = [], moodHints: [String] = [], relatedTo: [String] = [], directRelatedTo: [String] = [], discoveryLanguages: [String] = [], genre: String = "", mood: String = "", tags: [String] = [], language: String = "") {
         self.videoID = videoID; self.title = title; self.artist = artist
-        self.duration = Self.safeDuration(duration); self.artworkURL = artworkURL
+        self.duration = Self.safeDuration(duration); self.artworkURL = artworkURL; self.artistID = artistID
         self.genres = genres; self.moodHints = moodHints; self.relatedTo = relatedTo
         self.directRelatedTo = directRelatedTo; self.discoveryLanguages = discoveryLanguages
         self.genre = genre; self.mood = mood; self.tags = tags; self.language = language
     }
-    private enum CodingKeys: String, CodingKey { case videoID, title, artist, duration, artworkURL, genres, moodHints, relatedTo, directRelatedTo, discoveryLanguages, genre, mood, tags, language, soundProfile }
+    private enum CodingKeys: String, CodingKey { case videoID, title, artist, artistID, duration, artworkURL, genres, moodHints, relatedTo, directRelatedTo, discoveryLanguages, genre, mood, tags, language, soundProfile }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         videoID = try c.decode(String.self, forKey: .videoID)
         title = try c.decode(String.self, forKey: .title); artist = try c.decode(String.self, forKey: .artist)
+        artistID = try c.decodeIfPresent(String.self, forKey: .artistID)
         duration = Self.safeDuration(try c.decodeIfPresent(Double.self, forKey: .duration) ?? 0)
         artworkURL = try c.decodeIfPresent(URL.self, forKey: .artworkURL)
         genres = try c.decodeIfPresent([String].self, forKey: .genres) ?? []
@@ -157,6 +159,7 @@ public struct Library: Codable, Sendable {
     public mutating func merge(_ incoming: [Track]) {
         for var track in incoming {
             if let old = tracks[track.id] {
+                if track.artistID == nil { track.artistID = old.artistID }
                 if track.soundProfile == nil { track.soundProfile = old.soundProfile }
                 if track.duration <= 0 { track.duration = old.duration }
                 if track.artworkURL == nil { track.artworkURL = old.artworkURL }

@@ -7,7 +7,7 @@ const base=process.env.FORMA_TEST_URL||'http://localhost:5173';
 const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
 const page=await browser.newPage({viewport:{width:1440,height:1050}});const errors=[];
 await page.addInitScript(()=>{if(!localStorage.getItem('forma-library'))localStorage.setItem('forma-library',JSON.stringify({version:1,tracks:{},likes:[],playlists:[],events:[],hidden:[],settings:{provider:'audius'},onboarded:false}));});
-page.on('pageerror',e=>errors.push(e.message));
+page.on('pageerror',e=>{errors.push(e.message);console.error('UI error:',e.message);});
 // Fixtures never ship with the application. All API/audio requests are intercepted here.
 const titles=['Soft Focus','Night Current','Between the Lines','Slow Motion','Morning Light','Far From Home','Blue Hour','Sideways','Quiet Room','Warm Static','Lost in the City','New Perspective','Open Roads','Early Echo','Citylights'];
 const tracks=titles.map((title,i)=>({id:'Test'+i,title,user:{id:'Artist'+i,name:['Test Artist One','Test Artist Two','Test Artist Three'][i%3]},genre:['House','Electronic','Ambient'][i%3],mood:i%2?'Peaceful':'Upbeat',duration:120+i*17,tags:'melodic,chill',is_streamable:true,is_downloadable:true,play_count:3000+i*200,favorite_count:500+i*10,artwork:{}}));
@@ -52,7 +52,8 @@ try{
   await page.getByRole('textbox',{name:'Поиск треков и исполнителей'}).press('Enter');
   await page.getByRole('heading',{name:'Поиск «Night»'}).waitFor();
   await page.locator('.best-match').waitFor();
-  assert.equal(await page.locator('.track-row').count(),1);
+  assert.equal(await page.getByRole('region',{name:'Свежие релизы'}).locator('.track-row').count(),1);
+  assert.equal(await page.getByRole('region',{name:'Популярные'}).locator('.track-row').count(),1);
   await page.getByRole('textbox',{name:'Поиск треков и исполнителей'}).fill('Test Artist One');
   await page.locator('.artist-card').first().waitFor();
   await page.locator('.artist-card').first().click();
@@ -62,7 +63,7 @@ try{
   assert.equal(await page.locator('.mix-card').count(),6);
   await page.locator('.mix-card').filter({hasText:'Спокойствие'}).click();
   await page.getByRole('heading',{name:'Спокойствие',exact:true}).waitFor();
-  await page.locator('.track-name').first().click();
+  await page.locator('.track-title').first().click();
   await page.waitForFunction(()=>document.querySelector('audio').currentTime>3.2);
   await page.getByRole('button',{name:'Следующий трек',exact:true}).click();
   await page.waitForTimeout(350);

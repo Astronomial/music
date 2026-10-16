@@ -10,6 +10,7 @@ public enum CatalogParser {
             guard depth < 80, found.count < 200 else { return }
             if let object = value as? [String: Any] {
                 if let renderer = object["musicResponsiveListItemRenderer"] as? [String: Any], let track = song(renderer), seen.insert(track.id).inserted { found.append(track) }
+                if let renderer = object["videoRenderer"] as? [String: Any], let track = video(renderer), seen.insert(track.id).inserted { found.append(track) }
                 if let renderer = object["playlistPanelVideoRenderer"] as? [String: Any], let track = panel(renderer), seen.insert(track.id).inserted { found.append(track) }
                 for key in object.keys.sorted() { visit(object[key]!, depth: depth + 1) }
             } else if let array = value as? [Any] { for item in array { visit(item, depth: depth + 1) } }
@@ -51,6 +52,7 @@ public enum CatalogParser {
         let item = renderer["playlistItemData"] as? [String: Any]
         guard let id = (item?["videoId"] ?? endpoint?["videoId"]) as? String, VideoID.isValid(id), !title.isEmpty else { return nil }
         let metadata = texts.dropFirst().flatMap { $0["runs"] as? [[String: Any]] ?? [] }
+        let artistID = metadata.compactMap { (($0["navigationEndpoint"] as? [String: Any])?["browseEndpoint"] as? [String: Any])?["browseId"] as? String }.first { $0.hasPrefix("UC") }
         let artists = metadata.filter { run in
             let browse = (run["navigationEndpoint"] as? [String: Any])?["browseEndpoint"] as? [String: Any]
             return (browse?["browseId"] as? String)?.hasPrefix("UC") == true
@@ -58,13 +60,26 @@ public enum CatalogParser {
         let fallback = metadata.compactMap { $0["text"] as? String }.first { !$0.trimmingCharacters(in: .whitespaces).isEmpty && $0 != " • " && seconds($0) == 0 }
         let fixed = renderer["fixedColumns"] as? [[String: Any]] ?? []
         let durationTexts = fixed.map { text(($0["musicResponsiveListItemFixedColumnRenderer"] as? [String: Any])?["text"]) } + metadata.compactMap { $0["text"] as? String }
-        return Track(videoID: id, title: title, artist: artists.isEmpty ? fallback ?? "Исполнитель не указан" : artists.joined(separator: ", "), duration: durationTexts.map(seconds).first(where: { $0 > 0 }) ?? 0, artworkURL: thumb(renderer))
+        return Track(videoID: id, title: title, artist: artists.isEmpty ? fallback ?? "Исполнитель не указан" : artists.joined(separator: ", "), duration: durationTexts.map(seconds).first(where: { $0 > 0 }) ?? 0, artworkURL: thumb(renderer), artistID: artistID)
+    }
+    static func video(_ renderer: [String: Any]) -> Track? {
+        guard let id = renderer["videoId"] as? String, VideoID.isValid(id) else { return nil }
+        let duration = seconds(text(renderer["lengthText"]))
+        guard duration > 0, duration <= 1200 else { return nil }
+        let byline = renderer["ownerText"] ?? renderer["longBylineText"]
+        let runs = (byline as? [String: Any])?["runs"] as? [[String: Any]] ?? []
+        let artistID = runs.compactMap { (($0["navigationEndpoint"] as? [String: Any])?["browseEndpoint"] as? [String: Any])?["browseId"] as? String }.first
+        let title = text(renderer["title"])
+        guard !title.isEmpty else { return nil }
+        return Track(videoID: id, title: title, artist: text(byline), duration: duration, artworkURL: thumb(renderer), artistID: artistID)
     }
     static func panel(_ renderer: [String: Any]) -> Track? {
         guard let id = renderer["videoId"] as? String, VideoID.isValid(id), renderer["unplayableText"] == nil else { return nil }
         let title = text(renderer["title"])
         guard !title.isEmpty else { return nil }
-        let artist = text(renderer["longBylineText"] ?? renderer["shortBylineText"])
-        return Track(videoID: id, title: title, artist: artist.isEmpty ? "Исполнитель не указан" : artist, duration: seconds(text(renderer["lengthText"])), artworkURL: thumb(renderer))
+        let byline = renderer["longBylineText"] ?? renderer["shortBylineText"]
+        let artist = text(byline)
+        let artistID = (((byline as? [String: Any])?["runs"] as? [[String: Any]])?.first?["navigationEndpoint"] as? [String: Any]).flatMap { ($0["browseEndpoint"] as? [String: Any])?["browseId"] as? String }
+        return Track(videoID: id, title: title, artist: artist.isEmpty ? "Исполнитель не указан" : artist, duration: seconds(text(renderer["lengthText"])), artworkURL: thumb(renderer), artistID: artistID)
     }
 }
