@@ -134,6 +134,10 @@ export function selectRetrievalAnchors(state,{now=Date.now(),limit=8,profile=nul
   }
   return selected;
 }
+// Classification must be able to inspect saved unknown tracks even in strict mode.
+export function selectGenreMetadataAnchors(state,{limit=24,now=Date.now()}={}){
+  return selectRetrievalAnchors({...state,settings:{...state.settings,genreMode:'prefer',excludedGenres:[]}},{limit,now});
+}
 function sessionProfile(state,now){
   const positive={},negative={};let positiveCount=0,negativeCount=0;
   for(const e of state.events.slice(-80)){

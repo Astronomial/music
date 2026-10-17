@@ -83,6 +83,11 @@ public enum PulseEngine {
         }
         return selected
     }
+    public static func genreMetadataAnchors(in library: Library, limit: Int = 24, now: Date = Date()) -> [Track] {
+        var source = library
+        source.settings.genreMode = "prefer"; source.settings.excludedGenres = []
+        return anchors(in: source, limit: limit, now: now)
+    }
     public struct RankingIndex: Sendable {
         fileprivate let vectors: [String: Vector]
         fileprivate let orderedVectors: [String: OrderedVector]
@@ -291,7 +296,7 @@ public enum PulseEngine {
                 if !preferred.isEmpty && (library.settings.artistDiversity == 0 || preferred.contains(where: spaced) || !pool.contains(where: spaced)) { pool = preferred }
             }
             let stretchBudget = history.surpriseRate * Double(history.exposureCount + result.count + 1) - Double(surprises)
-            if stretchBudget < 1 {
+            if hasTasteAnchors && stretchBudget < 1 {
                 let close = pool.filter { ranked[$0].nearby }
                 // Sparse YouTube metadata must not turn familiarity into permission
                 // to repeat one artist. Relax confidence only for supported, relevant

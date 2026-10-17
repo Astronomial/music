@@ -32,6 +32,14 @@ function evaluate(rank){
   for(let i=0;i<sequence.length;i++)for(const t of sequence.slice(Math.max(0,i-11),i+1))maxArtist=Math.max(maxArtist,sequence.slice(Math.max(0,i-11),i+1).filter(x=>x.artist===t.artist).length);
   return {played:sequence.length,uniqueRecordings:new Set(sequence.map(x=>x.id)).size,uniqueArtists:new Set(sequence.map(x=>x.artist)).size,newTrackShare:share('newTrack'),newArtistShare:share('newArtist'),explicitGenreMatchShare:share('good'),explicitRussianShare:share('ru'),maxArtistIn12:maxArtist};
 }
-const result={kind:'synthetic-sequential-simulation',current:evaluate(rankTracks)};
-if(process.env.FORMA_BASELINE_RECOMMENDER){const baseline=await import(pathToFileURL(process.env.FORMA_BASELINE_RECOMMENDER));result.baseline=evaluate(baseline.rankTracks);}
+function contaminatedCatalogue(rank){
+  const s=initialState();s.settings.repeatCooldown=0;s.settings.genres=['Electronic','Rock','Hip-Hop/Rap'];
+  const seed=track('seed','Saved','Rock');s.tracks={seed};s.likes=['seed'];
+  const close=Array.from({length:18},(_,i)=>track('close'+i,'Close '+i,'Rock',false,{mood:'calm'}));
+  const unrelated=Array.from({length:80},(_,i)=>track('unrelated'+i,'Other '+i,i%2?'Jazz':'Hip-Hop/Rap',true,{mood:'calm',favoriteCount:1e9,discoveryGenres:['Rock'],relatedTo:['seed'],directRelatedTo:['seed']}));
+  const chosen=rank([...close,...unrelated],s,{now:start,limit:30,seed:7});
+  return {requested:30,returned:chosen.length,unrelatedGenreCount:chosen.filter(r=>r.track.genre!=='Rock').length};
+}
+const result={kind:'synthetic-sequential-simulation',current:evaluate(rankTracks),contaminatedCatalogue:{current:contaminatedCatalogue(rankTracks)}};
+if(process.env.FORMA_BASELINE_RECOMMENDER){const baseline=await import(pathToFileURL(process.env.FORMA_BASELINE_RECOMMENDER));result.baseline=evaluate(baseline.rankTracks);result.contaminatedCatalogue.baseline=contaminatedCatalogue(baseline.rankTracks);}
 console.log(JSON.stringify(result,null,2));

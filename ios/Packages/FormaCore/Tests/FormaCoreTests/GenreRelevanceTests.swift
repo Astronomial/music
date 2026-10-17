@@ -11,6 +11,7 @@ final class GenreRelevanceTests: XCTestCase {
         XCTAssertTrue(GenreClassifier.genres(seed).isEmpty)
         XCTAssertTrue(BilingualDiscovery.tasteGenres(anchors: [seed], settings: library.settings).isEmpty)
         library.settings.genreMode = "strict"; library.settings.genres = ["Rock"]
+        XCTAssertEqual(PulseEngine.genreMetadataAnchors(in: library, now: now).map(\.id), [seed.id])
         XCTAssertTrue(PulseEngine.rank([seed], library: library, now: now).isEmpty)
         XCTAssertFalse(ConsumptionFeedback.arms(seed).contains { $0.0.hasPrefix("genre:") })
         XCTAssertTrue(PulseSettings().genres.isEmpty)

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {initialState,normalizeTrack,mergeTracks} from '../src/core/model.mjs';
 import {genresOf,canonicalGenres,GENRE_ALIASES,matchRecordingGenre} from '../src/core/genre-evidence.mjs';
-import {rankTracks,moodRecommendations,buildProfile} from '../src/core/recommender.mjs';
+import {rankTracks,moodRecommendations,buildProfile,selectGenreMetadataAnchors} from '../src/core/recommender.mjs';
 import {tasteGenres} from '../src/core/discovery-search.mjs';
 import {buildFeedbackModel} from '../src/core/feedback.mjs';
 import {portableLibrary,applyPortable} from '../src/core/sync.mjs';
@@ -16,7 +16,7 @@ test('query genre accumulation cannot label a recording, train taste or satisfy 
  assert.deepEqual(genresOf(seed).values,[]);assert.ok(!Object.keys(buildProfile(s,now).positive).some(k=>k.startsWith('genre:')));
  assert.deepEqual(tasteGenres([seed],s.settings),[]);
  s.events=[{trackId:seed.id,type:'listen',ratio:1,seconds:200,at:now}];assert.ok(![...buildFeedbackModel(s,now).global.keys()].some(k=>k.startsWith('genre:')));
- s.settings.genreMode='strict';s.settings.genres=['Rock'];assert.equal(rankTracks([seed],s,{now}).length,0);
+ s.settings.genreMode='strict';s.settings.genres=['Rock'];assert.deepEqual(selectGenreMetadataAnchors(s,{now}).map(t=>t.id),[seed.id]);assert.equal(rankTracks([seed],s,{now}).length,0);
 });
 test('genre normalization distinguishes subgenres, composite labels and unsupported metadata',()=>{
  assert.deepEqual(canonicalGenres('Alternative Rock'),['Alternative']);assert.deepEqual(canonicalGenres('Deep House'),['House']);assert.deepEqual(canonicalGenres('Rock / House'),['Rock','House']);

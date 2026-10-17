@@ -86,6 +86,7 @@ final class AppModel: ObservableObject {
         player.onConnectivityChange = { [weak self] policy in
             guard let self else { return }
             updateSyncRoute()
+            if policy.reachable { scheduleGenreMetadata() }
             if !policy.canPrewarmExtraTracks { Task { await self.audioResolver.prewarm(videoIDs: []) } }
         }
         player.onSelected = { [weak self] track in
@@ -485,7 +486,7 @@ final class AppModel: ObservableObject {
         guard genreTask == nil, didLoadLibrary, player.networkPolicy.reachable else { return }
         let now = Date()
         var seen = Set<String>()
-        let anchors = PulseEngine.anchors(in: library, limit: 24)
+        let anchors = PulseEngine.genreMetadataAnchors(in: library, limit: 24)
         let pool = Array(anchors.prefix(4)) + pulseCache.prefix(6).map(\.track) + Array(anchors.dropFirst(4)) + recommendations.prefix(12).map(\.track)
         let tracks = pool.filter { track in
             seen.insert(track.id).inserted && now.timeIntervalSince(genreAttempts[track.id] ?? .distantPast) > 600 && now.timeIntervalSince1970 * 1000 - (library.tracks[track.id]?.genreEvidence?.checkedAt ?? 0) > 7 * 86400000
