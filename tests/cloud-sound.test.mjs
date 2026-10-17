@@ -15,8 +15,8 @@ test('sound similarity influences unknown artists; dislikes override saves, cont
   s.tracks={seed:track('seed',warm),near:track('near',warm),far:track('far',bright)};s.likes=['seed'];
   assert.equal(rankTracks([s.tracks.far,s.tracks.near],s,{now,limit:1})[0].track.id,'near');
   s.dislikes=['near'];s.playlists=[{id:'mix',trackIds:['near']}];s.likes.push('near');
-  assert.ok(buildProfile(s,now).weights.get('near')<0);assert.equal(rankTracks([s.tracks.near,s.tracks.far],s,{now,limit:1})[0].track.id,'far');assert.equal(selectRetrievalAnchors(s,{limit:3,now}).some(a=>a.id==='near'),false);
-  assert.equal(rankTracks([s.tracks.near],s,{now,limit:1})[0].track.id,'near');
+  assert.ok(buildProfile(s,now).weights.get('near')<0);assert.equal(rankTracks([s.tracks.near,s.tracks.far],s,{now,limit:1}).length,0);assert.equal(selectRetrievalAnchors(s,{limit:3,now}).some(a=>a.id==='near'),false);
+  assert.equal(rankTracks([s.tracks.near],s,{now,limit:1}).length,0);
 });
 test('portable round trip keeps actual audio features and explicit feedback, excludes secrets/audio',()=>{
   const s=initialState();const t=normalizeTrack({id:'yt_'+id,source:'youtube',videoId:id,title:'Трек',artist:'Автор'});t.soundProfile=warm;s.tracks[t.id]=t;s.dislikes=[t.id];s.settings.apiKey='PRIVATE';s.events=[{trackId:t.id,type:'dislike',at:now,seconds:0,ratio:0}];

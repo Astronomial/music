@@ -68,7 +68,7 @@ private struct ConstantFixtureResolver: StreamResolving {
     func invalidate() async {}
 }
 private actor FixtureCatalog: MusicCatalogProviding {
-    let tracks = (0..<4).map { Track(videoID: String(format: "%011d", $0), title: "Проверка \($0)", artist: "Artist \($0)", duration: 5, genres: ["House"]) }
+    let tracks = (0..<4).map { Track(videoID: String(format: "%011d", $0), title: "Проверка \($0)", artist: "Artist \($0)", duration: 5, genres: ["House"], genre: "House") }
     private(set) var slowSearchStarted = false
     private(set) var uncancellableSearchStarted = false
     private(set) var descriptionStarted = false
@@ -508,8 +508,8 @@ enum NativeSmoke {
         model.player.pause(); model.deletePlaylist(playlist.id)
         // Independent recordings keep this scenario from consuming the cold-start
         // fixture's repeat-cooldown slot used later by the learning assertion.
-        let homeProbe = Track(videoID: "homeprobe01", title: "Проверка главной", artist: "Home probe", duration: 5, genres: ["House"])
-        let moodProbe = Track(videoID: "moodprobe01", title: "Проверка настроения", artist: "Mood probe", duration: 5, genres: ["House"], mood: "calm")
+        let homeProbe = Track(videoID: "homeprobe01", title: "Проверка главной", artist: "Home probe", duration: 5, genres: ["House"], genre: "House")
+        let moodProbe = Track(videoID: "moodprobe01", title: "Проверка настроения", artist: "Mood probe", duration: 5, genres: ["House"], genre: "House", mood: "calm")
         model.playRecommendation(homeProbe)
         try await until("home-recommendation-playing") { model.player.isPlaying }
         guard model.player.current?.id == homeProbe.id, model.player.selectionSurface == "pulse", model.player.selectionMood == nil, model.isPersonalPulse else { throw SyncError.rejected("Home recommendation row lost adaptive Pulse context") }

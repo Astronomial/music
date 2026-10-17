@@ -9,10 +9,10 @@ public enum BilingualDiscovery {
         public let hints: [String]
     }
     public static func tasteGenres(anchors: [Track], settings: PulseSettings) -> [String] {
-        let learned = anchors.filter { !PulseDiversity.blocked($0, settings: settings) }.flatMap { $0.genre.isEmpty ? $0.genres : [$0.genre] + $0.genres }
+        let learned = anchors.filter { !PulseDiversity.blocked($0, settings: settings) }.flatMap { GenreClassifier.genres($0) }
         var seen = Set<String>()
-        let values = settings.genreMode == "strict" ? settings.genres : settings.genres + learned
-        let defaults = values.isEmpty ? ["Pop", "Alternative", "Electronic"] : values
+        let values = settings.genreMode == "strict" ? settings.genres : learned + (anchors.isEmpty ? settings.genres : [])
+        let defaults = values.isEmpty ? (anchors.isEmpty ? ["Pop", "Alternative", "Electronic"] : []) : values
         return Array(defaults.filter { !settings.excludedGenres.contains($0) && seen.insert($0).inserted }.prefix(12))
     }
     public static func searches(genres: [String], suffix: String, hints: [String], language: String = "ru", artists: [String] = []) -> [Search] {

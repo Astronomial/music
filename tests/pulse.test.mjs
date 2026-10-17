@@ -42,7 +42,7 @@ test('mood playlists use mood evidence and taste, enforce exclusions and preserv
 });
 test('liking a mood recommendation makes related music an anchor for the same Pulse',()=>{
   const s=initialState();const seed=track('saved','One','Alternative',{source:'youtube',videoId:'abcdefghijk',mood:'Sad'});s.tracks={saved:seed};s.likes=['saved'];
-  const related=track('related','Two','',{source:'youtube',relatedTo:['saved']}),random=track('random','Three','',{source:'youtube'});
+  const related=track('related','Two','',{source:'youtube',relatedTo:['saved'],directRelatedTo:['saved']}),random=track('random','Three','',{source:'youtube'});
   assert.equal(rankTracks([random,related],s,{now})[0].track.id,'related');assert.equal(selectRetrievalAnchors(s,{now})[0].id,'saved');
 });
 test('provided liked-playlist and iframe addresses resolve only to validated public endpoints',()=>{

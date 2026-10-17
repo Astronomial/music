@@ -3,11 +3,11 @@ import Foundation
 /// Same ten selection-time features and regularized shared learner as PC 1.7.
 /// The score is a ranking signal, not a calibrated probability or a neural model.
 public struct RecommendationContext: Codable, Sendable, Equatable {
-    public var version: Int = 1
+    public var version: Int = 2
     public var features: [Double]
     public var lane: String
     public init(features: [Double], lane: String) { self.features = features; self.lane = lane }
-    public var isValid: Bool { version == 1 && features.count == 10 && features.first == 1 && features.allSatisfy { $0.isFinite && (0...1).contains($0) } }
+    public var isValid: Bool { version == 2 && features.count == 10 && features.first == 1 && features.allSatisfy { $0.isFinite && (0...1).contains($0) } }
 }
 public enum ContextualLearning {
     public struct Model: Sendable {

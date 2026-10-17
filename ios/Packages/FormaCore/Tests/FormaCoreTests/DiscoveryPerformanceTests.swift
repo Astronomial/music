@@ -27,7 +27,7 @@ final class DiscoveryPerformanceTests: XCTestCase {
                 let title = (i < 30 ? "Song " + mix.id : "Песня " + mix.title) + " \(i)"
                 var track = Track(videoID: String(format: "%011d", j * 62 + i), title: title, artist: "Artist \(i)")
                 track.genres = i < 30 ? [] : ["Pop"]; track.genre = i < 30 ? "Pop" : ""
-                track.mood = mix.id; track.tags = mix.id == "focus" ? ["instrumental"] : []
+                if i >= 30 { track.relatedTo = ["00000000000"]; track.directRelatedTo = ["00000000000"] }; track.mood = mix.id; track.tags = mix.id == "focus" ? ["instrumental"] : []
                 tracks.append(track)
             }
         }
@@ -49,7 +49,7 @@ final class DiscoveryPerformanceTests: XCTestCase {
         XCTAssertFalse(result.contains { $0.id == jazz.id || $0.id == tracks[31].id || $0.id == tracks[32].id })
     }
     func testRussianSearchesFollowTasteWithoutInventingLanguageEvidence() {
-        let anchor = Track(videoID: "anchor00001", title: "Любимое", artist: "Мой артист", genres: ["Rock"])
+        let anchor = Track(videoID: "anchor00001", title: "Любимое", artist: "Мой артист", genres: ["Rock"], genre: "Rock")
         var settings = PulseSettings(); settings.genres = []; settings.excludedGenres = ["Jazz"]
         let genres = BilingualDiscovery.tasteGenres(anchors: [anchor], settings: settings)
         XCTAssertEqual(genres, ["Rock"])
@@ -111,7 +111,7 @@ final class DiscoveryPerformanceTests: XCTestCase {
         XCTAssertFalse(result.contains { library.hiddenIDs.contains($0.id) })
     }
     func testCachedIndexPreservesRankingAndFeedbackChangesTaste() {
-        let tracks = (0..<120).map { i in Track(videoID: String(format: "%011d", i), title: "Song \(i)", artist: "Artist \(i % 20)", genres: [i % 2 == 0 ? "Rock" : "Pop"], moodHints: ["calm"]) }
+        let tracks = (0..<120).map { i in Track(videoID: String(format: "%011d", i), title: "Song \(i)", artist: "Artist \(i % 20)", genres: [i % 2 == 0 ? "Rock" : "Pop"], moodHints: ["calm"], genre: i % 2 == 0 ? "Rock" : "Pop") }
         var library = Library(); library.merge(tracks); library.likedIDs = [tracks[0].id]
         let index = PulseEngine.makeIndex(tracks, library: library), now = Date()
         let cold = PulseEngine.rank(tracks, library: library, limit: 20, now: now)
@@ -122,7 +122,7 @@ final class DiscoveryPerformanceTests: XCTestCase {
         XCTAssertFalse(changed.contains { library.hiddenIDs.contains($0.id) })
     }
     func testThreeThousandTracksAndSixMoodsHaveBoundedRankingCost() {
-        let tracks = (0..<3000).map { i in Track(videoID: String(format: "%011d", i), title: i % 3 == 2 ? "Песня \(i)" : "Song \(i)", artist: "Artist \(i % 500)", genres: ["Pop"], mood: MoodMix.all[i % 6].id, tags: i % 6 == 4 ? ["instrumental"] : []) }
+        let tracks = (0..<3000).map { i in Track(videoID: String(format: "%011d", i), title: i % 3 == 2 ? "Песня \(i)" : "Song \(i)", artist: "Artist \(i % 500)", genres: ["Pop"], genre: "Pop", mood: MoodMix.all[i % 6].id, tags: i % 6 == 4 ? ["instrumental"] : []) }
         var library = Library(); library.merge(tracks); library.likedIDs = Array(tracks.prefix(10).map(\.id))
         let start = Date(), index = PulseEngine.makeIndex(tracks, library: library)
         XCTAssertEqual(BilingualDiscovery.rankHome(tracks, library: library, limit: 40, index: index).count, 40)

@@ -38,9 +38,9 @@ final class CloudSoundTests: XCTestCase {
         let cache = PulseEngine.rank([near, far], library: l, limit: 2)
         XCTAssertEqual(cache.first?.id, near.id)
         l.dislikedIDs = [near.id]; l.playlists = [Playlist(name: "Saved", trackIDs: [near.id])]
-        XCTAssertEqual(PulseEngine.rank([near, far], library: l, limit: 1).first?.id, far.id)
-        XCTAssertEqual(PulseEngine.selectCached(cache, library: l, exclude: [])?.id, far.id)
+        XCTAssertTrue(PulseEngine.rank([near, far], library: l, limit: 1).isEmpty)
+        XCTAssertNil(PulseEngine.selectCached(cache, library: l, exclude: []))
         XCTAssertFalse(PulseEngine.anchors(in: l).contains { $0.id == near.id })
-        XCTAssertEqual(PulseEngine.rank([near], library: l, limit: 1).first?.id, near.id)
+        XCTAssertTrue(PulseEngine.rank([near], library: l, limit: 1).isEmpty)
     }
 }

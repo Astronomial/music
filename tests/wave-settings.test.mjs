@@ -15,11 +15,11 @@ test('old profiles gain wave defaults and malformed preferences are bounded',()=
   assert.deepEqual(s.genres,['House']);assert.deepEqual(s.blockedArtists,['bjork']);
   assert.equal(s.discovery,.7);assert.equal(s.artistDiversity,1);assert.equal(s.repeatCooldown,0);assert.equal(s.mood,'any');assert.equal(s.energy,'any');assert.equal(s.vocals,'any');assert.equal(s.includeLibrary,false);
 });
-test('strict genres accept query evidence while real metadata takes precedence',()=>{
+test('strict genres require recording evidence and never accept query labels',()=>{
   const s=initialState();s.settings.genres=['House'];s.settings.genreMode='strict';
   const tracks=[track('tagged','Deep House'),track('inferred','',undefined,{source:'youtube',discoveryGenres:['House']}),track('rock','Rock',undefined,{discoveryGenres:['House']}),track('unknown','')];
-  assert.deepEqual(new Set(ids(tracks,s)),new Set(['tagged','inferred']));
-  assert.deepEqual(genresOf(tracks[0]),{values:['House'],confidence:1});
+  assert.deepEqual(new Set(ids(tracks,s)),new Set(['tagged']));
+  assert.deepEqual(genresOf(tracks[0]),{values:['House'],confidence:1,source:'metadata'});
 });
 test('artist and genre exclusions win over likes without removing manual library entries',()=>{
   const s=initialState();const tracks=[track('a','House','Björk & Guest'),track('b','Rock / House','Other'),track('c','House','Other')];

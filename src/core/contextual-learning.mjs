@@ -3,7 +3,7 @@ import {feedbackReward} from './feedback.mjs';
 // artist arms it generalises feedback to unseen artists with similar circumstances.
 // This is an on-device adaptation of the contextual-bandit principle, not a neural
 // model or calibrated probability of enjoyment. No logged random-policy data exists.
-export const CONTEXT_VERSION=1;
+export const CONTEXT_VERSION=2;
 export const CONTEXT_SIZE=10;
 const PRIOR=[.5,.12,0,0,0,0,0,0,0,0],RIDGE=4,DAY=86400000;
 const clamp=x=>Math.max(0,Math.min(1,x));

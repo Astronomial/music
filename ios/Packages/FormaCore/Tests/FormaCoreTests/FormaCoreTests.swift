@@ -5,7 +5,7 @@ import XCTest
 final class FormaCoreTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
     private func track(_ number: Int, artist: String = "Artist", genre: String = "House", mood: String? = nil, related: [String] = []) -> Track {
-        Track(videoID: String(format: "%011d", number), title: "Track \(number)", artist: artist, duration: 200, genres: genre.isEmpty ? [] : [genre], moodHints: mood.map { [$0] } ?? [], relatedTo: related, mood: mood ?? "")
+        Track(videoID: String(format: "%011d", number), title: "Track \(number)", artist: artist, duration: 200, genres: genre.isEmpty ? [] : [genre], moodHints: mood.map { [$0] } ?? [], relatedTo: related, directRelatedTo: related, genre: genre, mood: mood ?? "")
     }
     func testPublicYouTubeLinksAndBareIDs() {
         for link in ["abcdefghijk", "https://youtu.be/abcdefghijk?t=3", "https://music.youtube.com/watch?v=abcdefghijk", "https://www.youtube.com/shorts/abcdefghijk", "https://youtube.com/live/abcdefghijk"] { XCTAssertEqual(VideoID.parse(link), "abcdefghijk") }

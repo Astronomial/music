@@ -45,7 +45,7 @@ test('tempo similarity handles half-time beats and preference clusters retain mi
   assert.ok(trackSimilarity(a,track('half','House','two',{bpm:160}))>trackSimilarity(a,track('far','House','two',{bpm:120})));
   const s=initialState();s.likes=['a','b','c','d'];s.tracks={a:track('a','House'),b:track('b','House'),c:track('c','House'),d:track('d','Jazz')};
   const ranked=rankTracks([track('h','House'),track('j','Jazz'),track('z','Rock')],s,{now});
-  assert.ok(ranked.findIndex(r=>r.track.id==='j')<ranked.findIndex(r=>r.track.id==='z'));
+  assert.ok(ranked.some(r=>r.track.id==='j'));assert.ok(!ranked.some(r=>r.track.id==='z'),'Unrelated genres must not fill the queue');
 });
 test('download and stream gating are respected when parsing API responses',()=>{
   assert.equal(normalizeTrack({id:'a',download:{is_downloadable:true,requires_follow:true}}).downloadable,false);

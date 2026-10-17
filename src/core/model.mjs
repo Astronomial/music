@@ -1,3 +1,4 @@
+import {validateGenreEvidence} from './genre-evidence.mjs';
 import {WAVE_GENRES,DEFAULT_WAVE_SETTINGS} from './wave-settings.mjs';
 export const GENRES = WAVE_GENRES;
 export const initialState = () => ({ version: 1, tracks: {}, likes: [], playlists: [], events: [], hidden: [], dislikes: [], imports: [], settings: { ...structuredClone(DEFAULT_WAVE_SETTINGS), offlineOnly: false, volume: 0.7, palette: 'iris', textScale: 1, provider:'youtube' }, onboarded: false });
@@ -5,7 +6,7 @@ export function normalizeTrack(t) {
   const artwork = t.artwork || {};
   const download = t.download || {};
   return {
-    source:t.source||'legacy',videoId:t.videoId||'',relatedTo:t.relatedTo||[],directRelatedTo:t.directRelatedTo||[],retrievalSources:t.retrievalSources||[],discoveryGenres:t.discoveryGenres||[],discoveryMoods:t.discoveryMoods||[],discoveryEnergy:t.discoveryEnergy||[],discoveryVocals:t.discoveryVocals||[],discoveryLanguages:t.discoveryLanguages||[],language:typeof t.language==='string'?t.language.slice(0,20):'',discoveredAt:Number.isFinite(t.discoveredAt)?t.discoveredAt:0,soundProfile:t.soundProfile||null,album:t.album||'',
+    source:t.source||'legacy',videoId:t.videoId||'',relatedTo:t.relatedTo||[],directRelatedTo:t.directRelatedTo||[],retrievalSources:t.retrievalSources||[],discoveryGenres:t.discoveryGenres||[],discoveryMoods:t.discoveryMoods||[],discoveryEnergy:t.discoveryEnergy||[],discoveryVocals:t.discoveryVocals||[],discoveryLanguages:t.discoveryLanguages||[],language:typeof t.language==='string'?t.language.slice(0,20):'',discoveredAt:Number.isFinite(t.discoveredAt)?t.discoveredAt:0,soundProfile:t.soundProfile||null,genreEvidence:validateGenreEvidence(t.genreEvidence),album:t.album||'',
     id: String(t.id), title: t.title || 'Без названия', artist: t.user?.name || t.artist || 'Неизвестный исполнитель',
     artistId: String(t.user?.id || t.artistId || ''), genre: t.genre || '', mood: t.mood || '',
     tags: (Array.isArray(t.tags) ? t.tags : String(t.tags || '').split(',')).map(x => x.trim().toLowerCase()).filter(Boolean).slice(0, 30),
@@ -21,7 +22,7 @@ export function normalizeTrack(t) {
 export function mergeTracks(state, tracks, now=Date.now()) {
   const next = { ...state.tracks };
   for (const t of tracks) if (t?.id) {
-    const merged={...t,artistId:t.artistId||next[t.id]?.artistId||'',releaseDate:t.releaseDate||next[t.id]?.releaseDate||'',playCount:t.playCount||next[t.id]?.playCount||0,favoriteCount:t.favoriteCount||next[t.id]?.favoriteCount||0,soundProfile:t.soundProfile||next[t.id]?.soundProfile||null,discoveredAt:next[t.id]?.discoveredAt||t.discoveredAt||now};
+    const merged={...t,artistId:t.artistId||next[t.id]?.artistId||'',releaseDate:t.releaseDate||next[t.id]?.releaseDate||'',playCount:t.playCount||next[t.id]?.playCount||0,favoriteCount:t.favoriteCount||next[t.id]?.favoriteCount||0,genre:t.genre||next[t.id]?.genre||'',genreEvidence:validateGenreEvidence(t.genreEvidence)||next[t.id]?.genreEvidence||null,soundProfile:t.soundProfile||next[t.id]?.soundProfile||null,discoveredAt:next[t.id]?.discoveredAt||t.discoveredAt||now};
     for(const key of ['relatedTo','directRelatedTo','discoveryGenres','discoveryMoods','discoveryEnergy','discoveryVocals','discoveryLanguages','retrievalSources'])merged[key]=[...new Set([...(next[t.id]?.[key]||[]),...(t[key]||[])])].slice(-15);
     next[t.id]=merged;
   }

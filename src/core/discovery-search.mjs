@@ -4,8 +4,8 @@ const ruGenres={Electronic:'электронная',House:'хаус',Techno:'т�
 const ruMoods={calm:'спокойная',bright:'радостная',melancholic:'грустная',energetic:'энергичная',focus:'для концентрации',night:'ночная'};
 export function tasteGenres(anchors,settings){
   const learned=[...new Set(anchors.filter(t=>!blockedByPreferences(t,settings)).flatMap(t=>genresOf(t).values))];
-  const genres=settings.genreMode==='strict'?settings.genres:[...new Set([...settings.genres,...learned])];
-  return (genres.length?genres:['Pop','Alternative','Electronic']).filter(g=>!settings.excludedGenres.includes(g)).slice(0,12);
+  const genres=settings.genreMode==='strict'?settings.genres:[...new Set([...learned,...(anchors.length?[]:settings.genres)])];
+  return (genres.length?genres:anchors.length?[]:['Pop','Alternative','Electronic']).filter(g=>!settings.excludedGenres.includes(g)).slice(0,12);
 }
 export function discoveryQuery(genre,settings,artist=''){
   if(settings.languagePreference!=='ru')return [artist,waveQuery(genre,settings),settings.mood==='night'?'late night':'',settings.languagePreference==='en'?'english songs':''].filter(Boolean).join(' ');

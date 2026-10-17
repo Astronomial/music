@@ -36,6 +36,9 @@ final class AppModel: ObservableObject {
     private let catalog: any MusicCatalogProviding
     private let sync = SyncClient()
     private let soundAnalyzer = SoundAnalyzer()
+    private let genreCatalog = GenreCatalog()
+    private var genreTask: Task<Void, Never>?
+    private var genreAttempts: [String: Date] = [:]
     private var soundTask: Task<Void, Never>?
     private var storage: LibraryStorage?
     private var storageURL: URL?
@@ -121,7 +124,7 @@ final class AppModel: ObservableObject {
     deinit {
         localWiFiMonitor.cancel(); recommendationTask?.cancel(); rankingWork?.cancel()
         settingsTask?.cancel(); persistTask?.cancel(); syncTask?.cancel()
-        pulseWork?.cancel(); linkTask?.cancel(); soundTask?.cancel()
+        pulseWork?.cancel(); linkTask?.cancel(); soundTask?.cancel(); genreTask?.cancel()
     }
     private func restoreLibrary() async {
         guard !didLoadLibrary, let storageURL else { isRestoringLibrary = false; return }
@@ -241,7 +244,7 @@ final class AppModel: ObservableObject {
         return snapshot
     }
     private func selectionLibrary() -> Library {
-        var result = library; if pulsePlaylistID != nil { result.settings.discovery = 0.75 }; return result
+        var result = contextualLibrary(); if pulsePlaylistID != nil { result.settings.discovery = 0.75 }; return result
     }
     func play(_ track: Track, list: [Track], context: String? = nil) {
         pulseGeneration = UUID(); pulseWork?.cancel(); linkTask?.cancel(); soundTask?.cancel()
@@ -470,8 +473,34 @@ final class AppModel: ObservableObject {
             let result = await work.value
             guard recommendationGeneration == token, !Task.isCancelled, playlistID == pulsePlaylistID, trackID == pulseTrackID else { return }
             recommendations = result.0; pulseCache = result.1; pulseCacheTrackID = trackID; pulseCachePlaylistID = playlistID; moodCache = result.2; playbackIndex = result.3
+            scheduleGenreMetadata()
             player.refreshPreparedSelection()
             if player.current == nil, player.networkPolicy.canPrewarmExtraTracks { await audioResolver.prewarm(videoIDs: Array(pulseCache.prefix(3).map(\.id))) }
+        }
+    }
+    private func scheduleGenreMetadata() {
+#if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--forma-smoke") { return }
+#endif
+        guard genreTask == nil, didLoadLibrary, player.networkPolicy.reachable else { return }
+        let now = Date()
+        var seen = Set<String>()
+        let anchors = PulseEngine.anchors(in: library, limit: 24)
+        let pool = Array(anchors.prefix(4)) + pulseCache.prefix(6).map(\.track) + Array(anchors.dropFirst(4)) + recommendations.prefix(12).map(\.track)
+        let tracks = pool.filter { track in
+            seen.insert(track.id).inserted && now.timeIntervalSince(genreAttempts[track.id] ?? .distantPast) > 600 && now.timeIntervalSince1970 * 1000 - (library.tracks[track.id]?.genreEvidence?.checkedAt ?? 0) > 7 * 86400000
+        }
+        guard !tracks.isEmpty else { return }
+        genreTask = Task(priority: .utility) {
+            defer { genreTask = nil }
+            for track in tracks.prefix(10) {
+                guard !Task.isCancelled else { return }
+                genreAttempts[track.id] = Date()
+                if let evidence = await genreCatalog.lookup(track), !Task.isCancelled, let latest = library.tracks[track.id], GenreClassifier.recordingIdentity(latest.title) == GenreClassifier.recordingIdentity(track.title), GenreClassifier.artistIdentity(latest.artist) == GenreClassifier.artistIdentity(track.artist) {
+                    library.tracks[track.id]?.genreEvidence = evidence
+                    persist(); updateRecommendations()
+                }
+            }
         }
     }
     func soundPolicyChanged() { soundTask?.cancel(); if let track = player.current { scheduleSoundAnalysis(track) } }

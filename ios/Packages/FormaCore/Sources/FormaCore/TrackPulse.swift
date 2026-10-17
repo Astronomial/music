@@ -12,8 +12,8 @@ public enum TrackPulse {
         guard !sameSong(track, seed) else { return 0 }
         let direct = track.directRelatedTo.contains(seed.id) ? 0.9 : track.relatedTo.contains(seed.id) ? 0.48 : 0
         let sound = SoundProfile.similarity(track.soundProfile, seed.soundProfile).map { max(0, ($0 - 0.55) / 0.45) } ?? 0
-        let genres = Set((track.genres + [track.genre]).filter { !$0.isEmpty }.map(PulseEngine.fold))
-        let seedGenres = Set((seed.genres + [seed.genre]).filter { !$0.isEmpty }.map(PulseEngine.fold))
+        let genres = Set(GenreClassifier.genres(track))
+        let seedGenres = Set(GenreClassifier.genres(seed))
         let genre = genres.isDisjoint(with: seedGenres) ? 0.0 : 0.3
         let mood = !track.mood.isEmpty && track.mood == seed.mood ? 0.15 : 0
         let tags = Set(track.tags).isDisjoint(with: Set(seed.tags)) ? 0.0 : 0.12

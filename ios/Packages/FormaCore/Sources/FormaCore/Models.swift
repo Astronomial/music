@@ -17,6 +17,7 @@ public struct Track: Codable, Hashable, Identifiable, Sendable {
     public var mood: String = ""
     public var tags: [String] = []
     public var language: String = ""
+    public var genreEvidence: GenreEvidence?
     public var soundProfile: SoundProfile?
 
     public init(videoID: String, title: String, artist: String, duration: Double = 0,
@@ -27,7 +28,7 @@ public struct Track: Codable, Hashable, Identifiable, Sendable {
         self.directRelatedTo = directRelatedTo; self.discoveryLanguages = discoveryLanguages
         self.genre = genre; self.mood = mood; self.tags = tags; self.language = language
     }
-    private enum CodingKeys: String, CodingKey { case videoID, title, artist, artistID, duration, artworkURL, genres, moodHints, relatedTo, directRelatedTo, discoveryLanguages, genre, mood, tags, language, soundProfile }
+    private enum CodingKeys: String, CodingKey { case videoID, title, artist, artistID, duration, artworkURL, genres, moodHints, relatedTo, directRelatedTo, discoveryLanguages, genre, mood, tags, language, soundProfile, genreEvidence }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         videoID = try c.decode(String.self, forKey: .videoID)
@@ -44,6 +45,7 @@ public struct Track: Codable, Hashable, Identifiable, Sendable {
         mood = try c.decodeIfPresent(String.self, forKey: .mood) ?? ""
         tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
         language = try c.decodeIfPresent(String.self, forKey: .language) ?? ""
+        genreEvidence = (try? c.decodeIfPresent(GenreEvidence.self, forKey: .genreEvidence)).flatMap { $0.isValid ? $0 : nil }
         soundProfile = (try? c.decodeIfPresent(SoundProfile.self, forKey: .soundProfile)).flatMap { $0.isValid ? $0 : nil }
     }
     private static func safeDuration(_ value: Double) -> Double { value.isFinite ? min(86400, max(0, value)) : 0 }
@@ -86,7 +88,7 @@ public struct Playlist: Codable, Identifiable, Sendable {
     }
 }
 public struct PulseSettings: Codable, Sendable {
-    public var genres: [String] = ["Electronic", "Rock", "Hip-Hop/Rap"]
+    public var genres: [String] = []
     public var excludedArtists: [String] = []
     public var excludedGenres: [String] = []
     public var preferredArtists: [String] = []
@@ -109,7 +111,7 @@ public struct PulseSettings: Codable, Sendable {
     private enum CodingKeys: String, CodingKey { case genres, excludedArtists, excludedGenres, preferredArtists, seedPlaylistIDs, discovery, repeatHours, artistDiversity, mood, genreMode, energy, vocals, playlistSource, includeLibrary, explorationStyle, languagePreference, skipSensitivity, sessionInfluence, recommendationVersion }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        genres = try c.decodeIfPresent([String].self, forKey: .genres) ?? ["Electronic", "Rock", "Hip-Hop/Rap"]
+        genres = try c.decodeIfPresent([String].self, forKey: .genres) ?? []
         excludedArtists = try c.decodeIfPresent([String].self, forKey: .excludedArtists) ?? []
         excludedGenres = try c.decodeIfPresent([String].self, forKey: .excludedGenres) ?? []
         preferredArtists = try c.decodeIfPresent([String].self, forKey: .preferredArtists) ?? []
@@ -160,6 +162,7 @@ public struct Library: Codable, Sendable {
         for var track in incoming {
             if let old = tracks[track.id] {
                 if track.artistID == nil { track.artistID = old.artistID }
+                if track.genreEvidence == nil { track.genreEvidence = old.genreEvidence }
                 if track.soundProfile == nil { track.soundProfile = old.soundProfile }
                 if track.duration <= 0 { track.duration = old.duration }
                 if track.artworkURL == nil { track.artworkURL = old.artworkURL }

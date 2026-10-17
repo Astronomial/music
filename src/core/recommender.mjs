@@ -1,3 +1,4 @@
+import {genreRelation} from './genre-evidence.mjs';
 import {trackPulseFit,sameSong} from './track-pulse.mjs';
 const DAY = 86400000;
 import {createSoundMatcher} from './sound-profile.mjs';
@@ -196,7 +197,7 @@ export function rankTracks(candidates, state, options = {}) {
   const spacing=artistSpacing(settings.artistDiversity);
   const unique = new Map(candidates.map(t => [t.id, t]));
   const seedTrack=context?.trackId?state.tracks[context.trackId]:null;
-  const ranked = [...unique.values()].filter(t => (!context?.trackId||seedTrack&&!sameSong(t,seedTrack)&&trackPulseFit(t,seedTrack)>.1) && t.streamable && !banned.has(t.id) && (allowRecent || !recentRecordings.has(recordingKey(t,artistKeys))) && !blockedByPreferences(t,settings) && (settings.includeLibrary||!library.has(t.id)) && (allowRecent || !recent.has(t.id)) && (!context?.mood||moodEvidence(t,context)>0)).map(track => {
+  let ranked = [...unique.values()].filter(t => (!context?.trackId||seedTrack&&!sameSong(t,seedTrack)&&trackPulseFit(t,seedTrack)>.1) && t.streamable && !banned.has(t.id) && (allowRecent || !recentRecordings.has(recordingKey(t,artistKeys))) && !blockedByPreferences(t,settings) && (settings.includeLibrary||!library.has(t.id)) && (allowRecent || !recent.has(t.id)) && (!context?.mood||moodEvidence(t,context)>0)).map(track => {
     const vector = features(track);
     if(!affinities.has(track)){
       const signature=JSON.stringify([Object.entries(vector),track.bpm||0]);
@@ -217,7 +218,7 @@ export function rankTracks(candidates, state, options = {}) {
     const popular = Math.min(1, Math.log1p(track.favoriteCount || 0) / 12);
     const noise = stableNoise(track.id, seed);
     let contextScore = context?.genres?.includes(track.genre) ? 0.6 : 0;
-    if(!contextScore&&context?.genres?.some(g=>track.discoveryGenres?.includes(g)))contextScore=0.3;
+
     if (context?.moods?.includes(track.mood)) contextScore += 0.55;
     if(context?.mood)contextScore=moodEvidence(track,context)*.8+preferenceAffinity(track,contextSettings).score;
     // A played/skipped recommendation is evidence; merely showing a shelf is not.
@@ -227,8 +228,16 @@ export function rankTracks(candidates, state, options = {}) {
       neighbourhoods.set(track,neighbourhood(track,anchors,()=>0,profile.weights,semantic.fit,semantic));
     }
     const neighbourhoodFit=neighbourhoods.get(track),language=languageEvidence(track,settings.languagePreference);
-    const metadata=track.genre||track.mood||track.tags?.length?1:0;
-    const nearby=(audioAffinity!==null&&audioAffinity>=.78)||known||neighbourhoodFit.close||preferenceAffinity(track,settings).score>=.6||(!anchors.length&&preferenceAffinity(track,settings).score>0);
+    const metadata=genresOf(track).values.length||track.mood||track.tags?.length?1:0;
+    const genreFit=anchors.length?Math.max(0,...anchors.map(a=>genreRelation(track,a.track))):0;
+    const trustedGenre=genresOf(track).values.length>0, comparable=trustedGenre&&anchors.some(a=>genresOf(a.track).values.length);
+    const sameArtist=keys.some(key=>anchorArtists.has(key));
+    // A mood word, Russian title or a search label cannot establish musical relevance.
+    // Related-video edges are useful only while they do not contradict known genres.
+    const direct=neighbourhoodFit.direct>0;
+    const audible=!comparable&&audioAffinity!==null&&audioAffinity>=.92;
+    const eligible=!disliked.has(track.id)&&(!anchors.length||known||sameArtist||genreFit>0||(!comparable&&direct)||audible);
+    const nearby=audible||known||sameArtist||genreFit===1||(!comparable&&direct)||(genreFit>0&&audioAffinity!==null&&audioAffinity>=.85);
     // Novel candidates still need a taste match: exploration is not random genre drift.
     const novelty = !known ? discovery * (0.2 + affinity * 0.45) : (1 - discovery) * 0.12;
     const preference=preferenceAffinity(track,settings);
@@ -262,8 +271,9 @@ export function rankTracks(candidates, state, options = {}) {
     const lane=known?'familiar':nearby?'nearby':'stretch';
     if(lane==='stretch'&&anchors.length&&!context?.mood&&!context?.playlistId)reason='Небольшой шаг в новое направление';
     if(seedTrack)reason='Похоже на «'+seedTrack.title+'»';
-    return {track,score,reason,vector,known,newArtist,nearby,languageFit:language.fit,artistKeys:keys,recording:recordingKey(track,artistKeys),genres:genresOf(track).values,signals:{taste:affinity,neighbourhood:neighbourhoodFit.fit,corroboration:neighbourhoodFit.corroboration,session,predictedEnjoyment:predicted.mean,learnedContext:learned.mean,learningConfidence:learned.confidence,uncertainty:predicted.uncertainty,context:contextScore,language:language.source},lane,exposure:{version:CONTEXT_VERSION,features:snapshotFeatures,lane}};
+    return {eligible,track,score,reason,vector,known,newArtist,nearby,languageFit:language.fit,artistKeys:keys,recording:recordingKey(track,artistKeys),genres:genresOf(track).values,signals:{taste:affinity,neighbourhood:neighbourhoodFit.fit,corroboration:neighbourhoodFit.corroboration,session,predictedEnjoyment:predicted.mean,learnedContext:learned.mean,learningConfidence:learned.confidence,uncertainty:predicted.uncertainty,context:contextScore,language:language.source},lane,exposure:{version:CONTEXT_VERSION,features:snapshotFeatures,lane}};
   });
+  ranked=ranked.filter(item=>item.eligible);
   // Deduplicate recordings across uploads before MMR; keep the best playable match.
   ranked.sort((a,b)=>b.score-a.score||a.track.id.localeCompare(b.track.id));
   const recordings=new Set();
@@ -290,7 +300,7 @@ export function rankTracks(candidates, state, options = {}) {
     const freshDeficit=freshTarget*(sessionSize+result.length+1)-newArtistCount;
     const lastArtists=new Set(rolling.slice(-spacing.gap).flatMap(h=>h.keys));
     const bestTaste=Math.max(0,...ranked.map(r=>r.signals.taste));
-    const tasteFloor=Math.min(.12,bestTaste*.45);
+    const tasteFloor=Math.min(.2,bestTaste*.55);
     const relevant=item=>item.signals.taste>=tasteFloor;
     const withinGap=item=>item.artistKeys.every(key=>!lastArtists.has(key));
     const withinCap=item=>item.artistKeys.every(key=>(sessionCounts.get(key)||0)<spacing.maxPerWindow);
@@ -310,9 +320,9 @@ export function rankTracks(candidates, state, options = {}) {
     // against real started playback so repeated single-track ranking cannot reset it.
     const mayStretch=policy.surpriseRate*(policy.exposureCount+result.length+1)-surprises>=1;
     if(anchors.length&&!mayStretch){
-      const close=pool.filter(i=>ranked[i].nearby),spacedClose=close.filter(i=>relevant(ranked[i])&&withinGap(ranked[i])&&withinCap(ranked[i]));
-      const supported=pool.filter(i=>relevant(ranked[i])&&ranked[i].signals.neighbourhood>=.15);
-      if(close.length)pool=settings.artistDiversity&&!spacedClose.length&&supported.length?supported:close;
+      const close=pool.filter(i=>ranked[i].nearby);
+      if(close.length)pool=close;
+      else break;
     }
     if(settings.artistDiversity){
       const diverse=pool.filter(i=>relevant(ranked[i])&&withinGap(ranked[i])&&withinCap(ranked[i]));
@@ -347,7 +357,7 @@ export function rankTracks(candidates, state, options = {}) {
     if(rolling.length>spacing.window){const removed=rolling.shift();for(const key of removed.keys)sessionCounts.set(key,sessionCounts.get(key)-1);}
     for(const g of item.genres)genreCounts.set(g,(genreCounts.get(g)||0)+1);
   }
-  return result.map(({ vector, genres, artistKeys, recording, nearby, languageFit, ...item }) => item);
+  return result.map(({ vector, genres, artistKeys, recording, nearby, languageFit, eligible, ...item }) => item);
 }
 
 export function moodRecommendations(candidates,state,{now=Date.now(),limit=24,prepared:shared=null}={}){

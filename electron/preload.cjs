@@ -3,6 +3,7 @@ contextBridge.exposeInMainWorld('forma',{
   desktop:true,
   browserAudio:command=>ipcRenderer.invoke('browser-audio:command',command),
   onBrowserAudio:callback=>{const listener=(_event,state)=>callback(state);ipcRenderer.on('browser-audio:state',listener);return()=>ipcRenderer.removeListener('browser-audio:state',listener);},
+  genreMetadata:track=>ipcRenderer.invoke('genre:metadata',track),
   soundAudio:id=>ipcRenderer.invoke('sound:audio',id),
   cancelSound:()=>ipcRenderer.invoke('sound:cancel'),
   syncStatus:()=>ipcRenderer.invoke('sync:status'),

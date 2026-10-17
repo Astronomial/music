@@ -4,7 +4,7 @@ import XCTest
 
 final class SyncDiversityTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
-    private func track(_ n: Int, artist: String) -> Track { Track(videoID: String(format: "%011d", n), title: "Song \(n)", artist: artist, duration: 200, genres: ["House"]) }
+    private func track(_ n: Int, artist: String) -> Track { Track(videoID: String(format: "%011d", n), title: "Song \(n)", artist: artist, duration: 200, genres: ["House"], genre: "House") }
     func testDesktopWireFormatDecodesRealIDsUnicodePreferencesAndMilliseconds() throws {
         let file = try XCTUnwrap(Bundle.module.url(forResource: "pc-sync", withExtension: "json"))
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .millisecondsSince1970

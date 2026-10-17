@@ -2,13 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {initialState,normalizeTrack,recordEvent} from '../src/core/model.mjs';
 import {rankTracks,buildProfile,selectRetrievalAnchors} from '../src/core/recommender.mjs';
-import {contextFeatures,buildContextualModel,predictContext,validContext} from '../src/core/contextual-learning.mjs';
+import {CONTEXT_VERSION,contextFeatures,buildContextualModel,predictContext,validContext} from '../src/core/contextual-learning.mjs';
 import {languageEvidence,discoveryPolicy,neighbourhood} from '../src/core/discovery-policy.mjs';
 import {waveSettings,upgradeWaveSettings} from '../src/core/wave-settings.mjs';
 import {portableLibrary,applyPortable} from '../src/core/sync.mjs';
 const now=1800000000000;
 const song=(id,extra={})=>normalizeTrack({id,title:'Трек '+id,artist:'Исполнитель '+id,artistId:id,genre:'Pop',duration:200,...extra});
-const context=extra=>({version:1,lane:'nearby',features:contextFeatures({taste:.5,nearby:.6,session:.2,newArtist:true,known:false,language:.8,context:0,metadata:1,...extra})});
+const context=extra=>({version:CONTEXT_VERSION,lane:'nearby',features:contextFeatures({taste:.5,nearby:.6,session:.2,newArtist:true,known:false,language:.8,context:0,metadata:1,...extra})});
 
 test('PC upgrade applies 70/30 once, preserves other settings and subsequent user edits',()=>{
   const old={discovery:.3,mood:'calm',genres:['Pop'],blockedArtists:['Blocked']};
@@ -54,7 +54,7 @@ test('context feedback is bounded per recording per day and rejects invalid cont
   const s=initialState(),snapshot=context();s.events=Array.from({length:100},(_,i)=>({trackId:'same',type:'listen',ratio:1,seconds:200,at:now-1000+i,recommendation:snapshot}));
   assert.equal(buildContextualModel(s,now).samples,1);
   s.events.push({trackId:'broken',type:'like',at:now,recommendation:{...snapshot,features:[NaN]}},{trackId:'error',type:'error',at:now,recommendation:snapshot});
-  assert.equal(buildContextualModel(s,now).samples,1);assert.equal(validContext({version:2,features:snapshot.features}),false);
+  assert.equal(buildContextualModel(s,now).samples,1);assert.equal(validContext({version:1,features:snapshot.features}),false);
   const fresh=buildContextualModel(s,now);assert.ok(buildContextualModel(s,now+30*86400000).confidence<fresh.confidence);
   s.events=[{trackId:'same',type:'skip',seconds:8,ratio:.04,at:now,recommendation:snapshot}];
   const strict=buildContextualModel(s,now);s.settings.skipSensitivity='soft';assert.ok(buildContextualModel(s,now).confidence<strict.confidence);

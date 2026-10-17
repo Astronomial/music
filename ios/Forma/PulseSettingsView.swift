@@ -9,7 +9,7 @@ struct PulseSettingsView: View {
     @State private var showLicenses = false
     @State private var preferredArtistText = ""
     @State private var excludedArtistText = ""
-    private let genres = ["Electronic", "House", "Techno", "Hip-Hop/Rap", "Alternative", "Pop", "Ambient", "Jazz", "Rock", "R&B/Soul", "Lo-Fi", "Drum & Bass"]
+    private let genres = ["Electronic", "House", "Techno", "Hip-Hop/Rap", "Alternative", "Pop", "Ambient", "Jazz", "Rock", "R&B/Soul", "Lo-Fi", "Drum & Bass", "Classical", "Metal", "Reggae", "Folk/Country"]
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {

@@ -1,3 +1,4 @@
+import useGenreMetadata from './useGenreMetadata.jsx';
 import React, { useCallback,useEffect, useMemo, useRef, useState } from 'react';
 import {version as appVersion} from '../package.json';
 import { AudioLines, Home, Search, Heart, ArrowDownToLine, Plus, Settings2, ChevronRight, ArrowUpRight, Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, ListMusic, Shuffle, Repeat, Check, X, Minus, Square, WifiOff, RefreshCw, MoreHorizontal, FolderOpen, SlidersHorizontal, ThumbsDown, Ban, Music2, ArrowLeft, Trash2, Radio, Disc3, LoaderCircle, ArrowRightLeft, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
@@ -178,6 +179,7 @@ export default function App() {
   const {recommendations,mixes,taste}=analysis;
   const soundQueue=useMemo(()=>[...queue,...recommendations.slice(0,3).map(r=>r.track)],[queue,recommendations]);
   useSoundAnalysis({bridge,ready,stateRef,current,buffering,change,queue:soundQueue,enabled:state.settings.audioAnalysis!==false});
+  useGenreMetadata({bridge,ready,stateRef,current,queue:soundQueue,change,online});
   useEffect(()=>{
     let alive=true;
     recommendationClient.current?.request({kind:'analyze',candidates,state:recommendationState}).then(result=>{if(alive&&result)setAnalysis(result);}).catch(e=>{if(alive)notify(e.message);});

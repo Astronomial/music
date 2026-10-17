@@ -39,8 +39,8 @@ public enum PulseDiversity {
     public static func blocked(_ track: Track, settings: PulseSettings) -> Bool {
         let name = PulseEngine.fold(track.artist)
         if settings.excludedArtists.map(PulseEngine.fold).contains(where: { !$0.isEmpty && name.contains($0) }) { return true }
-        if !Set((track.genre.isEmpty ? track.genres : [track.genre]).map(PulseEngine.fold)).isDisjoint(with: Set(settings.excludedGenres.map(PulseEngine.fold))) { return true }
-        if settings.genreMode == "strict", !settings.genres.isEmpty, Set((track.genre.isEmpty ? track.genres : [track.genre]).map(PulseEngine.fold)).isDisjoint(with: Set(settings.genres.map(PulseEngine.fold))) { return true }
+        if !Set(GenreClassifier.genres(track).map(PulseEngine.fold)).isDisjoint(with: Set(settings.excludedGenres.map(PulseEngine.fold))) { return true }
+        if settings.genreMode == "strict", !settings.genres.isEmpty, Set(GenreClassifier.genres(track).map(PulseEngine.fold)).isDisjoint(with: Set(settings.genres.map(PulseEngine.fold))) { return true }
         return false
     }
 }

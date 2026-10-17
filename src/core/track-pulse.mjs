@@ -1,3 +1,4 @@
+import {genresOf} from './genre-evidence.mjs';
 import {normalizeText} from './search.mjs';
 import {soundSimilarity} from './sound-profile.mjs';
 
@@ -12,7 +13,7 @@ export function trackPulseFit(track,seed){
   if(!seed||sameSong(track,seed))return 0;
   const direct=track.directRelatedTo?.includes(seed.id)?0.9:track.relatedTo?.includes(seed.id)?0.48:0;
   const sound=soundSimilarity(track.soundProfile,seed.soundProfile);
-  const genres=t=>new Set([t.genre,...(t.discoveryGenres||[])].filter(Boolean).map(normalizeText));
+  const genres=t=>new Set(genresOf(t).values);
   const a=genres(track),b=genres(seed),genre=[...a].some(g=>b.has(g))?.3:0;
   const mood=track.mood&&track.mood===seed.mood?.15:0;
   const tags=(track.tags||[]).some(t=>(seed.tags||[]).includes(t))?.12:0;

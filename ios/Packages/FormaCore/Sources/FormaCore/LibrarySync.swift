@@ -78,6 +78,7 @@ public enum LibrarySync {
             result.settings.recommendationVersion = local.settings.recommendationVersion
         }
         for (id, old) in local.tracks where result.tracks[id] != nil {
+            if result.tracks[id]?.genreEvidence == nil { result.tracks[id]?.genreEvidence = old.genreEvidence }
             if result.tracks[id]?.soundProfile == nil { result.tracks[id]?.soundProfile = old.soundProfile }
             if result.tracks[id]?.directRelatedTo.isEmpty == true { result.tracks[id]?.directRelatedTo = old.directRelatedTo }
             if result.tracks[id]?.discoveryLanguages.isEmpty == true { result.tracks[id]?.discoveryLanguages = old.discoveryLanguages }

@@ -36,8 +36,8 @@ export async function collectYouTubeCandidates(state,request,{context=null,onBat
   }
   for(const genre of permitted.slice(0,2))jobs.push({route:'/tracks/search',params:{query:discoveryQuery(genre,settings),offset:40*(1+(Math.max(0,round)%3))},context:{...retrievalContext(settings,genre),...languageContext,retrievalSources:['discovery-page']}});
   if(!jobs.length)jobs.push({route:'/tracks/search',params:{query:waveQuery('',settings)},context:retrievalContext(settings)});
-  // Start recording-specific mood discovery early; streamed batches can populate cards before broad searches finish.
-  if(language!=='en'&&!context?.playlistId)jobs.unshift(...MOOD_MIXES.map(mix=>({route:'/tracks/search',params:{query:moodSeedQuery(mix.id,Math.floor(Date.now()/86400000)+round)},context:{retrievalSources:['mood-reference']}})));
+  // Positive library neighbours run first. Generic mood references never outrank retrieval from saved tracks.
+  if(language!=='en'&&!context?.playlistId)jobs.push(...MOOD_MIXES.map(mix=>({route:'/tracks/search',params:{query:moodSeedQuery(mix.id,Math.floor(Date.now()/86400000)+round)},context:{retrievalSources:['mood-reference']}})));
   const found=new Map();let successes=0;
   let expanded=false;const primaryCount=jobs.length;
   for(let i=0;i<jobs.length;){

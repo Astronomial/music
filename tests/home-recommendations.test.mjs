@@ -7,7 +7,7 @@ import {languageEvidence} from '../src/core/discovery-policy.mjs';
 const now=1800000000000;
 function catalogue(){
  const s=initialState();s.settings={...s.settings,genres:['Pop'],repeatCooldown:0,languagePreference:'ru',artistDiversity:.8};
- const tracks=MOOD_MIXES.flatMap((m,j)=>Array.from({length:62},(_,i)=>normalizeTrack({id:'yt_'+String(j*62+i).padStart(11,'0'),videoId:String(j*62+i).padStart(11,'0'),source:'youtube',title:(i<30?'Song '+m.id:'Песня '+m.title)+' '+i,artist:'Artist '+i,artistId:'artist'+i,genre:i<30?'Pop':'',discoveryGenres:i>=30?['Pop']:[],mood:m.id,tags:m.id==='focus'?['instrumental']:[],duration:200})));
+ const tracks=MOOD_MIXES.flatMap((m,j)=>Array.from({length:62},(_,i)=>normalizeTrack({id:'yt_'+String(j*62+i).padStart(11,'0'),videoId:String(j*62+i).padStart(11,'0'),source:'youtube',title:(i<30?'Song '+m.id:'Песня '+m.title)+' '+i,artist:'Artist '+i,artistId:'artist'+i,genre:i<30?'Pop':'',discoveryGenres:i>=30?['Pop']:[],relatedTo:i>=30?['yt_00000000000']:[],directRelatedTo:i>=30?['yt_00000000000']:[],mood:m.id,tags:m.id==='focus'?['instrumental']:[],duration:200})));
  s.tracks=Object.fromEntries(tracks.map(t=>[t.id,t]));s.likes=[tracks[0].id,tracks[30].id];return {s,tracks};
 }
 test('home and all mood shelves keep mostly Russian taste-supported tracks even with stronger English metadata',()=>{

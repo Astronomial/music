@@ -1,0 +1,86 @@
+{
+  "Electronic": [
+    "electronic",
+    "electronica",
+    "dance",
+    "электроника"
+  ],
+  "House": [
+    "house",
+    "deep house",
+    "progressive house",
+    "хаус"
+  ],
+  "Techno": [
+    "techno",
+    "техно"
+  ],
+  "Hip-Hop/Rap": [
+    "hip hop",
+    "hip hop rap",
+    "rap",
+    "alternative rap",
+    "хип хоп",
+    "рэп"
+  ],
+  "Alternative": [
+    "alternative",
+    "indie",
+    "alternative rock",
+    "альтернатива"
+  ],
+  "Pop": [
+    "pop",
+    "russian pop",
+    "поп"
+  ],
+  "Ambient": [
+    "ambient",
+    "эмбиент"
+  ],
+  "Jazz": [
+    "jazz",
+    "джаз"
+  ],
+  "Rock": [
+    "rock",
+    "russian rock",
+    "рок"
+  ],
+  "R&B/Soul": [
+    "r b",
+    "rnb",
+    "r b soul",
+    "soul",
+    "соул"
+  ],
+  "Lo-Fi": [
+    "lo fi",
+    "lofi"
+  ],
+  "Drum & Bass": [
+    "drum bass",
+    "drum and bass",
+    "dnb",
+    "драм н бэйс"
+  ],
+  "Classical": [
+    "classical",
+    "классическая"
+  ],
+  "Metal": [
+    "metal",
+    "heavy metal",
+    "метал"
+  ],
+  "Reggae": [
+    "reggae",
+    "регги"
+  ],
+  "Folk/Country": [
+    "folk",
+    "country",
+    "singer songwriter",
+    "фолк"
+  ]
+}

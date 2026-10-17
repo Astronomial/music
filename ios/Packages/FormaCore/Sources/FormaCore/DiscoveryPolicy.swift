@@ -48,7 +48,7 @@ enum ConsumptionFeedback {
     struct Arm: Sendable { var positive = 0.0; var negative = 0.0 }
     struct Model: Sendable { var global: [String: Arm] = [:]; var moods: [String: Arm] = [:] }
     static func arms(_ track: Track) -> [(String, Double)] {
-        [("artist:" + PulseEngine.fold(track.artist), 1.5)] + (track.genre.isEmpty ? track.genres : [track.genre]).map { ("genre:" + PulseEngine.fold($0), 0.6) } + track.relatedTo.prefix(5).map { ("seed:" + $0, 0.8) }
+        [("artist:" + PulseEngine.fold(track.artist), 1.5)] + GenreClassifier.genres(track).map { ("genre:" + PulseEngine.fold($0), 0.6) } + track.relatedTo.prefix(5).map { ("seed:" + $0, 0.8) }
     }
     static func model(_ library: Library, now: Date) -> Model {
         var result = Model(), seen = Set<String>()

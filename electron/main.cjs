@@ -63,6 +63,8 @@ app.whenReady().then(async () => {
   });
   handle('youtube:request',(route,params)=>catalog.request(route,params));
   const soundAudio=new (require('./sound-audio.cjs').SoundAudio)(net.fetch);
+  const genreCatalog=new (require('./genre-catalog.cjs').GenreCatalog)((url,options)=>net.fetch(url,options));
+  handle('genre:metadata',track=>genreCatalog.lookup(track));
   handle('sound:audio',id=>soundAudio.load(id));
   handle('sound:cancel',()=>soundAudio.cancel());
   let localBusy=false;

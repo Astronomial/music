@@ -1,4 +1,6 @@
-export const WAVE_GENRES=['Electronic','House','Techno','Hip-Hop/Rap','Alternative','Pop','Ambient','Jazz','Rock','R&B/Soul','Lo-Fi','Drum & Bass'];
+import {GENRE_ALIASES,genresOf} from './genre-evidence.mjs';
+export {genresOf} from './genre-evidence.mjs';
+export const WAVE_GENRES=Object.keys(GENRE_ALIASES);
 export const MOODS=[
   {id:'any',name:'Любое',query:'',values:[]},
   {id:'calm',name:'Спокойное',query:'calm relaxing',values:['peaceful','calm','relaxing']},
@@ -23,14 +25,7 @@ export function waveSettings(settings={}){
     preferredArtists:strings(settings.preferredArtists),blockedArtists:strings(settings.blockedArtists),playlistSource:settings.playlistSource==='selected'?'selected':'all',seedPlaylistIds:strings(settings.seedPlaylistIds,200)
   };
 }
-const genreAliases={Electronic:['electronic','electronica','электроника'],House:['house','хаус'],Techno:['techno','техно'],'Hip-Hop/Rap':['hip hop','rap','хип хоп','рэп'],Alternative:['alternative','indie','альтернатива'],Pop:['pop','поп'],Ambient:['ambient','эмбиент'],Jazz:['jazz','джаз'],Rock:['rock','рок'],'R&B/Soul':['r b','rnb','soul','соул'],'Lo-Fi':['lo fi','lofi'],'Drum & Bass':['drum bass','drum and bass','dnb','драм н бэйс']};
 const contains=(text,term)=>` ${fold(text)} `.includes(` ${fold(term)} `);
-export function genresOf(track){
-  if(!track.genre)return {values:track.discoveryGenres||[],confidence:0.35};
-  const text=' '+fold(track.genre)+' ';
-  const values=Object.entries(genreAliases).filter(([,aliases])=>aliases.some(a=>text.includes(' '+a+' '))).map(([g])=>g);
-  return {values:values.length?values:[track.genre],confidence:1};
-}
 export function matchesArtist(track,name){return contains(track.artist,name);}
 export function blockedByPreferences(track,settings){
   if(settings.blockedArtists.some(name=>matchesArtist(track,name)))return true;
@@ -46,7 +41,7 @@ export function preferenceAffinity(track,settings){
   let score=0,reason='';
   const genres=genresOf(track);
   const selectedGenre=genres.values.find(g=>settings.genres.includes(g));
-  if(selectedGenre){score+=0.65*genres.confidence;reason=genres.confidence===1?`Выбранный жанр · ${selectedGenre}`:`Поиск в направлении · ${selectedGenre}`;}
+  if(selectedGenre){score+=0.65*genres.confidence;reason=`Выбранный жанр · ${selectedGenre}`;}
   if(settings.preferredArtists.some(name=>matchesArtist(track,name))){score+=1.3;reason='Исполнитель из твоих ориентиров';}
   const mood=MOODS.find(m=>m.id===settings.mood);
   if(mood.id!=='any'){

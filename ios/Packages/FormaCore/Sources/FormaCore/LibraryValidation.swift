@@ -14,6 +14,7 @@ public enum LibraryValidation {
         result.tracks = source.tracks.filter { VideoID.isValid($0.key) && $0.key == $0.value.id }.mapValues { old in
             var track = old
             track.title = String(old.title.prefix(200)); track.artist = String(old.artist.prefix(200))
+            if old.genreEvidence?.isValid == false { track.genreEvidence = nil }
             if old.soundProfile?.isValid == false { track.soundProfile = nil }
             track.duration = old.duration.isFinite ? min(86400, max(0, old.duration)) : 0
             track.genres = strings(old.genres); track.moodHints = strings(old.moodHints, limit: 40)
