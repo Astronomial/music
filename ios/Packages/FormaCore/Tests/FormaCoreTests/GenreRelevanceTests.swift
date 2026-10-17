@@ -86,7 +86,7 @@ final class GenreRelevanceTests: XCTestCase {
         XCTAssertEqual(PulseEngine.rank([generic, real], library: library, now: now).map(\.id), [real.id])
         XCTAssertFalse(PulseEngine.anchors(in: library, now: now).contains { $0.id == generic.id })
         library.likedIDs = [generic.id]
-        XCTAssertEqual(PulseEngine.rank([generic], library: library, now: now).first?.id, generic.id)
+        XCTAssertEqual(PulseEngine.rank([generic], library: library, allowRecent: true, now: now).first?.id, generic.id)
     }
 
 }
