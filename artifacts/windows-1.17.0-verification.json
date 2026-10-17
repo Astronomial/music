@@ -1,0 +1,21 @@
+{
+  "version": "1.17.0",
+  "size": 92574539,
+  "sha256": "81fe620f42098c535b71983e5c59b18b2acd6e16bb3e81587040ea4cd9715861",
+  "sourceFilesMatched": 50,
+  "genreEvidenceIncluded": true,
+  "genericMoodFilterIncluded": true,
+  "browserPlaybackFallbackIncluded": true,
+  "manifestDigestMatches": true,
+  "architecture": "x64",
+  "sourceCommit": "8eab8f57859d794d215d70e86bf09b425d62693b",
+  "workflow": "https://github.com/Astronomial/music/actions/runs/39049833150",
+  "unitTestsPassed": 168,
+  "uiScenariosPassed": 7,
+  "nativeWindowsPassed": true,
+  "packagedWindowsExePassed": true,
+  "githubAndManifestDigestsMatch": true,
+  "liveYouTubeTested": false,
+  "liveITunesTested": false,
+  "liveServiceLimitation": "Execution environment blocks YouTube/iTunes. Controlled catalogue responses and real audio were tested."
+}

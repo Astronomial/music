@@ -1,0 +1,38 @@
+{
+  "kind": "synthetic-sequential-simulation",
+  "current": {
+    "played": 40,
+    "uniqueRecordings": 40,
+    "uniqueArtists": 40,
+    "newTrackShare": 0.7,
+    "newArtistShare": 0.7,
+    "explicitGenreMatchShare": 1,
+    "explicitRussianShare": 0.85,
+    "maxArtistIn12": 1
+  },
+  "contaminatedCatalogue": {
+    "current": {
+      "requested": 30,
+      "returned": 18,
+      "unrelatedGenreCount": 0
+    },
+    "baseline": {
+      "requested": 30,
+      "returned": 30,
+      "unrelatedGenreCount": 12
+    }
+  },
+  "baseline": {
+    "played": 40,
+    "uniqueRecordings": 40,
+    "uniqueArtists": 40,
+    "newTrackShare": 0.7,
+    "newArtistShare": 0.7,
+    "explicitGenreMatchShare": 1,
+    "explicitRussianShare": 0.85,
+    "maxArtistIn12": 1
+  },
+  "baselineCommit": "2e0f5ad",
+  "currentSourceCommit": "8eab8f57859d794d215d70e86bf09b425d62693b",
+  "limitation": "Synthetic fixtures, not a measurement of individual listener satisfaction"
+}
