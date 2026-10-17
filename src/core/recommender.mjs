@@ -1,3 +1,4 @@
+import {utilityRecording} from './recording-quality.mjs';
 import {genreRelation} from './genre-evidence.mjs';
 import {trackPulseFit,sameSong} from './track-pulse.mjs';
 const DAY = 86400000;
@@ -70,6 +71,8 @@ export function buildProfile(state, now = Date.now(), sharedArtistKeys=null) {
     implicit.set(e.trackId, clamp((implicit.get(e.trackId) || 0) + value, -7, 4));
   }
   for (const [id, weight] of implicit) weights.set(id, (weights.get(id) || 0) + weight);
+  const explicit=new Set([...state.likes,...activeSeedPlaylists(state,settings).flatMap(p=>p.trackIds)]);
+  for(const [id,weight] of weights)if(weight>0&&state.tracks[id]&&utilityRecording(state.tracks[id])&&!explicit.has(id))weights.delete(id);
   for(const id of state.dislikes||[])weights.set(id,-4);
   const positive = {}, negative = {};
   const artistKeys=sharedArtistKeys||artistIndex(Object.values(state.tracks)),totals=new Map(),counts=new Map(),balancedWeights=new Map();
@@ -200,6 +203,8 @@ export function rankTracks(candidates, state, options = {}) {
   const recentRecordings=new Set(state.events.filter(e=>e.type==='play'&&e.at<=now&&now-e.at<settings.repeatCooldown*3600000&&state.tracks[e.trackId]).map(e=>recordingKey(state.tracks[e.trackId],artistKeys)));
   const spacing=artistSpacing(settings.artistDiversity);
   const unique = new Map(candidates.map(t => [t.id, t]));
+  const qualitySource=playlistSeedState(state,context);
+  const allowsUtility=[...qualitySource.likes,...activeSeedPlaylists(qualitySource,settings).flatMap(p=>p.trackIds)].some(id=>qualitySource.tracks[id]&&utilityRecording(qualitySource.tracks[id]));
   const seedTrack=context?.trackId?state.tracks[context.trackId]:null;
   let ranked = [...unique.values()].filter(t => (!context?.trackId||seedTrack&&!sameSong(t,seedTrack)&&trackPulseFit(t,seedTrack)>.1) && t.streamable && !banned.has(t.id) && (allowRecent || !recentRecordings.has(recordingKey(t,artistKeys))) && !blockedByPreferences(t,settings) && (settings.includeLibrary||!library.has(t.id)) && (allowRecent || !recent.has(t.id)) && (!context?.mood||moodEvidence(t,context)>0)).map(track => {
     const vector = features(track);
@@ -240,7 +245,7 @@ export function rankTracks(candidates, state, options = {}) {
     // Related-video edges are useful only while they do not contradict known genres.
     const direct=neighbourhoodFit.direct>0;
     const audible=!comparable&&audioAffinity!==null&&audioAffinity>=.92;
-    const eligible=!disliked.has(track.id)&&(!anchors.length||known||sameArtist||genreFit>0||(!comparable&&direct)||audible);
+    const eligible=(!utilityRecording(track)||allowsUtility)&&!disliked.has(track.id)&&(!anchors.length||known||sameArtist||genreFit>0||(!comparable&&direct)||audible);
     const nearby=audible||known||sameArtist||genreFit===1||(!comparable&&direct)||(genreFit>0&&audioAffinity!==null&&audioAffinity>=.85);
     // Novel candidates still need a taste match: exploration is not random genre drift.
     const novelty = !known ? discovery * (0.2 + affinity * 0.45) : (1 - discovery) * 0.12;
@@ -251,6 +256,9 @@ export function rankTracks(candidates, state, options = {}) {
     const learned=predictContext(contextual,snapshotFeatures);
     const exploration=discovery*((predicted.uncertainty+learned.uncertainty)/2)*(.08+neighbourhoodFit.fit*.35);
     let score = 2.2 * affinity - 1.65 * avoidance + novelty + session + learning+exploration+popular*.04+noise*.03+contextScore+preference.score+neighbourhoodFit.fit*.65+learned.correction*1.4+language.fit*.15;
+    // A broad Pop/Rock label must not outrank a genuine saved-track neighbour
+    // merely because the neighbour has sparse recording metadata.
+    if(direct)score+=1.5+Math.min(.3,Math.max(0,neighbourhoodFit.corroboration-1)*.15);
     if(seedTrack)score+=4*trackPulseFit(track,seedTrack);
     if(!nearby&&anchors.length)score-=settings.explorationStyle==='nearby'?.35:settings.explorationStyle==='balanced'?.15:0;
     const ownWeight = profile.weights.get(track.id) || 0;
@@ -271,7 +279,7 @@ export function rankTracks(candidates, state, options = {}) {
     if(context?.playlistId&&affinity>.1)reason=`По мотивам «${context.playlistName||'плейлиста'}»`;
     if(newArtist&&affinity>.1&&!context?.playlistId&&!context?.mood)reason=`Новый исполнитель · ${genresOf(track).values.find(g=>settings.genres.includes(g))||'в твоём вкусе'}`;
     if(audioAffinity!==null&&audioAffinity>=.78)reason='Похожее звучание · анализ аудио';
-    if(newArtist&&neighbourhoodFit.match&&neighbourhoodFit.fit>=.24&&!context?.playlistId&&!context?.mood)reason=`Новый исполнитель · рядом с ${neighbourhoodFit.match.artist}`;
+    if(newArtist&&direct&&neighbourhoodFit.match&&neighbourhoodFit.fit>=.24&&!context?.playlistId&&!context?.mood)reason=`Новый исполнитель · рядом с ${neighbourhoodFit.match.artist}`;
     const lane=known?'familiar':nearby?'nearby':'stretch';
     if(lane==='stretch'&&anchors.length&&!context?.mood&&!context?.playlistId)reason='Небольшой шаг в новое направление';
     if(seedTrack)reason='Похоже на «'+seedTrack.title+'»';

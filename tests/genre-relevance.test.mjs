@@ -60,3 +60,20 @@ test('metadata requests are bounded, shared, cached, and contain no audio reques
  // Malformed input is rejected before making a network request.
  assert.equal(await unavailable.lookup({title:'a'.repeat(201),artist:'A'}),null);
 });
+
+test('a genuine saved-track neighbour outranks unrelated music with only a shared broad genre',()=>{
+ const seed=song(1,'Pop'),s=initialState();s.tracks={[seed.id]:seed};s.likes=[seed.id];s.settings.artistDiversity=0;
+ const direct=song(2,'',{relatedTo:[seed.id],directRelatedTo:[seed.id]}),generic=song(3,'Pop');
+ const result=rankTracks([generic,direct],s,{now,limit:2});assert.equal(result[0].track.id,direct.id);
+});
+
+test('energetic music and generic mood uploads never replace songs or train taste from accidental completion',()=>{
+ const seed=song(1,'Pop'),s=initialState();s.tracks={[seed.id]:seed};s.likes=[seed.id];
+ const titles=['Energetic Music','Royalty Free Energetic Background Music','Музыка для хорошего настроения','Фоновая музыка'];
+ const utility=titles.map((title,i)=>song(i+10,'Pop',{title,relatedTo:[seed.id],directRelatedTo:[seed.id]}));
+ const real=song(2,'Pop',{title:'Энергия',relatedTo:[seed.id],directRelatedTo:[seed.id]});
+ for(const t of utility)s.tracks[t.id]=t;s.events=utility.map(t=>({trackId:t.id,type:'listen',at:now,seconds:190,ratio:.95}));
+ assert.deepEqual(rankTracks([...utility,real],s,{now}).map(r=>r.track.id),[real.id]);
+ for(const t of utility)assert.ok(!buildProfile(s,now).weights.has(t.id));
+ s.likes=[utility[0].id];assert.ok(rankTracks(utility,s,{now}).length>0,'Explicitly saved functional music remains supported');
+});

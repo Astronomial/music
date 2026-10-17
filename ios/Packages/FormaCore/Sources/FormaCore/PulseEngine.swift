@@ -61,6 +61,8 @@ public enum PulseEngine {
             implicit[event.trackID] = min(4, max(-7, (implicit[event.trackID] ?? 0) + weight * strength))
         }
         for (id, weight) in implicit { result[id, default: 0] += weight }
+        let explicit = Set(library.likedIDs + library.playlists.filter { library.settings.playlistSource != "selected" || library.settings.seedPlaylistIDs.contains($0.id) }.flatMap(\.trackIDs))
+        for (id, weight) in result where weight > 0 && !explicit.contains(id) { if let track = library.tracks[id], RecordingQuality.utility(track) { result.removeValue(forKey: id) } }
         for id in library.dislikedIDs { result[id] = -4 }
         return result
     }
@@ -95,6 +97,7 @@ public enum PulseEngine {
         fileprivate let artistKeys: [String: String]
         fileprivate let recordings: [String: String]
         fileprivate let semantic: [String: Vector]
+        fileprivate let utility: [String: Bool]
         fileprivate let genres: [String: [String]]
         fileprivate let moods: [String: [String: Double]]
     }
@@ -102,7 +105,7 @@ public enum PulseEngine {
         let tracks = library.tracks.merging(Dictionary(candidates.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }), uniquingKeysWith: { a, _ in a })
         let vectors = tracks.mapValues { unit(features($0)) }
         let ordered = vectors.mapValues { vector in vector.keys.sorted().map { ($0, vector[$0] ?? 0) } }
-        return RankingIndex(vectors: vectors, orderedVectors: ordered, artists: tracks.mapValues(PulseDiversity.artists), artistKeys: tracks.mapValues { fold($0.artist) }, recordings: tracks.mapValues(PulseDiversity.recording), semantic: tracks.mapValues { unit(features($0).filter { !$0.key.hasPrefix("seed:") && !$0.key.hasPrefix("artist:") }) }, genres: tracks.mapValues(GenreClassifier.genres), moods: tracks.mapValues(MoodFitness.scores))
+        return RankingIndex(vectors: vectors, orderedVectors: ordered, artists: tracks.mapValues(PulseDiversity.artists), artistKeys: tracks.mapValues { fold($0.artist) }, recordings: tracks.mapValues(PulseDiversity.recording), semantic: tracks.mapValues { unit(features($0).filter { !$0.key.hasPrefix("seed:") && !$0.key.hasPrefix("artist:") }) }, utility: tracks.mapValues(RecordingQuality.utility), genres: tracks.mapValues(GenreClassifier.genres), moods: tracks.mapValues(MoodFitness.scores))
     }
     public static func rank(_ candidates: [Track], library: Library, limit: Int = 30,
                             mood: String? = nil, exclude: Set<String> = [], allowRecent: Bool = false,
@@ -151,6 +154,7 @@ public enum PulseEngine {
         var seen = Set<String>(), ranked: [Recommendation] = []
         let discovery = playlistID == nil ? min(1, max(0, library.settings.discovery)) : 0.75
         let seedTracks = anchors(in: profileSource, limit: 45, now: now)
+        let allowsUtility = RecordingQuality.allowsUtility(profileSource)
         for track in candidates {
             if Task.isCancelled { return [] }
             guard VideoID.isValid(track.id), seen.insert(track.id).inserted, !exclude.contains(track.id),
@@ -187,6 +191,7 @@ public enum PulseEngine {
             let direct = !supporting.isEmpty
             // Language, mood, novelty and retrieval hints cannot override relevance.
             let audible = !comparable && (soundFit ?? 0) >= 0.92
+            guard prepared.utility[track.id] != true || allowsUtility else { continue }
             guard !disliked.contains(track.id), seedTracks.isEmpty || known || sameArtist || genreFit > 0 || (!comparable && direct) || audible else { continue }
             let nearby = audible || known || sameArtist || genreFit == 1 || (!comparable && direct) || (genreFit > 0 && (soundFit ?? 0) >= 0.85)
             let language = DiscoveryPolicy.languageFit(track, preference: library.settings.languagePreference)
@@ -197,13 +202,14 @@ public enum PulseEngine {
             var score = preferred + genrePreference + PulseDirections.score(track, settings: library.settings) + affinity * 2.2 - similarity(vector, negative) * 1.65 * min(1, negativeEvidence / 8) + session
             score += known ? (1 - discovery) * 0.12 : discovery * (0.2 + affinity * 0.45)
             score += (consumption.mean - 0.5) * 1.6 + learned.correction * 1.4 + exploration + neighbour * 0.65 + language * 0.15 + contextScore
+            if direct { score += 1.5 + min(0.3, Double(max(0, supporting.count - 1)) * 0.15) }
             if let trackSeed { score += 4 * TrackPulse.fit(track, seed: trackSeed) }
             if disliked.contains(track.id) { score -= 1000 }
             if let avoidance = library.dislikedIDs.suffix(24).compactMap({ SoundProfile.similarity(track.soundProfile, library.tracks[$0]?.soundProfile) }).max() { score -= max(0, avoidance - 0.75) * 2 }
             score -= min(1.8, max(0, -(trackWeights[track.id] ?? 0)) * 0.3)
             if !nearby && !seedTracks.isEmpty { score -= library.settings.explorationStyle == "nearby" ? 0.35 : library.settings.explorationStyle == "balanced" ? 0.15 : 0 }
             let lane = known ? "familiar" : nearby ? "nearby" : "stretch"
-            var reason = known ? "Из твоей библиотеки" : newArtist && neighbour >= 0.24 ? "Новый исполнитель · рядом с \(matched?.artist ?? "твоим вкусом")" : lane == "stretch" && !seedTracks.isEmpty ? "Небольшой шаг в новое направление" : affinity > 0.1 ? "В твоём вкусе" : "Новое из YouTube"
+            var reason = known ? "Из твоей библиотеки" : newArtist && direct && neighbour >= 0.24 ? "Новый исполнитель · рядом с \(matched?.artist ?? "твоим вкусом")" : lane == "stretch" && !seedTracks.isEmpty ? "Небольшой шаг в новое направление" : affinity > 0.1 ? "В твоём вкусе" : "Новое из YouTube"
             if context != nil { reason = "Под настроение · " + reason.lowercased() }
             if (soundFit ?? 0) >= 0.78 { reason = "Похожее звучание · анализ аудио" }
             if let trackSeed { reason = "Похоже на «\(trackSeed.title)»" }
@@ -237,6 +243,7 @@ public enum PulseEngine {
         let seedGenres = seeds.map(GenreClassifier.genres)
         let seedArtists = Set(seeds.flatMap { index?.artists[$0.id] ?? PulseDiversity.artists($0) })
         let seedIDs = Set(seeds.map(\.id)), positive = weights(library, now: now)
+        let allowsUtility = RecordingQuality.allowsUtility(library)
         var pool = cached.filter { item in
             let latest = library.tracks[item.id] ?? item.track
             let fit = context.map { mood in
@@ -250,7 +257,7 @@ public enum PulseEngine {
             let direct = !Set(latest.directRelatedTo).isDisjoint(with: seedIDs)
             let audio = !comparable && seeds.prefix(12).contains { (SoundProfile.similarity(latest.soundProfile, $0.soundProfile) ?? 0) >= 0.92 }
             let relevant = seeds.isEmpty || (positive[item.id] ?? 0) > 0 || artist || genreFit > 0 || (!comparable && direct) || audio
-            return relevant && fit && (item.exposure == nil || item.exposure?.isValid == true) && !exclude.contains(item.id) && !recent.contains(item.id) && !heardRecordings.contains(index?.recordings[item.id] ?? PulseDiversity.recording(item.track)) && !library.hiddenIDs.contains(item.id) && !library.dislikedIDs.contains(item.id) && !PulseDiversity.blocked(latest, settings: library.settings) && (library.settings.includeLibrary || !saved.contains(item.id))
+            return (!RecordingQuality.utility(latest) || allowsUtility) && relevant && fit && (item.exposure == nil || item.exposure?.isValid == true) && !exclude.contains(item.id) && !recent.contains(item.id) && !heardRecordings.contains(index?.recordings[item.id] ?? PulseDiversity.recording(item.track)) && !library.hiddenIDs.contains(item.id) && !library.dislikedIDs.contains(item.id) && !PulseDiversity.blocked(latest, settings: library.settings) && (library.settings.includeLibrary || !saved.contains(item.id))
         }
         let normal = pool.filter { !library.dislikedIDs.contains($0.id) }; if !normal.isEmpty { pool = normal }
         let prepared = index ?? makeIndex(pool.map(\.track), library: Library())

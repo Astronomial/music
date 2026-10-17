@@ -70,4 +70,23 @@ final class GenreRelevanceTests: XCTestCase {
         var old = RecommendationContext(features: [1,0,0,0,0,0,0,0,0,0], lane: "nearby"); old.version = 1
         XCTAssertFalse(old.isValid)
     }
+    func testSavedTrackNeighbourBeatsAnUnrelatedSongWithOnlyTheSameBroadGenre() {
+        let seed = song(1, genre: "Pop"), generic = song(3, genre: "Pop")
+        var direct = song(2); direct.relatedTo = [seed.id]; direct.directRelatedTo = [seed.id]
+        var library = Library(); library.merge([seed]); library.likedIDs = [seed.id]; library.settings.artistDiversity = 0
+        XCTAssertEqual(PulseEngine.rank([generic, direct], library: library, limit: 2, now: now).first?.id, direct.id)
+    }
+
+    func testGenericEnergeticMusicDoesNotReplaceSongsOrLearnFromAnAccidentalCompletion() {
+        let seed = song(1, genre: "Pop")
+        var generic = song(2, genre: "Pop"); generic.title = "Energetic Music"; generic.relatedTo = [seed.id]; generic.directRelatedTo = [seed.id]
+        var real = song(3, genre: "Pop"); real.title = "Энергия"; real.relatedTo = [seed.id]; real.directRelatedTo = [seed.id]
+        var library = Library(); library.merge([seed, generic, real]); library.likedIDs = [seed.id]
+        library.events = [.init(trackID: generic.id, kind: .listen, at: now, seconds: 190, ratio: 0.95)]
+        XCTAssertEqual(PulseEngine.rank([generic, real], library: library, now: now).map(\.id), [real.id])
+        XCTAssertFalse(PulseEngine.anchors(in: library, now: now).contains { $0.id == generic.id })
+        library.likedIDs = [generic.id]
+        XCTAssertEqual(PulseEngine.rank([generic], library: library, now: now).first?.id, generic.id)
+    }
+
 }

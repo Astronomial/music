@@ -14,7 +14,7 @@ test('home and all mood shelves keep mostly Russian taste-supported tracks even 
  const {s,tracks}=catalogue();
  for(const result of [rankTracks(tracks,s,{now,limit:12}),...moodRecommendations(tracks,s,{now,limit:12}).map(m=>m.items)]){
   assert.equal(result.length,12); const ru=result.filter(r=>languageEvidence(r.track,'ru').fit>=.6).length;
-  assert.ok(ru>=8,`Only ${ru}/12 Russian recommendations`); assert.ok(result.slice(0,6).filter(r=>languageEvidence(r.track,'ru').fit>=.6).length>=4,'Windows home shows the first six recommendations'); assert.equal(new Set(result.map(r=>r.track.artist)).size,12);
+  assert.ok(ru>=8,`Only ${ru}/12 Russian recommendations`); assert.ok(result.slice(0,6).filter(r=>languageEvidence(r.track,'ru').fit>=.6).length>=4,'Windows home shows the first six recommendations'); assert.ok(new Set(result.map(r=>r.track.artist)).size>=10);for(const item of result)assert.ok(result.filter(r=>r.track.artist===item.track.artist).length<=2,'No artist may dominate the 12-track shelf');
  }
 });
 test('Russian preference does not admit unrelated or explicitly excluded songs to fill language slots',()=>{

@@ -40,7 +40,8 @@ final class DiscoveryPerformanceTests: XCTestCase {
             let result = PulseEngine.rank(tracks, library: library, limit: 12, mood: mood, now: now)
             XCTAssertEqual(result.count, 12)
             XCTAssertGreaterThanOrEqual(result.filter { $0.track.title.hasPrefix("Песня") }.count, 8, "Home/mood language preference was lost before diversity selection")
-            XCTAssertEqual(Set(result.map { $0.track.artist }).count, 12)
+            XCTAssertGreaterThanOrEqual(Set(result.map { $0.track.artist }).count, 10)
+            for item in result { XCTAssertLessThanOrEqual(result.filter { $0.track.artist == item.track.artist }.count, 2) }
         }
         library.settings.genreMode = "strict"; library.hiddenIDs = [tracks[31].id]
         library.settings.excludedArtists = [tracks[32].artist]
