@@ -80,7 +80,9 @@ struct NowPlayingView: View {
                 VStack(spacing: 20) {
                     Artwork(track: player.current, size: max(100, min(bounds.size.width - 48, min(bounds.size.height * 0.36, 300)))).accessibilityHidden(true)
                     VStack(spacing: 10) { Text(player.current?.title ?? "Музыка ждёт тебя").font(.title2.bold()).multilineTextAlignment(.center); if let track = player.current { NavigationLink { ArtistView(model: model, artistTrack: track) } label: { Text(track.artist).foregroundStyle(.secondary) }.accessibilityLabel("К исполнителю \(track.artist)") } }
-                    if let error = player.error {
+                    if player.isWaitingForPulse {
+                        Text(player.error ?? "Подбираем продолжение Пульса…").font(.subheadline).foregroundStyle(.secondary).accessibilityIdentifier("pulseWaiting")
+                    } else if let error = player.error {
                         GlassPanel { VStack(spacing: 12) { Text(error).font(.subheadline); Button("Повторить") { player.resume() }.buttonStyle(.bordered) } }
                     }
                     VStack(spacing: 8) {

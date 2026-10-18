@@ -3,6 +3,7 @@ import FormaCore
 import YouTubeKit
 
 protocol MusicCatalogProviding: Sendable {
+    func discoveryPage(_ request: DiscoveryRequest) async throws -> DiscoveryPage
     func search(_ query: String, genre: String?, mood: String?, hints: [String]) async throws -> [Track]
     func orderedSearch(_ query: String, recent: Bool) async throws -> [Track]
     func artistTracks(_ track: Track) async throws -> [Track]
@@ -10,6 +11,13 @@ protocol MusicCatalogProviding: Sendable {
     func describe(videoID: String) async -> Track?
 }
 extension MusicCatalogProviding {
+    func discoveryPage(_ request: DiscoveryRequest) async throws -> DiscoveryPage {
+        switch request.kind {
+        case .related: return DiscoveryPage(tracks: try await related(to: request.seed))
+        case .artist: return DiscoveryPage(tracks: try await artistTracks(request.seed))
+        case .search: return DiscoveryPage(tracks: try await search(request.query))
+        }
+    }
     func orderedSearch(_ query: String, recent: Bool) async throws -> [Track] { try await search(query) }
     func artistTracks(_ track: Track) async throws -> [Track] { try await search(track.artist) }
     func search(_ query: String) async throws -> [Track] { try await search(query, genre: nil, mood: nil, hints: []) }
@@ -29,6 +37,7 @@ actor YouTubeCatalog: MusicCatalogProviding {
         configuration.timeoutIntervalForResource = 20
         configuration.httpMaximumConnectionsPerHost = 3
         configuration.httpCookieStorage = nil
+        configuration.allowsCellularAccess = true; configuration.allowsExpensiveNetworkAccess = true; configuration.allowsConstrainedNetworkAccess = true
         session = URLSession(configuration: configuration)
     }
     func search(_ query: String, genre: String? = nil, mood: String? = nil, hints: [String] = []) async throws -> [Track] {
@@ -72,6 +81,35 @@ actor YouTubeCatalog: MusicCatalogProviding {
         return try CatalogParser.tracks(from: data).filter { $0.id != track.id }.map { t in
             var related = t; related.relatedTo = [track.id]; related.directRelatedTo = [track.id]; return related
         }
+    }
+    func discoveryPage(_ intent: DiscoveryRequest) async throws -> DiscoveryPage {
+        var body: [String: Any] = [:]
+        let route: String
+        let web: Bool
+        if let cursor = intent.continuation {
+            guard !cursor.isEmpty, cursor.count <= 20000 else { throw CatalogError.configuration }
+            route = intent.kind == .related ? "next" : "search"; web = intent.kind == .artist
+            body["continuation"] = cursor
+        } else {
+            switch intent.kind {
+            case .related:
+                route = "next"; web = false
+                body = ["videoId": intent.seed.id, "playlistId": "RDAMVM\(intent.seed.id)", "isAudioOnly": true, "enablePersistentPlaylistPanel": true]
+            case .artist:
+                route = "search"; web = true
+                body = ["query": intent.seed.artist, "params": "CAMSAhAB"]
+            case .search:
+                route = "search"; web = false
+                body = ["query": String(intent.query.prefix(200)), "params": "EgWKAQIIAQ%3D%3D"]
+            }
+        }
+        let data = try await request(route, body: body, web: web)
+        let page = try await Task.detached(priority: .utility) { DiscoveryPage(tracks: try CatalogParser.tracks(from: data), continuation: try CatalogContinuation.token(from: data)) }.value
+        return DiscoveryPage(tracks: page.tracks.filter { $0.id != intent.seed.id }.map { old in
+            var track = old
+            if intent.kind == .related { track.relatedTo = Array(Set(track.relatedTo + intent.roots + [intent.seed.id])); track.directRelatedTo = Array(Set(track.directRelatedTo + [intent.seed.id])) }
+            return track
+        }, continuation: page.continuation)
     }
     nonisolated func describe(videoID: String) async -> Track? {
         guard VideoID.isValid(videoID), !Task.isCancelled else { return nil }

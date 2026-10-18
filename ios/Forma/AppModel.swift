@@ -29,7 +29,11 @@ final class AppModel: ObservableObject {
     private let localWiFiMonitor = NWPathMonitor(requiredInterfaceType: .wifi)
     private var syncBackoff = SyncBackoff()
     private var syncRouteAllowed = false
-    private var pendingCatalogRefresh = false
+    @Published private(set) var tasteProfile = TasteProfile(library: Library())
+    @Published private(set) var discoveredPages = 0
+    private var discoveryPlanner = DiscoveryPlanner()
+    private var discoveryTask: Task<Void, Never>?
+    private var catalogueSeen: [String: Date] = [:]
     private var lastAutomaticRefresh = Date.distantPast
     let player: PlaybackController
     private let audioResolver: any StreamResolving
@@ -63,13 +67,14 @@ final class AppModel: ObservableObject {
     private var syncEpoch = UUID()
     private var connectionEpoch = UUID()
     private var recommendationTask: Task<Void, Never>?
-    private var rankingWork: Task<([Recommendation], [Recommendation], [String: [Recommendation]], PulseEngine.RankingIndex), Never>?
+    private var rankingWork: Task<([Recommendation], [Recommendation], [String: [Recommendation]], PulseEngine.RankingIndex, TasteProfile), Never>?
     private var settingsTask: Task<Void, Never>?
     private var persistTask: Task<Void, Never>?
     private var syncTask: Task<Void, Never>?
 
     init(playbackResolver: (any StreamResolving)? = nil, catalog: any MusicCatalogProviding = YouTubeCatalog()) {
         self.catalog = catalog
+        if let data = UserDefaults.standard.data(forKey: "forma.discoveryPlanner.v3"), let saved = try? JSONDecoder().decode(DiscoveryPlanner.self, from: data) { discoveryPlanner = saved; discoveredPages = saved.successfulPages }
         let streams = YouTubeStreamResolver()
         let audioResolver = playbackResolver ?? streams; self.audioResolver = audioResolver
         player = PlaybackController(resolver: audioResolver)
@@ -86,7 +91,7 @@ final class AppModel: ObservableObject {
         player.onConnectivityChange = { [weak self] policy in
             guard let self else { return }
             updateSyncRoute()
-            if policy.reachable { scheduleGenreMetadata() }
+            if policy.reachable { scheduleGenreMetadata(); scheduleDiscoveryIfLow() }
             if !policy.canPrewarmExtraTracks { Task { await self.audioResolver.prewarm(videoIDs: []) } }
         }
         player.onSelected = { [weak self] track in
@@ -98,7 +103,7 @@ final class AppModel: ObservableObject {
         player.onStarted = { [weak self] track in
             guard let self else { return }
             self.library.record(ListeningEvent(trackID: track.id, kind: .play, seconds: 0, ratio: 0, newArtist: PulseDiversity.newArtist(track, library: self.library), recommendation: self.activeContext, surface: self.player.selectionSurface))
-            self.persist(); self.updateRecommendations(); self.scheduleSoundAnalysis(track)
+            self.persist(); self.updateRecommendations(); self.scheduleSoundAnalysis(track); self.scheduleDiscoveryIfLow()
         }
         player.onFeedback = { [weak self] event in
             guard let self else { return }
@@ -107,16 +112,19 @@ final class AppModel: ObservableObject {
             self.persist(); self.updateRecommendations()
             if self.library.events.count % 4 == 0 { Task { await self.refresh(automatic: true) } }
         }
-        player.pulseNext = { [weak self] excluded, mood in
+        player.pulseNext = { [weak self] excluded, mood in self?.nextPulse(excluded: excluded, mood: mood) }
+        player.onPulseLow = { [weak self] in self?.scheduleDiscoveryIfLow(force: true) }
+        player.pulseRefill = { [weak self] excluded, mood in
             guard let self else { return nil }
-            if let id = self.pulsePlaylistID, !self.library.playlists.contains(where: { $0.id == id }) { return nil }
-            let source = mood.flatMap { self.moodCache[$0] } ?? (self.pulseCachePlaylistID == self.pulsePlaylistID && self.pulseCacheTrackID == self.pulseTrackID ? self.pulseCache : self.pulseTrackID == nil ? self.recommendations : [])
-            guard let choice = PulseEngine.selectCached(source, library: self.selectionLibrary(), exclude: excluded, currentID: self.player.current?.id, index: self.playbackIndex, mood: mood) else { return nil }
-            if let seed = self.pulseTrackID.flatMap({ self.library.tracks[$0] }), TrackPulse.fit(choice.track, seed: seed) <= 0.1 { return nil }
-            if let exposure = choice.exposure { self.selectedContexts[choice.id] = exposure }
-            return choice.track
+            for _ in 0..<2 {
+                await self.refresh()
+                guard !Task.isCancelled else { return nil }
+                await self.recommendationTask?.value
+                if let track = self.nextPulse(excluded: excluded, mood: mood) { return track }
+            }
+            return nil
         }
-                Task {
+        Task {
             await restoreLibrary()
             await sync.retireGoogleCredentials()
             await restorePCConnection(epoch: connectionEpoch)
@@ -125,7 +133,7 @@ final class AppModel: ObservableObject {
     deinit {
         localWiFiMonitor.cancel(); recommendationTask?.cancel(); rankingWork?.cancel()
         settingsTask?.cancel(); persistTask?.cancel(); syncTask?.cancel()
-        pulseWork?.cancel(); linkTask?.cancel(); soundTask?.cancel(); genreTask?.cancel()
+        pulseWork?.cancel(); linkTask?.cancel(); soundTask?.cancel(); genreTask?.cancel(); discoveryTask?.cancel()
     }
     private func restoreLibrary() async {
         guard !didLoadLibrary, let storageURL else { isRestoringLibrary = false; return }
@@ -289,7 +297,14 @@ final class AppModel: ObservableObject {
             let result = await work.value
             guard pulseGeneration == token else { return }
             isStartingPulse = false
-            guard let first = result.first else { message = "Пока нет подходящих треков. Обнови подборки или найди музыку в поиске."; return }
+            guard let first = result.first else {
+                await refresh()
+                await recommendationTask?.value
+                guard pulseGeneration == token else { return }
+                if let track = nextPulse(excluded: excluded, mood: mood) { player.startPulse(track, mood: mood) }
+                else { message = "Пока нет подходящих треков. Добавь любимую музыку или обнови Пульс." }
+                return
+            }
             pulseCache = result; pulseCacheTrackID = nil
             pulseCachePlaylistID = playlistID
             if let mood { moodCache[mood] = result }
@@ -334,84 +349,66 @@ final class AppModel: ObservableObject {
             if let tracks = try? await catalog.related(to: track) { merge(tracks) }
         }
     }
+    private func nextPulse(excluded: Set<String>, mood: String?) -> Track? {
+        if let id = pulsePlaylistID, !library.playlists.contains(where: { $0.id == id }) { return nil }
+        let source = mood.flatMap { moodCache[$0] } ?? (pulseCachePlaylistID == pulsePlaylistID && pulseCacheTrackID == pulseTrackID ? pulseCache : pulseTrackID == nil ? recommendations : [])
+        guard let choice = PulseEngine.selectCached(source, library: selectionLibrary(), exclude: excluded, currentID: player.current?.id, index: playbackIndex, mood: mood) else { return nil }
+        if let seed = pulseTrackID.flatMap({ library.tracks[$0] }), TrackPulse.fit(choice.track, seed: seed) <= 0.1 { return nil }
+        if let exposure = choice.exposure { selectedContexts[choice.id] = exposure }
+        return choice.track
+    }
+    private func scheduleDiscoveryIfLow(force: Bool = false) {
+#if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--forma-smoke") { return }
+#endif
+        guard didLoadLibrary, player.networkPolicy.reachable, discoveryTask == nil else { return }
+        let remaining = pulseCache.filter { !player.pulseExclusions.contains($0.id) }.count
+        guard force || remaining < 18 || Date().timeIntervalSince(lastAutomaticRefresh) > 120 else { return }
+        // Selection/ranking calls can happen several times in one UI update.
+        // This timestamp also bounds empty-source retries and offline recovery.
+        guard Date().timeIntervalSince(lastAutomaticRefresh) > 8 else { return }
+        Task { [weak self] in await self?.refresh(automatic: true) }
+    }
     func refresh(automatic: Bool = false) async {
 #if DEBUG && targetEnvironment(simulator)
-        // The native smoke uses controlled audio/catalogue data, never live discovery.
         if automatic && ProcessInfo.processInfo.arguments.contains("--forma-smoke") { return }
 #endif
-        guard !isRefreshing else { if !automatic { pendingCatalogRefresh = true }; return }
-        let networkPolicy = player.networkPolicy
-        if automatic {
-            guard networkPolicy.reachable, !player.isLoading,
-                  Date().timeIntervalSince(lastAutomaticRefresh) >= networkPolicy.automaticRefreshInterval else { return }
-            lastAutomaticRefresh = Date()
-        }
-        isRefreshing = true
-        defer {
-            isRefreshing = false
-            if pendingCatalogRefresh {
-                pendingCatalogRefresh = false
-                Task { [weak self] in await self?.refresh() }
-            }
-        }
-        let settings = library.settings
-        let suffix = PulseDirections.suffix(settings), hints = PulseDirections.hints(settings)
-        let anchors = PulseEngine.anchors(in: contextualLibrary(), limit: 12)
-        let genres = BilingualDiscovery.tasteGenres(anchors: anchors, settings: settings)
-        var seenArtists = Set<String>()
-        let artists = (settings.preferredArtists + anchors.map(\.artist)).filter { artist in
-            !artist.isEmpty && artist != "Неизвестный исполнитель" && !settings.excludedArtists.contains(where: { PulseEngine.fold(artist).contains(PulseEngine.fold($0)) }) && seenArtists.insert(PulseEngine.fold(artist)).inserted
-        }
+        guard !isRestoringLibrary, player.networkPolicy.reachable else { return }
+        if let work = discoveryTask { await work.value; return }
+        if automatic && Date().timeIntervalSince(lastAutomaticRefresh) < 8 { return }
+        lastAutomaticRefresh = Date(); isRefreshing = true
+        let work = Task { [weak self] in await self?.discoverBatch(); return () }
+        discoveryTask = work
+        await work.value
+        discoveryTask = nil; isRefreshing = false
+    }
+    private func discoverBatch() async {
+        let source = contextualLibrary()
+        let jobs = discoveryPlanner.plan(library: source, discoveries: pulseCache.map(\.track), limit: 10)
+        guard !jobs.isEmpty else { return }
         let catalog = self.catalog
-        enum Request: Sendable { case search(BilingualDiscovery.Search), related(Track), artist(String) }
-        let searches = BilingualDiscovery.searches(genres: genres, suffix: suffix, hints: hints, language: settings.languagePreference, artists: Array(artists.prefix(6)))
-        let selectedSearches: [BilingualDiscovery.Search]
-        if automatic && networkPolicy.lean {
-            // Keep all six moods and the preferred language, without starting
-            // two searches per mood plus every genre while audio needs the VPN.
-            selectedSearches = MoodMix.all.compactMap { mood in
-                let choices = searches.filter { $0.mood == mood.id }
-                return settings.languagePreference == "ru" ? choices.first : choices.last
+        let parallelism = min(3, player.networkPolicy.catalogParallelism)
+        var next = 0, successes = 0
+        var collected: [Track] = []
+        await withTaskGroup(of: (DiscoveryRequest, DiscoveryPage?).self) { group in
+            func submit(_ job: DiscoveryRequest) {
+                group.addTask { (job, try? await catalog.discoveryPage(job)) }
             }
-        } else { selectedSearches = searches }
-        let requests: [Request] = anchors.prefix(networkPolicy.lean ? 2 : 6).map { .related($0) } + artists.prefix(networkPolicy.lean ? 1 : 3).map { .artist($0) } + selectedSearches.map { .search($0) }
-        let parallelism = min(networkPolicy.catalogParallelism, player.current == nil ? 3 : 2)
-        var index = 0, successes = 0, failure: String?, collected: [Track] = []
-        // Bound parallelism to three network requests; show completed batches immediately.
-        await withTaskGroup(of: ([Track], String?).self) { group in
-            func submit(_ request: Request) {
-                group.addTask {
-                    do {
-                        let tracks: [Track]
-                        switch request {
-                        case .search(let intent): tracks = try await catalog.search(intent.query, genre: intent.genre, mood: intent.mood, hints: intent.hints)
-                        case .related(let track): tracks = try await catalog.related(to: track)
-                        case .artist(let name): tracks = try await catalog.search("\(name) music \(suffix)", hints: hints)
-                        }
-                        return (tracks, nil)
-                    } catch { return ([], error.localizedDescription) }
-                }
-            }
-            while index < min(parallelism, requests.count) { submit(requests[index]); index += 1 }
-            for await (tracks, notice) in group {
+            while next < min(parallelism, jobs.count) { submit(jobs[next]); next += 1 }
+            for await (job, page) in group {
                 if Task.isCancelled { group.cancelAll(); break }
-                if notice == nil { collected += tracks; merge(tracks); successes += 1 } else { failure = notice }
-                if index < requests.count, !(automatic && player.isLoading) { submit(requests[index]); index += 1 }
+                discoveryPlanner.complete(job, page: page)
+                if let page { successes += 1; collected.append(contentsOf: page.tracks) }
+                if next < jobs.count { submit(jobs[next]); next += 1 }
             }
         }
-        if successes > 0, !Task.isCancelled {
-            let snapshot = library, candidates = collected
-            let bridges = await Task.detached(priority: .utility) { Array(PulseEngine.rank(candidates, library: snapshot, limit: 12).filter(\.newArtist).prefix(networkPolicy.lean ? 1 : 3).map(\.track)) }.value
-            for bridge in bridges {
-                guard !Task.isCancelled, !(automatic && player.isLoading) else { return }
-                if var next = try? await catalog.related(to: bridge) {
-                    for i in next.indices { next[i].relatedTo = Array(Set(next[i].relatedTo + bridge.relatedTo)).sorted() }
-                    merge(next)
-                }
-            }
-            UserDefaults.standard.set(6, forKey: "forma.discoveryRevision")
-        }
-        if successes == 0, !Task.isCancelled, !automatic { message = failure ?? "Каталог пока недоступен. Попробуй ссылку на конкретный трек." }
+        guard !Task.isCancelled else { return }
+        discoveredPages = discoveryPlanner.successfulPages
+        if let data = try? JSONEncoder().encode(discoveryPlanner) { UserDefaults.standard.set(data, forKey: "forma.discoveryPlanner.v3") }
+        // One merge/rebuild per batch avoids repeatedly cancelling a 3,000-track
+        // ranking job as individual network responses arrive.
+        if !collected.isEmpty { merge(collected) }
+        else if successes == 0, !player.isPlaying { message = "Не удалось обновить Пульс. Проверим подключение и попробуем снова." }
     }
     func search(_ query: String) async {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -447,12 +444,11 @@ final class AppModel: ObservableObject {
     }
     private func merge(_ tracks: [Track]) {
         library.merge(tracks)
-        if library.tracks.count > 3000 {
-            let protected = Set(library.likedIDs + library.playlists.flatMap(\.trackIDs) + library.events.map(\.trackID) + (player.current.map { [$0.id] } ?? []))
-            for id in library.tracks.keys.sorted() where !protected.contains(id) {
-                if library.tracks.count <= 3000 { break }; library.tracks.removeValue(forKey: id)
-            }
-        }
+        let now = Date()
+        for track in tracks { catalogueSeen[track.id] = now }
+        let protected = Set(pulseCache.map(\.id) + recommendations.map(\.id) + searchResults.map(\.id) + (player.current.map { [$0.id] } ?? []))
+        DiscoveryCache.trim(&library, seen: catalogueSeen, protected: protected, limit: 4000)
+        catalogueSeen = catalogueSeen.filter { library.tracks[$0.key] != nil }
         persist(); updateRecommendations()
     }
     private func updateRecommendations() {
@@ -468,12 +464,12 @@ final class AppModel: ObservableObject {
                 let home = BilingualDiscovery.rankHome(candidates, library: snapshot, limit: 40, index: index)
                 let next = PulseEngine.rank(candidates, library: snapshot, limit: 60, index: index, playlistID: playlistID, trackID: trackID)
                 let moods = Dictionary(uniqueKeysWithValues: MoodMix.all.map { ($0.id, BilingualDiscovery.rankHome(candidates, library: snapshot, limit: 30, mood: $0.id, allowRecent: true, index: index)) })
-                return (home, next, moods, index)
+                return (home, next, moods, index, TasteProfile(library: snapshot))
             }
             rankingWork = work
             let result = await work.value
             guard recommendationGeneration == token, !Task.isCancelled, playlistID == pulsePlaylistID, trackID == pulseTrackID else { return }
-            recommendations = result.0; pulseCache = result.1; pulseCacheTrackID = trackID; pulseCachePlaylistID = playlistID; moodCache = result.2; playbackIndex = result.3
+            recommendations = result.0; pulseCache = result.1; pulseCacheTrackID = trackID; pulseCachePlaylistID = playlistID; moodCache = result.2; playbackIndex = result.3; tasteProfile = result.4
             scheduleGenreMetadata()
             player.refreshPreparedSelection()
             if player.current == nil, player.networkPolicy.canPrewarmExtraTracks { await audioResolver.prewarm(videoIDs: Array(pulseCache.prefix(3).map(\.id))) }
@@ -486,7 +482,7 @@ final class AppModel: ObservableObject {
         guard genreTask == nil, didLoadLibrary, player.networkPolicy.reachable else { return }
         let now = Date()
         var seen = Set<String>()
-        let anchors = PulseEngine.genreMetadataAnchors(in: library, limit: 24)
+        let anchors = PulseEngine.genreMetadataAnchors(in: library, limit: Int.max)
         let pool = Array(anchors.prefix(4)) + pulseCache.prefix(6).map(\.track) + Array(anchors.dropFirst(4)) + recommendations.prefix(12).map(\.track)
         let tracks = pool.filter { track in
             seen.insert(track.id).inserted && now.timeIntervalSince(genreAttempts[track.id] ?? .distantPast) > 600 && now.timeIntervalSince1970 * 1000 - (library.tracks[track.id]?.genreEvidence?.checkedAt ?? 0) > 7 * 86400000

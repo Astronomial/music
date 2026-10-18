@@ -33,6 +33,13 @@ final class PlaybackController: ObservableObject {
     private var lastNowPlayingUpdate: TimeInterval = 0
     var onFeedback: ((ListeningEvent) -> Void)?
     var pulseNext: ((Set<String>, String?) -> Track?)?
+    var pulseRefill: ((Set<String>, String?) async -> Track?)?
+    var onPulseLow: (() -> Void)?
+    @Published private(set) var isWaitingForPulse = false
+    private var refillTask: Task<Void, Never>?
+    private var refillToken = UUID()
+    private var playedOrder: [String] = []
+    var pulseExclusions: Set<String> { playedInRun.union(failedCandidates).union(current.map { [$0.id] } ?? []) }
     private var engine = AVQueuePlayer()
     private let resolver: any StreamResolving
     private let network = NWPathMonitor()
@@ -134,7 +141,7 @@ final class PlaybackController: ObservableObject {
         extraPrefetch?.cancel()
         for entry in extraPending.values { entry.player.cancelPendingPrerolls(); entry.player.replaceCurrentItem(with: nil) }
         for entry in bufferedItems.values { entry.player.cancelPendingPrerolls(); entry.player.replaceCurrentItem(with: nil) }
-        task?.cancel(); startWatchdog?.cancel(); startConfirmation?.cancel(); prefetch?.cancel(); artworkTask?.cancel(); networkRecoveryTask?.cancel(); stallTask?.cancel(); network.cancel()
+        refillTask?.cancel(); task?.cancel(); startWatchdog?.cancel(); startConfirmation?.cancel(); prefetch?.cancel(); artworkTask?.cancel(); networkRecoveryTask?.cancel(); stallTask?.cancel(); network.cancel()
         if let periodic { engine.removeTimeObserver(periodic) }
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         if let stallObserver { NotificationCenter.default.removeObserver(stallObserver) }
@@ -146,6 +153,7 @@ final class PlaybackController: ObservableObject {
         networkPolicy = policy; onConnectivityChange?(policy)
         if previous == nil, policy.reachable {
             // Initial delivery updates budgets, without cancelling the cold start.
+            if isWaitingForPulse { if requestedPlayback { waitForPulse() }; return }
             if isLoading { armStartWatchdog(seconds: engine.currentItem == nil ? policy.extractionDeadline(base: extractionTimeout) : policy.bufferDeadline(base: bufferTimeout), token: generation) }
             if isPlaying { scheduleExtraPreparation() }
             return
@@ -169,6 +177,7 @@ final class PlaybackController: ObservableObject {
             guard networkSignature == signature, !Task.isCancelled else { return }
             networkRecovering = !policy.reachable
             guard policy.reachable, requestedPlayback else { return }
+            if isWaitingForPulse { waitForPulse(); return }
             if let current, isLoading || engine.currentItem == nil || engine.currentItem?.status == .failed || engine.timeControlStatus != .playing {
                 start(current, at: position, refreshing: true)
             } else { prepareNext() }
@@ -195,13 +204,14 @@ final class PlaybackController: ObservableObject {
         }
     }
     func play(_ track: Track, list: [Track]? = nil, asPulse: Bool = false, context: String? = nil) {
+        cancelPulseRefill(); isWaitingForPulse = false
         // AVQueuePlayer may have advanced before its asynchronous KVO callback arrives.
         let alreadyAdvanced = prepared.map { $0.track.id == track.id && engine.currentItem === $0.item } ?? false
         adoptPreparedItem()
         finish(.skip)
         if let list {
             queue = Array(list.drop { $0.id != track.id }.dropFirst())
-            pulseMode = asPulse; mood = context; playedInRun = []
+            pulseMode = asPulse; mood = context; playedInRun = []; playedOrder = []
         }
         if alreadyAdvanced { refreshPreparedSelection(); resume(); return }
         if bufferedItems[track.id]?.audio.isFresh(margin: 45) == true { start(track); return }
@@ -216,6 +226,7 @@ final class PlaybackController: ObservableObject {
         play(track, list: [track], asPulse: true, context: mood)
     }
     private func start(_ track: Track, at seconds: Double = 0, refreshing: Bool = false) {
+        cancelPulseRefill(); isWaitingForPulse = false
         queueExhausted = false
         if !refreshing || startTiming == nil { beginTiming(source: "network") }
         let buffered = refreshing ? nil : takeBufferedItem(track.id)
@@ -264,6 +275,7 @@ final class PlaybackController: ObservableObject {
     }
     func toggle() { requestedPlayback ? pause() : resume() }
     func pause() {
+        cancelPulseRefill()
         cancelExtraPreparation()
         clock.tick(at: ProcessInfo.processInfo.systemUptime, playing: isPlaying, seeking: seeking)
         if isLoading, engine.currentItem == nil { generation = UUID(); task?.cancel() }
@@ -274,6 +286,7 @@ final class PlaybackController: ObservableObject {
     }
     func resume() {
         guard let current else { return }
+        if isWaitingForPulse { requestedPlayback = true; waitForPulse(); return }
         if queueExhausted { start(current); return }
         requestedPlayback = true
         guard !interrupted, !mediaServicesLost else { updateNowPlaying(); return }
@@ -299,7 +312,7 @@ final class PlaybackController: ObservableObject {
     private func advance(ended: Bool, recordFeedback: Bool) {
         adoptPreparedItem()
         if recordFeedback { finish(ended ? .listen : .skip) } else { clock.reset() }
-        if let current { playedInRun.insert(current.id) }
+        if let current { rememberPlayed(current.id) }
         if pulseMode { refreshPreparedSelection() }
         if let ready = prepared, ready.audio.isFresh(margin: 15), ready.item.status != .failed, engine.items().contains(ready.item) {
             if bufferedItems[ready.track.id]?.audio.isFresh(margin: 45) == true {
@@ -311,7 +324,42 @@ final class PlaybackController: ObservableObject {
         }
         let next = candidate()
         if let next { if !pulseMode, queue.first?.id == next.id { queue.removeFirst() }; start(next) }
+        else if pulseMode { waitForPulse() }
         else { queueExhausted = true; pause(); error = "Очередь закончилась. Выбери трек или начни этот заново." }
+    }
+    private func rememberPlayed(_ id: String) {
+        guard playedInRun.insert(id).inserted else { return }
+        playedOrder.append(id)
+        if playedOrder.count > 500 { playedInRun.remove(playedOrder.removeFirst()) }
+    }
+    private func cancelPulseRefill() {
+        refillToken = UUID(); refillTask?.cancel(); refillTask = nil
+    }
+    /// An empty radio cache is a request for more music, not a finite queue end.
+    /// A separate token prevents a late response from undoing pause/manual play.
+    private func waitForPulse() {
+        guard pulseMode else { return }
+        cancelPulseRefill(); let token = refillToken
+        isWaitingForPulse = true; requestedPlayback = true; queueExhausted = false
+        engine.pause(); isPlaying = false; isLoading = true; error = nil
+        startWatchdog?.cancel(); cancelStartConfirmation(); startTiming = nil
+        updateNowPlaying()
+        refillTask = Task { [weak self] in
+            var attempts = 0
+            while !Task.isCancelled {
+                guard let self, refillToken == token, pulseMode, requestedPlayback else { return }
+                if networkPolicy.reachable {
+                    let next: Track?
+                    if let cached = candidate() { next = cached }
+                    else { next = await pulseRefill?(pulseExclusions, mood) }
+                    guard refillToken == token, pulseMode, requestedPlayback, !Task.isCancelled else { return }
+                    if let next { start(next); return }
+                }
+                attempts += 1
+                error = networkPolicy.reachable ? "Ищем подходящее продолжение Пульса…" : "Пульс продолжится после подключения к интернету"
+                do { try await Task.sleep(nanoseconds: UInt64(min(30, 3 + attempts * 2)) * 1_000_000_000) } catch { return }
+            }
+        }
     }
     private func candidate(excluding additional: Set<String> = []) -> Track? {
         let excluded = additional.union(playedInRun).union(failedCandidates).union(current.map { [$0.id] } ?? [])
@@ -319,8 +367,9 @@ final class PlaybackController: ObservableObject {
     }
     private func adoptPreparedItem() {
         guard let ready = prepared, engine.currentItem === ready.item else { return }
+        cancelPulseRefill(); isWaitingForPulse = false
         finish(.listen)
-        if let current { playedInRun.insert(current.id) }
+        if let current { rememberPlayed(current.id) }
         if !pulseMode { queue.removeAll { $0.id == ready.track.id } }
         onSelected?(ready.track)
         queueExhausted = false
@@ -465,7 +514,8 @@ final class PlaybackController: ObservableObject {
         }
     }
     private func prepareNext() {
-        guard !networkRecovering, !preparing, prepared == nil, let next = candidate(), let active = engine.currentItem else { return }
+        guard !networkRecovering, !preparing, prepared == nil, !isWaitingForPulse, let active = engine.currentItem else { return }
+        guard let next = candidate() else { if pulseMode { onPulseLow?() }; return }
         cancelExtraPreparation()
         preparing = true
         prefetchedCurrent = next.id
@@ -495,7 +545,9 @@ final class PlaybackController: ObservableObject {
     }
     func refreshPreparedSelection() {
         adoptPreparedItem()
+        guard !isWaitingForPulse else { return }
         guard let next = candidate() else {
+            if pulseMode { onPulseLow?() }
             clearBufferedItems()
             preparationToken = UUID(); prefetch?.cancel(); preparing = false
             if let ready = prepared, engine.currentItem !== ready.item { engine.remove(ready.item); prepared = nil }
@@ -703,7 +755,10 @@ final class PlaybackController: ObservableObject {
         statusObservation = nil; currentObservation = nil; itemObservation = nil
         engine = AVQueuePlayer(); configureEngine()
         isPlaying = false; isLoading = false
-        if requestedPlayback, !interrupted, let current { start(current, at: position, refreshing: true) }
+        if requestedPlayback, !interrupted {
+            if isWaitingForPulse { waitForPulse() }
+            else if let current { start(current, at: position, refreshing: true) }
+        }
         else { updateNowPlaying() }
     }
     func refreshArtworkPreference() {

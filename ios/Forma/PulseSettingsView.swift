@@ -14,6 +14,7 @@ struct PulseSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 Text("Что слушаем?").font(.largeTitle.bold()).accessibilityAddTraits(.isHeader)
+                NavigationLink { TasteDiagnosticsView(model: model) } label: { Label("Твой вкус и источники", systemImage: "person.wave.2") }.buttonStyle(.bordered)
                 Button("Больше новых имён") { model.configure { $0.discovery = 0.85; $0.explorationStyle = "nearby"; $0.artistDiversity = 1; $0.repeatHours = 24 } }.buttonStyle(.bordered)
                 Button("На каждый день · 70/30") { model.configure({ $0.discovery = 0.7; $0.explorationStyle = "nearby"; $0.languagePreference = "ru"; $0.skipSensitivity = "strict"; $0.artistDiversity = 0.6 }, refreshCatalog: true) }.buttonStyle(.bordered)
                 GlassPanel {

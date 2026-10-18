@@ -537,6 +537,41 @@ enum NativeSmoke {
         guard model.isDisliked(other), model.player.current?.id == following.id else { throw SyncError.rejected("Rating a library track interrupted playback") }
         model.toggleDislike(other); model.player.pause()
 
+        // Exhaust the synchronous radio cache repeatedly. Awaiting retrieval must
+        // continue Pulse while preserving pause and subsequent manual selections.
+        let radio = PlaybackController(resolver: ConstantFixtureResolver(audio: audio))
+        var fetched = 0
+        radio.pulseNext = { _, _ in nil }
+        radio.pulseRefill = { excluded, _ in
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            fetched += 1
+            let song = Track(videoID: String(format: "r%010d", fetched), title: "Открытие \(fetched)", artist: "Новый \(fetched)", duration: 5)
+            return excluded.contains(song.id) ? nil : song
+        }
+        radio.startPulse(tracks[0])
+        try await until("infinite-pulse-start") { radio.isPlaying }
+        for round in 1...12 {
+            radio.next()
+            try await until("infinite-pulse-page-\(round)") { radio.isPlaying && radio.current?.id == String(format: "r%010d", round) }
+            guard radio.error == nil, !radio.isWaitingForPulse else { throw SyncError.rejected("Pulse became a finite queue") }
+        }
+        radio.pulseRefill = { _, _ in
+            // Deliberately ignores cancellation to exercise the generation guard.
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            return tracks[1]
+        }
+        let beforePause = radio.current?.id
+        radio.next(); guard radio.isWaitingForPulse else { throw SyncError.rejected("Empty Pulse did not await a page") }
+        radio.pause(); try await Task.sleep(nanoseconds: 600_000_000)
+        guard !radio.isPlaying, !radio.isLoading, radio.current?.id == beforePause else { throw SyncError.rejected("Late discovery undid pause") }
+        radio.resume()
+        try await until("pulse-resume-after-pause") { radio.isPlaying && radio.current?.id == tracks[1].id }
+        radio.next(); radio.play(tracks[3], list: [tracks[3]])
+        try await until("manual-selection-during-pulse-refill") { radio.isPlaying && radio.current?.id == tracks[3].id }
+        try await Task.sleep(nanoseconds: 600_000_000)
+        guard radio.current?.id == tracks[3].id, radio.selectionSurface == "manual" else { throw SyncError.rejected("Late discovery replaced manual selection") }
+        radio.pause()
+
         model.play(following, list: [following])
         try await until("last-queue-track-playing") { model.player.isPlaying }
         model.player.seek(to: 4.6)
@@ -570,7 +605,7 @@ enum NativeSmoke {
                 "oldSaveCannotOverwriteNewerLibrary": true, "syncBaselineBoundToPairedPC": true, "legacyBaselineMigratedSafely": true,
                 "advancedQueueMatchesNewList": true, "keychainRestoreRetriesTransientFailure": true, "cancelledSearchClearsSpinner": true,
                 "dislikeAdvancesWithSingleSignal": true, "undoAndLibraryDislikeKeepPlayback": true, "personalPulseDistinctFromMood": true,
-                "endedQueueRestartsFromBeginning": true]
+                "endedQueueRestartsFromBeginning": true, "pulseRefillsTwelveRemotePages": true, "pulseRefillRespectsPause": true, "pulseRefillRespectsManualSelection": true]
     }
 }
 #endif
