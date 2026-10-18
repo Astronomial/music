@@ -6,7 +6,7 @@
 
 - [Forma iOS 1.9.0 — IPA для подписи](https://github.com/Astronomial/music/releases/download/ios-v1.9.0/Forma-iOS-1.9.0-unsigned.ipa).
 - [Контрольная сумма IPA](https://github.com/Astronomial/music/releases/download/ios-v1.9.0/Forma-iOS-SHA256SUMS.txt).
-- [Forma 1.14.0 для Windows — синхронизация и новый Пульс](https://github.com/Astronomial/music/raw/refs/heads/main/downloads/Forma-1.14.0-Windows-x64.exe).
+- [Forma 1.17.0 для Windows — синхронизация библиотеки](https://github.com/Astronomial/music/releases/download/win-v1.17.0/Forma-1.17.0-Windows-x64.exe).
 - [Sideloadly для Windows — официальный сайт](https://sideloadly.io/).
 
 IPA собрана для настоящего устройства, но не подписана сертификатом Apple. Простое открытие файла на iPhone её не установит. Windows-приложение можно обновить запуском новой portable-сборки: прежняя библиотека сохраняется.
@@ -29,7 +29,7 @@ IPA собрана для настоящего устройства, но не �
 
 ## Подключить библиотеку к ПК
 
-1. Обнови ПК до **1.14.0**, iPhone до **1.6.1**. Подключи их к одному домашнему роутеру; ПК может использовать Ethernet.
+1. Обнови ПК до **1.17.0**, iPhone до **1.9.0**. Подключи их к одному домашнему роутеру; ПК может использовать Ethernet.
 2. На ПК: **Настройки → iPhone и ПК · Wi-Fi → Подключить iPhone**. Разреши Forma доступ к частной сети в брандмауэре. Скопируй код подключения.
 3. На телефоне: **Настройки → Синхронизация с ПК**, вставь код → **Подключить ПК**. Разреши iOS доступ к локальной сети.
 4. Проверь подготовленные изменения **На ПК** и **На iPhone**, нажми **Применить на обоих устройствах** на любом одном устройстве. Можно отклонить пакет.
