@@ -570,25 +570,31 @@ enum NativeSmoke {
             guard radio.error == nil, !radio.isWaitingForPulse else { throw SyncError.rejected("Pulse became a finite queue") }
         }
         let readyDuringWait = Track(videoID: "cachewake01", title: "Готовое продолжение", artist: "Новый артист", duration: 5)
-        var cacheReady = false
+        var cacheReady = false, cacheLookupStarted = false
         radio.pulseNext = { excluded, _ in cacheReady && !excluded.contains(readyDuringWait.id) ? readyDuringWait : nil }
-        radio.pulseRefill = { _, _ in try? await Task.sleep(nanoseconds: 2_000_000_000); return tracks[1] }
+        radio.pulseRefill = { _, _ in cacheLookupStarted = true; try? await Task.sleep(nanoseconds: 2_000_000_000); return tracks[1] }
         radio.next(); guard radio.isWaitingForPulse else { throw SyncError.rejected("Pulse did not enter refill state") }
+        try await until("cache-refill-request-started") { cacheLookupStarted }
         cacheReady = true; radio.pulseCandidatesChanged()
         try await until("new-cache-wakes-waiting-pulse") { radio.isPlaying && radio.current?.id == readyDuringWait.id }
         radio.pulseNext = { _, _ in nil }
+        var lateLookupStarted = false
         radio.pulseRefill = { _, _ in
+            lateLookupStarted = true
             // Deliberately ignores cancellation to exercise the generation guard.
             try? await Task.sleep(nanoseconds: 500_000_000)
             return tracks[1]
         }
         let beforePause = radio.current?.id
         radio.next(); guard radio.isWaitingForPulse else { throw SyncError.rejected("Empty Pulse did not await a page") }
+        try await until("pause-refill-request-started") { lateLookupStarted }
         radio.pause(); try await Task.sleep(nanoseconds: 600_000_000)
         guard !radio.isPlaying, !radio.isLoading, radio.current?.id == beforePause else { throw SyncError.rejected("Late discovery undid pause") }
         radio.resume()
         try await until("pulse-resume-after-pause") { radio.isPlaying && radio.current?.id == tracks[1].id }
-        radio.next(); radio.play(tracks[3], list: [tracks[3]])
+        lateLookupStarted = false; radio.next()
+        try await until("manual-refill-request-started") { lateLookupStarted }
+        radio.play(tracks[3], list: [tracks[3]])
         try await until("manual-selection-during-pulse-refill") { radio.isPlaying && radio.current?.id == tracks[3].id }
         try await Task.sleep(nanoseconds: 600_000_000)
         guard radio.current?.id == tracks[3].id, radio.selectionSurface == "manual" else { throw SyncError.rejected("Late discovery replaced manual selection") }
