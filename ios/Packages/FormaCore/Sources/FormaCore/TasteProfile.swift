@@ -42,10 +42,15 @@ public struct TasteProfile: Sendable {
             values[id] = (likes.contains(id) ? likeShare / Double(max(1, likes.count)) : 0) * scale
                 + (playlistIDs.contains(id) ? playlistShare / Double(max(1, playlistIDs.count)) : 0) * scale
         }
+        let savedGenres = Array(Set(explicit.compactMap { library.tracks[$0] }.flatMap(GenreClassifier.genres)))
         for event in library.events where event.at <= now {
             guard let track = library.tracks[event.trackID] else { continue }
             let age = now.timeIntervalSince(event.at), decay = pow(0.5, age / (30 * 86400))
             if event.kind == .listen, let reward = event.reward, reward >= 0.7, !RecordingQuality.utility(track) || explicit.contains(track.id) {
+                let actual = GenreClassifier.genres(track)
+                // A stray autoplay completion cannot introduce an unrelated genre
+                // over an established explicit library. A new save can do that.
+                if !explicit.contains(track.id), !savedGenres.isEmpty, !actual.isEmpty, GenreClassifier.relation(actual, savedGenres) == 0 { continue }
                 implicit[event.trackID, default: 0] += (reward == 1 ? 1.5 : 0.5) * decay
             } else if event.kind == .skip, let reward = event.reward {
                 implicit[event.trackID, default: 0] -= (reward == 0 ? 2.5 : 0.8) * decay * (library.settings.skipSensitivity == "soft" ? 0.35 : 1)

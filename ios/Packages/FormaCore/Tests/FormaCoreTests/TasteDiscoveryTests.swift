@@ -73,11 +73,40 @@ final class TasteDiscoveryTests: XCTestCase {
         XCTAssertFalse(planner.plan(library: library, now: now.addingTimeInterval(1901)).contains { $0.key == first.key })
         XCTAssertEqual(planner.successfulPages, 2)
     }
+    func testContinuationsAreNotStarvedByHundredsOfUnvisitedSeeds() throws {
+        let tracks = (0..<500).map { song($0) }
+        var library = Library(); library.merge(tracks); library.likedIDs = tracks.map(\.id)
+        var planner = DiscoveryPlanner()
+        let first = planner.plan(library: library, limit: 10, now: now)
+        let source = try XCTUnwrap(first.first { $0.kind == .related })
+        for request in first { planner.complete(request, page: .init(tracks: [], continuation: request.key == source.key ? "deep-page" : nil), now: now) }
+        let second = planner.plan(library: library, limit: 10, now: now.addingTimeInterval(3))
+        XCTAssertTrue(second.contains { $0.key == source.key && $0.continuation == "deep-page" })
+        XCTAssertTrue(second.contains { $0.kind == .related && !first.map(\.key).contains($0.key) })
+    }
     func testOnlyRecognizedContinuationCommandsAreUsed() throws {
         let fixture = #"{"trackingParams":"not-a-cursor","menu":{"continuationCommand":{"token":"ignore"}},"contents":[{"continuationItemRenderer":{"continuationEndpoint":{"continuationCommand":{"token":"actual-page"}}}}]}"#
         XCTAssertEqual(try CatalogContinuation.token(from: Data(fixture.utf8)), "actual-page")
         XCTAssertNil(try CatalogContinuation.token(from: Data(#"{"unknown":{"token":"invented"}}"#.utf8)))
         XCTAssertEqual(try CatalogContinuation.token(from: Data(#"{"continuations":[{"nextContinuationData":{"continuation":"music-page"}}]}"#.utf8)), "music-page")
+    }
+    func testAccidentalCompletionsCannotReplaceExplicitTaste() {
+        let favourites = (0..<10).map { song($0, genre: "Rock") }
+        let accidental = (100..<300).map { song($0, genre: "Jazz") }
+        var library = Library(); library.merge(favourites + accidental); library.likedIDs = favourites.map(\.id)
+        library.events = accidental.map { .init(trackID: $0.id, kind: .listen, at: now, seconds: 190, ratio: 0.95) }
+        let profile = TasteProfile(library: library, now: now)
+        let explicitMass = favourites.reduce(0) { $0 + (profile.weights[$1.id] ?? 0) }
+        let implicitMass = accidental.reduce(0) { $0 + (profile.weights[$1.id] ?? 0) }
+        XCTAssertLessThanOrEqual(implicitMass, explicitMass * 0.15 + 0.0001)
+    }
+    func testWrongGenreEdgeIsNotReportedAsSimilarityToAnUnrelatedFavourite() throws {
+        let pop = song(1, genre: "Pop"), rock = song(2, genre: "Rock")
+        var neighbour = song(3); neighbour.directRelatedTo = [pop.id]
+        var library = Library(); library.merge([pop, rock]); library.likedIDs = [pop.id, rock.id]
+        let choice = try XCTUnwrap(PulseEngine.rank([neighbour], library: library, now: now).first)
+        XCTAssertFalse(choice.reason.contains(pop.title))
+        XCTAssertLessThan(choice.taste, 0.58)
     }
     func testCachePreservesSavedAndFreshDiscoveriesOverAlphabeticIDs() {
         let tracks = (0..<20).map { song($0) }; var library = Library(); library.merge(tracks)
@@ -106,7 +135,7 @@ final class TasteDiscoveryTests: XCTestCase {
             let choice = try XCTUnwrap(ranked.first, "Pulse stopped after \(step) choices despite available discovery pages")
             XCTAssertTrue(heard.insert(choice.id).inserted)
             if !choice.known { discoveries += 1 }
-            library.record(.init(trackID: choice.id, kind: .play, at: time, seconds: 0, ratio: 0, newArtist: choice.newArtist))
+            library.record(.init(trackID: choice.id, kind: .play, at: time, seconds: 0, ratio: 0, newArtist: choice.newArtist, recommendation: choice.exposure, surface: "pulse"))
             // Repeated playback is not the same as an explicit save or a completion.
             DiscoveryCache.trim(&library, seen: [:], protected: heard, limit: 400)
         }

@@ -58,6 +58,13 @@ public struct DiscoveryPlanner: Codable, Sendable {
             let aw = profile.weights[a.seed.id] ?? 0, bw = profile.weights[b.seed.id] ?? 0
             return aw == bw ? a.key < b.key : aw > bw
         }
+        if limit >= 4 {
+            // Reserve room for deeper pages and an alternate retrieval route;
+            // otherwise 500 unvisited seeds could starve every continuation.
+            let continuing = Array(jobs.filter { progress[$0.key]?.cursor != nil }.prefix(max(1, limit / 5)))
+            let alternate = Array(jobs.filter { $0.kind == .artist }.prefix(1))
+            jobs = continuing + alternate + jobs
+        }
         var chosen: [DiscoveryRequest] = [], pickedArtists: [String: Int] = [:], pickedKeys = Set<String>()
         for cap in 1...max(1, limit) {
             for var job in jobs where chosen.count < limit && !pickedKeys.contains(job.key) {

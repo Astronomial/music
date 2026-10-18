@@ -69,6 +69,20 @@ private struct ConstantFixtureResolver: StreamResolving {
 }
 private actor FixtureCatalog: MusicCatalogProviding {
     let tracks = (0..<4).map { Track(videoID: String(format: "%011d", $0), title: "Проверка \($0)", artist: "Artist \($0)", duration: 5, genres: ["House"], genre: "House") }
+    private var pagedDiscovery = false
+    private var pageNumber = 0
+    func usePages(_ enabled: Bool) { pagedDiscovery = enabled }
+    func discoveryPage(_ request: DiscoveryRequest) async throws -> DiscoveryPage {
+        guard pagedDiscovery else { return .init(tracks: try await related(to: request.seed)) }
+        try await Task.sleep(nanoseconds: 50_000_000)
+        pageNumber += 1
+        let start = pageNumber * 20
+        let songs = (start..<(start + 20)).map { i -> Track in
+            var track = Track(videoID: String(format: "p%010d", i), title: "Открытие \(i)", artist: "Артист открытия \(i)", duration: 5, genre: "House")
+            track.relatedTo = [request.seed.id]; track.directRelatedTo = [request.seed.id]; return track
+        }
+        return .init(tracks: songs, continuation: "native-page-\(pageNumber)")
+    }
     private(set) var slowSearchStarted = false
     private(set) var uncancellableSearchStarted = false
     private(set) var descriptionStarted = false
@@ -572,6 +586,25 @@ enum NativeSmoke {
         guard radio.current?.id == tracks[3].id, radio.selectionSurface == "manual" else { throw SyncError.rejected("Late discovery replaced manual selection") }
         radio.pause()
 
+        let tasteProbe = Track(videoID: "tasteprobe1", title: "Опора вкуса", artist: "Источник вкуса", duration: 5, genre: "House")
+        model.toggleLike(tasteProbe)
+        await fixtureCatalog.usePages(true)
+        let originalNext = model.player.pulseNext
+        model.player.pulseNext = { _, _ in nil }
+        model.playRecommendation(tasteProbe)
+        try await until("app-model-radio-start") { model.player.isPlaying && model.player.current?.id == tasteProbe.id }
+        for round in 0..<4 {
+            let previous = model.player.current?.id
+            model.player.next()
+            try await until("app-model-page-refill-\(round)", diagnostic: { model.player.error ?? model.player.debugPlaybackState }) {
+                model.player.isPlaying && model.player.current?.id != previous && model.player.current?.id.hasPrefix("p") == true
+            }
+        }
+        guard model.discoveredPages > 0 else { throw SyncError.rejected("AppModel never fetched discovery pages") }
+        model.player.pause(); model.player.pulseNext = originalNext
+        await fixtureCatalog.usePages(false)
+        model.toggleLike(tasteProbe)
+
         model.play(following, list: [following])
         try await until("last-queue-track-playing") { model.player.isPlaying }
         model.player.seek(to: 4.6)
@@ -605,7 +638,7 @@ enum NativeSmoke {
                 "oldSaveCannotOverwriteNewerLibrary": true, "syncBaselineBoundToPairedPC": true, "legacyBaselineMigratedSafely": true,
                 "advancedQueueMatchesNewList": true, "keychainRestoreRetriesTransientFailure": true, "cancelledSearchClearsSpinner": true,
                 "dislikeAdvancesWithSingleSignal": true, "undoAndLibraryDislikeKeepPlayback": true, "personalPulseDistinctFromMood": true,
-                "endedQueueRestartsFromBeginning": true, "pulseRefillsTwelveRemotePages": true, "pulseRefillRespectsPause": true, "pulseRefillRespectsManualSelection": true]
+                "endedQueueRestartsFromBeginning": true, "appModelRetrievalRefillsPlayingPulse": true, "pulseRefillsTwelveRemotePages": true, "pulseRefillRespectsPause": true, "pulseRefillRespectsManualSelection": true]
     }
 }
 #endif

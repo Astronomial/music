@@ -44,6 +44,7 @@ final class AppModel: ObservableObject {
     private var genreTask: Task<Void, Never>?
     private var genreAttempts: [String: Date] = [:]
     private var soundTask: Task<Void, Never>?
+    private var soundAttempts: [String: Date] = [:]
     private var storage: LibraryStorage?
     private var storageURL: URL?
     private var didLoadLibrary = false
@@ -344,10 +345,8 @@ final class AppModel: ObservableObject {
         }
     }
     private func refreshFromPlaylist(_ id: String) async {
-        for track in playlistTracks(id).prefix(4) {
-            guard pulsePlaylistID == id else { return }
-            if let tracks = try? await catalog.related(to: track) { merge(tracks) }
-        }
+        guard pulsePlaylistID == id else { return }
+        await refresh()
     }
     private func nextPulse(excluded: Set<String>, mood: String?) -> Track? {
         if let id = pulsePlaylistID, !library.playlists.contains(where: { $0.id == id }) { return nil }
@@ -390,16 +389,20 @@ final class AppModel: ObservableObject {
         let parallelism = min(3, player.networkPolicy.catalogParallelism)
         var next = 0, successes = 0
         var collected: [Track] = []
-        await withTaskGroup(of: (DiscoveryRequest, DiscoveryPage?).self) { group in
+        await withTaskGroup(of: (DiscoveryRequest?, DiscoveryPage?).self) { group in
+            // A damaged radio endpoint must not hold the whole refill for minutes.
+            group.addTask { try? await Task.sleep(nanoseconds: 25_000_000_000); return (nil, nil) }
             func submit(_ job: DiscoveryRequest) {
                 group.addTask { (job, try? await catalog.discoveryPage(job)) }
             }
+            var completed = 0
             while next < min(parallelism, jobs.count) { submit(jobs[next]); next += 1 }
             for await (job, page) in group {
-                if Task.isCancelled { group.cancelAll(); break }
-                discoveryPlanner.complete(job, page: page)
+                guard let job, !Task.isCancelled else { group.cancelAll(); break }
+                completed += 1; discoveryPlanner.complete(job, page: page)
                 if let page { successes += 1; collected.append(contentsOf: page.tracks) }
                 if next < jobs.count { submit(jobs[next]); next += 1 }
+                if completed == jobs.count { group.cancelAll(); break }
             }
         }
         guard !Task.isCancelled else { return }
@@ -506,12 +509,14 @@ final class AppModel: ObservableObject {
         guard UserDefaults.standard.object(forKey: "forma.soundAnalysis") as? Bool != false else { return }
         let cellular = UserDefaults.standard.object(forKey: "forma.soundCellular") as? Bool != false
         guard cellular || !player.networkPolicy.lean else { return }
-        let pool = [current] + pulseCache.prefix(2).map(\.track) + PulseEngine.anchors(in: library, limit: 1)
+        let unanalysed = tasteProfile.seeds.first { library.tracks[$0.id]?.soundProfile == nil && Date().timeIntervalSince(soundAttempts[$0.id] ?? .distantPast) > 3600 }
+        let pool = [current] + pulseCache.prefix(2).map(\.track) + (unanalysed.map { [$0] } ?? [])
         var seen = Set<String>(); let tracks = pool.filter { library.tracks[$0.id]?.soundProfile == nil && seen.insert($0.id).inserted }
         soundTask = Task(priority: .utility) {
-            for track in tracks.prefix(3) {
+            for track in tracks.prefix(4) {
                 try? await Task.sleep(nanoseconds: 10_000_000_000)
                 guard !Task.isCancelled, !player.isLoading else { return }
+                soundAttempts[track.id] = Date()
                 if let profile = await soundAnalyzer.analyze(track, resolver: audioResolver), !Task.isCancelled, library.tracks[track.id] != nil {
                     library.tracks[track.id]?.soundProfile = profile; persist(); updateRecommendations()
                 }

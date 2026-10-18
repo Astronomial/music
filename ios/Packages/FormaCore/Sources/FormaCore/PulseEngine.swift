@@ -59,7 +59,11 @@ public enum PulseEngine {
     private static func evidence(_ track: Track, profile: TasteProfile, index: RankingIndex, library: Library, liveMetadata: Bool = false) -> Evidence {
         let names = liveMetadata ? PulseDiversity.artists(track) : (index.artists[track.id] ?? PulseDiversity.artists(track)), genres = liveMetadata ? GenreClassifier.genres(track) : (index.genres[track.id] ?? GenreClassifier.genres(track))
         let sameArtist = !names.isDisjoint(with: profile.artists.keys), known = (profile.weights[track.id] ?? 0) > 0
-        let directIDs = Set(track.directRelatedTo).intersection(profile.positiveIDs)
+        let directIDs = Set(track.directRelatedTo).intersection(profile.positiveIDs).filter { id in
+            guard let seed = library.tracks[id] else { return false }
+            let sourceGenres = index.genres[id] ?? GenreClassifier.genres(seed)
+            return genres.isEmpty || sourceGenres.isEmpty || GenreClassifier.relation(genres, sourceGenres) > 0
+        }
         let direct = Set(directIDs.compactMap { library.tracks[$0] }.flatMap { index.artists[$0.id] ?? PulseDiversity.artists($0) }).count
         let genreFit = GenreClassifier.relation(genres, Array(profile.genres.keys))
         let genreAffinity = profile.genreStrength.map { name, strength in GenreClassifier.relation(genres, [name]) * strength }.max() ?? 0
@@ -166,7 +170,7 @@ public enum PulseEngine {
         var pool = initial, result: [Recommendation] = []
         let history = DiscoveryPolicy.history(library, now: now), spacing = PulseDiversity.limits(library.settings.artistDiversity)
         var rolling = PulseDiversity.history(library, now: now, currentID: currentID).map { index.artists[$0.id] ?? PulseDiversity.artists($0) }
-        var newCount = history.newTracks, languageCount = history.preferredLanguage
+        var newCount = history.newTracks, languageCount = history.preferredLanguage, surpriseCount = history.surprises
         while !pool.isEmpty, result.count < limit {
             if Task.isCancelled { return [] }
             let recentArtists = Set(rolling.suffix(spacing.gap).flatMap { $0 })
@@ -177,14 +181,19 @@ public enum PulseEngine {
                 let capped = spaced.filter { (index.artists[pool[$0].id] ?? []).allSatisfy { (counts[$0] ?? 0) < spacing.count } }
                 if !capped.isEmpty { indices = capped } else if !spaced.isEmpty { indices = spaced }
             }
+            let deficit = library.settings.discovery * Double(history.classifiedCount + result.count + 1) - Double(newCount)
+            if library.settings.explorationStyle != "adventurous", deficit >= 0.5 {
+                let close = indices.filter { !pool[$0].known && pool[$0].taste >= 0.58 }
+                if !close.isEmpty { indices = close }
+            }
             let languageDeficit = 0.75 * Double(history.exposureCount + result.count + 1) - Double(languageCount)
             if library.settings.languagePreference != "any", languageDeficit >= 0.5 {
                 let preferred = indices.filter { pool[$0].languageFit >= 0.6 }; if !preferred.isEmpty { indices = preferred }
             }
-            let deficit = library.settings.discovery * Double(history.classifiedCount + result.count + 1) - Double(newCount)
-            if library.settings.explorationStyle != "adventurous" {
-                let close = indices.filter { !pool[$0].known && pool[$0].taste >= 0.58 }
-                if !close.isEmpty, deficit >= 0.5 { indices = close }
+            let surpriseDeficit = history.surpriseRate * Double(history.classifiedCount + result.count + 1) - Double(surpriseCount)
+            if surpriseDeficit < 0.5 {
+                let safer = indices.filter { pool[$0].nearby }
+                if !safer.isEmpty { indices = safer }
             }
             let balanced = indices.filter { pool[$0].known != (deficit >= 0.5) }; if !balanced.isEmpty { indices = balanced }
             if deficit >= 0.5, library.settings.artistDiversity > 0 {
@@ -201,6 +210,7 @@ public enum PulseEngine {
                 if b > a || (b == a && pool[candidate].id < pool[best].id) { best = candidate }
             }
             let item = pool.remove(at: best); result.append(item)
+            if !item.nearby { surpriseCount += 1 }
             if !item.known { newCount += 1 }; if item.languageFit >= 0.6 { languageCount += 1 }
             rolling.append(index.artists[item.id] ?? []); rolling = Array(rolling.suffix(12))
         }
