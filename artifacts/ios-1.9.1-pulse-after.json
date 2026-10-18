@@ -8,7 +8,7 @@
       "confirmedSavedGenres" : 400,
       "discoveries" : 762,
       "disliked" : 0,
-      "elapsedSeconds" : 141.56041288375854,
+      "elapsedSeconds" : 130.97419607639313,
       "genericUtility" : 0,
       "initialGenres" : {
         "House" : 2000
@@ -37,7 +37,7 @@
       "confirmedSavedGenres" : 401,
       "discoveries" : 762,
       "disliked" : 0,
-      "elapsedSeconds" : 139.87574553489685,
+      "elapsedSeconds" : 128.64367771148682,
       "genericUtility" : 0,
       "initialGenres" : {
         "House" : 2005.000000000004
@@ -66,7 +66,7 @@
       "confirmedSavedGenres" : 600,
       "discoveries" : 200,
       "disliked" : 0,
-      "elapsedSeconds" : 20.119696140289307,
+      "elapsedSeconds" : 19.829428911209106,
       "genericUtility" : 0,
       "initialGenres" : {
         "Jazz" : 899.9999999999925,
