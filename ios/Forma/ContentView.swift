@@ -43,7 +43,7 @@ struct ContentView: View {
             guard !ProcessInfo.processInfo.arguments.contains("--forma-smoke") else { return }
             while (!model.player.networkPolicy.known || model.isRestoringLibrary), !Task.isCancelled { try? await Task.sleep(nanoseconds: 50_000_000) }
             guard !Task.isCancelled else { return }
-            if model.library.tracks.isEmpty || UserDefaults.standard.integer(forKey: "forma.discoveryRevision") < 6 { await model.refresh(automatic: true) }
+            if model.library.tracks.isEmpty || model.discoveredPages == 0 || UserDefaults.standard.integer(forKey: "forma.discoveryRevision") < 6 { await model.refresh(automatic: true) }
             while !Task.isCancelled {
                 if scenePhase == .active { await model.synchronize() }
                 try? await Task.sleep(nanoseconds: 30_000_000_000)
