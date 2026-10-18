@@ -24,6 +24,19 @@ final class TasteDiscoveryTests: XCTestCase {
         library.playlists.append(library.playlists[0])
         XCTAssertEqual(TasteProfile(library: library, now: now).weights, before, "Duplicated playlist membership is not another preference vote")
     }
+    func testRetrievalUsesTheSameSourceBudgetsAsRanking() {
+        let tracks = (0..<700).map { song($0) }
+        var library = Library(); library.merge(tracks); library.likedIDs = tracks.prefix(99).map(\.id)
+        library.playlists = [.init(name: "Большой импорт", trackIDs: tracks[200..<700].map(\.id))]
+        var equal = DiscoveryPlanner()
+        let first = equal.plan(library: library, limit: 10, now: now)
+        XCTAssertEqual(first.filter { library.likedIDs.contains($0.seed.id) }.count, 5)
+        library.likedIDs.append(tracks[99].id)
+        var likesLead = DiscoveryPlanner()
+        let second = likesLead.plan(library: library, limit: 10, now: now)
+        XCTAssertEqual(second.filter { library.likedIDs.contains($0.seed.id) }.count, 7)
+        XCTAssertEqual(second.count, 10)
+    }
     func testPriorityActuallyChangesCandidateScoresNotJustTheLabel() throws {
         let likes = (0..<100).map { song($0, genre: "Rock") }
         let imported = (200..<300).map { song($0, genre: "Jazz") }

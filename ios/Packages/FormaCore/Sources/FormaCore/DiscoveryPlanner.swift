@@ -66,14 +66,23 @@ public struct DiscoveryPlanner: Codable, Sendable {
             jobs = continuing + alternate + jobs
         }
         var chosen: [DiscoveryRequest] = [], pickedArtists: [String: Int] = [:], pickedKeys = Set<String>()
+        func fromLikes(_ job: DiscoveryRequest) -> Bool { profile.likedIDs.contains(job.seed.id) || !Set(job.roots).isDisjoint(with: profile.likedIDs) }
+        let likeKeys = Set(jobs.filter(fromLikes).map(\.key))
+        var unpickedLikes = likeKeys.count, unpickedOthers = Set(jobs.map(\.key)).subtracting(likeKeys).count
+        let likeTarget = Int((Double(limit) * (profile.likesLead ? 0.7 : 0.5)).rounded())
+        var likedPicked = 0
         for cap in 1...max(1, limit) {
             for var job in jobs where chosen.count < limit && !pickedKeys.contains(job.key) {
+                let liked = likeKeys.contains(job.key)
+                if liked && likedPicked >= likeTarget && unpickedOthers > 0 { continue }
+                if !liked && chosen.count - likedPicked >= limit - likeTarget && unpickedLikes > 0 { continue }
                 let artist = GenreClassifier.artistIdentity(job.seed.artist)
                 guard (pickedArtists[artist] ?? 0) < cap else { continue }
                 var state = progress[job.key] ?? Progress(); job.continuation = state.cursor; state.attempted = now
                 // A short lease prevents concurrent callers planning the same page.
                 state.retryAt = now.addingTimeInterval(30); progress[job.key] = state
                 chosen.append(job); pickedKeys.insert(job.key); pickedArtists[artist, default: 0] += 1
+                if liked { likedPicked += 1; unpickedLikes -= 1 } else { unpickedOthers -= 1 }
             }
             if chosen.count >= limit { break }
         }
