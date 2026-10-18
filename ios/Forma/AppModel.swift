@@ -120,7 +120,7 @@ final class AppModel: ObservableObject {
             for _ in 0..<2 {
                 await self.refresh()
                 guard !Task.isCancelled else { return nil }
-                await self.recommendationTask?.value
+                await self.waitForRecommendations()
                 if let track = self.nextPulse(excluded: excluded, mood: mood) { return track }
             }
             return nil
@@ -300,7 +300,7 @@ final class AppModel: ObservableObject {
             isStartingPulse = false
             guard let first = result.first else {
                 await refresh()
-                await recommendationTask?.value
+                await waitForRecommendations()
                 guard pulseGeneration == token else { return }
                 if let track = nextPulse(excluded: excluded, mood: mood) { player.startPulse(track, mood: mood) }
                 else { message = "Пока нет подходящих треков. Добавь любимую музыку или обнови Пульс." }
@@ -454,6 +454,15 @@ final class AppModel: ObservableObject {
         catalogueSeen = catalogueSeen.filter { library.tracks[$0.key] != nil }
         persist(); updateRecommendations()
     }
+    private func waitForRecommendations() async {
+        // Genre metadata or a fresh save can replace an in-flight ranking job.
+        // Await the replacement rather than returning from the cancelled job.
+        while !Task.isCancelled {
+            let token = recommendationGeneration
+            await recommendationTask?.value
+            if token == recommendationGeneration { return }
+        }
+    }
     private func updateRecommendations() {
         let token = UUID(); recommendationGeneration = token
         let snapshot = library, playlistID = pulsePlaylistID, trackID = pulseTrackID
@@ -474,7 +483,7 @@ final class AppModel: ObservableObject {
             guard recommendationGeneration == token, !Task.isCancelled, playlistID == pulsePlaylistID, trackID == pulseTrackID else { return }
             recommendations = result.0; pulseCache = result.1; pulseCacheTrackID = trackID; pulseCachePlaylistID = playlistID; moodCache = result.2; playbackIndex = result.3; tasteProfile = result.4
             scheduleGenreMetadata()
-            player.refreshPreparedSelection()
+            player.pulseCandidatesChanged()
             if player.current == nil, player.networkPolicy.canPrewarmExtraTracks { await audioResolver.prewarm(videoIDs: Array(pulseCache.prefix(3).map(\.id))) }
         }
     }

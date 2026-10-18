@@ -543,6 +543,11 @@ final class PlaybackController: ObservableObject {
             }
         }
     }
+    func pulseCandidatesChanged() {
+        if isWaitingForPulse, requestedPlayback, !interrupted, !mediaServicesLost, let next = candidate() {
+            start(next)
+        } else { refreshPreparedSelection() }
+    }
     func refreshPreparedSelection() {
         adoptPreparedItem()
         guard !isWaitingForPulse else { return }

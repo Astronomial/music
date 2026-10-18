@@ -569,6 +569,14 @@ enum NativeSmoke {
             try await until("infinite-pulse-page-\(round)") { radio.isPlaying && radio.current?.id == String(format: "r%010d", round) }
             guard radio.error == nil, !radio.isWaitingForPulse else { throw SyncError.rejected("Pulse became a finite queue") }
         }
+        let readyDuringWait = Track(videoID: "cachewake01", title: "Готовое продолжение", artist: "Новый артист", duration: 5)
+        var cacheReady = false
+        radio.pulseNext = { excluded, _ in cacheReady && !excluded.contains(readyDuringWait.id) ? readyDuringWait : nil }
+        radio.pulseRefill = { _, _ in try? await Task.sleep(nanoseconds: 2_000_000_000); return tracks[1] }
+        radio.next(); guard radio.isWaitingForPulse else { throw SyncError.rejected("Pulse did not enter refill state") }
+        cacheReady = true; radio.pulseCandidatesChanged()
+        try await until("new-cache-wakes-waiting-pulse") { radio.isPlaying && radio.current?.id == readyDuringWait.id }
+        radio.pulseNext = { _, _ in nil }
         radio.pulseRefill = { _, _ in
             // Deliberately ignores cancellation to exercise the generation guard.
             try? await Task.sleep(nanoseconds: 500_000_000)
@@ -638,7 +646,7 @@ enum NativeSmoke {
                 "oldSaveCannotOverwriteNewerLibrary": true, "syncBaselineBoundToPairedPC": true, "legacyBaselineMigratedSafely": true,
                 "advancedQueueMatchesNewList": true, "keychainRestoreRetriesTransientFailure": true, "cancelledSearchClearsSpinner": true,
                 "dislikeAdvancesWithSingleSignal": true, "undoAndLibraryDislikeKeepPlayback": true, "personalPulseDistinctFromMood": true,
-                "endedQueueRestartsFromBeginning": true, "appModelRetrievalRefillsPlayingPulse": true, "pulseRefillsTwelveRemotePages": true, "pulseRefillRespectsPause": true, "pulseRefillRespectsManualSelection": true]
+                "endedQueueRestartsFromBeginning": true, "waitingPulseUsesNewCacheImmediately": true, "appModelRetrievalRefillsPlayingPulse": true, "pulseRefillsTwelveRemotePages": true, "pulseRefillRespectsPause": true, "pulseRefillRespectsManualSelection": true]
     }
 }
 #endif
