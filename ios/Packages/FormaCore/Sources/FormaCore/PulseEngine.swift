@@ -61,7 +61,7 @@ public enum PulseEngine {
         let sameArtist = !names.isDisjoint(with: profile.artists.keys), known = (profile.weights[track.id] ?? 0) > 0
         let directIDs = Set(track.directRelatedTo).intersection(profile.positiveIDs).filter { id in
             guard let seed = library.tracks[id] else { return false }
-            let sourceGenres = index.genres[id] ?? GenreClassifier.genres(seed)
+            let sourceGenres = liveMetadata ? GenreClassifier.genres(seed) : (index.genres[id] ?? GenreClassifier.genres(seed))
             return genres.isEmpty || sourceGenres.isEmpty || GenreClassifier.relation(genres, sourceGenres) > 0
         }
         let direct = Set(directIDs.compactMap { library.tracks[$0] }.flatMap { index.artists[$0.id] ?? PulseDiversity.artists($0) }).count
@@ -75,7 +75,10 @@ public enum PulseEngine {
         // A general-purpose mix is not a song discovery, even when YouTube radio
         // returned it and attached the same broad Pop label as a favourite song.
         let utility = liveMetadata ? RecordingQuality.utility(track) : (index.utility[track.id] ?? RecordingQuality.utility(track))
-        let allowed = (!utility || profile.allowsUtility) && !library.dislikedIDs.contains(track.id)
+        // Saving a sleep/ambient mix authorizes that recording and its compatible
+        // neighbours, not every generic upload linked to an ordinary favourite.
+        let utilityMatch = profile.utilityIDs.contains(track.id) || !Set(directIDs).isDisjoint(with: profile.utilityIDs)
+        let allowed = (!utility || utilityMatch) && !library.dislikedIDs.contains(track.id)
         let preferred = library.settings.preferredArtists.contains { names.contains(fold($0)) }
         let compatibleDirect = direct > 0 && (!comparable || genreFit > 0)
         let eligible = allowed && (profile.positiveIDs.isEmpty || known || sameArtist || compatibleDirect || genreFit > 0 || (!comparable && (audio ?? 0) >= 0.92) || preferred)

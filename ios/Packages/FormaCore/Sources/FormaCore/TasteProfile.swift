@@ -16,6 +16,7 @@ public struct TasteProfile: Sendable {
     public let confirmedGenreCount: Int
     public let likesLead: Bool
     public let allowsUtility: Bool
+    let utilityIDs: Set<String>
     let artistStrength: [String: Double]
     let genreStrength: [String: Double]
     let maxSeedWeight: Double
@@ -42,7 +43,11 @@ public struct TasteProfile: Sendable {
             values[id] = (likes.contains(id) ? likeShare / Double(max(1, likes.count)) : 0) * scale
                 + (playlistIDs.contains(id) ? playlistShare / Double(max(1, playlistIDs.count)) : 0) * scale
         }
-        let savedGenres = Array(Set(explicit.compactMap { library.tracks[$0] }.flatMap(GenreClassifier.genres)))
+        let rejected = Set(library.dislikedIDs + library.hiddenIDs)
+        let activeExplicit = explicit.filter { id in
+            !rejected.contains(id) && library.tracks[id].map { !PulseDiversity.blocked($0, settings: library.settings) } == true
+        }
+        let savedGenres = Array(Set(activeExplicit.compactMap { library.tracks[$0] }.flatMap(GenreClassifier.genres)))
         for event in library.events where event.at <= now {
             guard let track = library.tracks[event.trackID] else { continue }
             let age = now.timeIntervalSince(event.at), decay = pow(0.5, age / (30 * 86400))
@@ -60,7 +65,7 @@ public struct TasteProfile: Sendable {
         if !explicit.isEmpty {
             let learned = values.filter { !explicit.contains($0.key) && $0.value > 0 }
             let mass = learned.values.reduce(0, +)
-            let budget = values.filter { explicit.contains($0.key) && $0.value > 0 }.values.reduce(0, +) * 0.15
+            let budget = values.filter { activeExplicit.contains($0.key) && $0.value > 0 }.values.reduce(0, +) * 0.15
             if mass > budget { for (id, weight) in learned { values[id] = weight * budget / max(1, mass) } }
         }
         for id in library.dislikedIDs + library.hiddenIDs { values[id] = -10 }
@@ -79,13 +84,31 @@ public struct TasteProfile: Sendable {
             let group = names.sorted().first ?? "unknown:\(id)"
             groups[group, default: []].append(track)
         }
-        // Artist-balanced accumulation preserves minority interests without letting
-        // 200 saves from one performer drown out every other style in the library.
+        // Balance artists WITHIN each source, then restore that source's mass.
+        // Otherwise 100 likes of one artist lose 90% of their genre vote while
+        // an imported playlist of different artists keeps its entire vote.
+        // Unknown genres stay in the denominator: one labelled song must not
+        // imply that every unclassified recording has the same genre.
+        var sourceGenres = Array(repeating: [String: Double](), count: 3)
+        var balancedMass = Array(repeating: 0.0, count: 3), sourceMass = balancedMass
         for (id, weight) in valid {
             guard let track = library.tracks[id] else { continue }
             let denominator = max(1, PulseDiversity.artists(track).compactMap { artistWeights[$0]?.recordings }.max() ?? 1)
-            let scale = 1 / sqrt(Double(denominator))
-            for genre in GenreClassifier.genres(track) { genreWeights[genre, default: 0] += weight * scale }
+            let balance = 1 / sqrt(Double(denominator)), genres = GenreClassifier.genres(track)
+            let liked = likes.contains(id) ? likeShare / Double(max(1, likes.count)) : 0
+            let imported = playlistIDs.contains(id) ? playlistShare / Double(max(1, playlistIDs.count)) : 0
+            let total = liked + imported
+            let portions = total > 0 ? [liked / total, imported / total, 0] : [0, 0, 1]
+            for source in 0..<3 where portions[source] > 0 {
+                let mass = weight * portions[source]
+                sourceMass[source] += mass; balancedMass[source] += mass * balance
+                for genre in genres { sourceGenres[source][genre, default: 0] += mass * balance / Double(genres.count) }
+            }
+        }
+        for source in 0..<3 where balancedMass[source] > 0 {
+            for (genre, mass) in sourceGenres[source] {
+                genreWeights[genre, default: 0] += mass * sourceMass[source] / balancedMass[source]
+            }
         }
         for (id, weight) in values where weight < 0 {
             guard let track = library.tracks[id] else { continue }
@@ -99,8 +122,9 @@ public struct TasteProfile: Sendable {
         genreStrength = genreWeights.mapValues { sqrt($0 / topGenre) }
         maxSeedWeight = max(1, values.values.max() ?? 5)
         self.negativeArtists = negativeArtists; self.negativeGenres = negativeGenres
-        confirmedGenreCount = explicit.compactMap { library.tracks[$0] }.filter { !GenreClassifier.genres($0).isEmpty }.count
-        allowsUtility = explicit.compactMap { library.tracks[$0] }.contains(where: RecordingQuality.utility)
+        confirmedGenreCount = activeExplicit.compactMap { library.tracks[$0] }.filter { !GenreClassifier.genres($0).isEmpty }.count
+        utilityIDs = Set(activeExplicit.intersection(positiveIDs).filter { library.tracks[$0].map(RecordingQuality.utility) == true })
+        allowsUtility = !utilityIDs.isEmpty
         var ordered: [Track] = []
         let order = groups.keys.sorted { a, b in
             let x = artistWeights[a]?.weight ?? 0, y = artistWeights[b]?.weight ?? 0

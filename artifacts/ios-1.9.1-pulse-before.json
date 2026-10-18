@@ -1,0 +1,96 @@
+{
+  "kind" : "synthetic-adversarial-replay",
+  "liveYouTubeUsed" : false,
+  "refreshEveryChoices" : 20,
+  "runs" : [
+    {
+      "candidateCount" : 3500,
+      "confirmedSavedGenres" : 400,
+      "discoveries" : 762,
+      "disliked" : 0,
+      "elapsedSeconds" : 128.4460083246231,
+      "genericUtility" : 0,
+      "initialGenres" : {
+        "House" : 2000
+      },
+      "initialSavedCount" : 400,
+      "knownGenreContradictions" : 0,
+      "label" : "unrelated-genre-and-misleading-links",
+      "linkedToInitialLibrary" : 762,
+      "maxArtistIn12" : 1,
+      "newArtists" : 762,
+      "repeats" : 0,
+      "requested" : 1100,
+      "russian" : 1100,
+      "sameGenreOnly" : 0,
+      "selected" : 1100,
+      "selectedGenres" : {
+        "House" : 1100
+      },
+      "soundProfilesAvailable" : 0,
+      "syntheticNegativeSelections" : 0,
+      "uniqueArtists" : 1100,
+      "uniqueRecordings" : 1100
+    },
+    {
+      "candidateCount" : 3501,
+      "confirmedSavedGenres" : 401,
+      "discoveries" : 762,
+      "disliked" : 0,
+      "elapsedSeconds" : 119.60501909255981,
+      "genericUtility" : 442,
+      "initialGenres" : {
+        "House" : 2005.0000000000082
+      },
+      "initialSavedCount" : 401,
+      "knownGenreContradictions" : 0,
+      "label" : "one-background-save-must-not-open-all-generic-uploads",
+      "linkedToInitialLibrary" : 762,
+      "maxArtistIn12" : 1,
+      "newArtists" : 762,
+      "repeats" : 0,
+      "requested" : 1100,
+      "russian" : 1100,
+      "sameGenreOnly" : 0,
+      "selected" : 1100,
+      "selectedGenres" : {
+        "House" : 1100
+      },
+      "soundProfilesAvailable" : 0,
+      "syntheticNegativeSelections" : 442,
+      "uniqueArtists" : 1100,
+      "uniqueRecordings" : 1100
+    },
+    {
+      "candidateCount" : 2600,
+      "confirmedSavedGenres" : 600,
+      "discoveries" : 200,
+      "disliked" : 0,
+      "elapsedSeconds" : 21.04082453250885,
+      "genericUtility" : 0,
+      "initialGenres" : {
+        "Jazz" : 899.9999999999925,
+        "Rock" : 209.99999999999963
+      },
+      "initialSavedCount" : 600,
+      "knownGenreContradictions" : 0,
+      "label" : "source-priority-100-likes-one-artist-vs-500-playlist-artists",
+      "linkedToInitialLibrary" : 0,
+      "maxArtistIn12" : 1,
+      "newArtists" : 200,
+      "repeats" : 0,
+      "requested" : 200,
+      "russian" : 200,
+      "sameGenreOnly" : 200,
+      "selected" : 200,
+      "selectedGenres" : {
+        "Jazz" : 200
+      },
+      "soundProfilesAvailable" : 0,
+      "uniqueArtists" : 200,
+      "uniqueRecordings" : 200
+    }
+  ],
+  "subjectiveTasteMeasured" : false,
+  "warning" : "Synthetic labels fixed before ranking. These measurements test logic and are not an estimate of this user's taste or live YouTube recommendations."
+}
