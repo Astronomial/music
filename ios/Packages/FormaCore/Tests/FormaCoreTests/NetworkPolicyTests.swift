@@ -5,7 +5,7 @@ final class NetworkPolicyTests: XCTestCase {
     func testCellularVPNDoesNotUseLocalPCAndKeepsBoundedAudioBudgets() {
         let policy = NetworkPolicy(reachable: true, cellular: true, expensive: true)
         XCTAssertFalse(policy.canSyncPC(localWiFi: false))
-        XCTAssertFalse(policy.canSyncPC(localWiFi: true), "Cellular Wi-Fi Assist must not upload to a private PC address")
+        XCTAssertTrue(policy.canSyncPC(localWiFi: true), "A separately reachable LAN must not be blocked by the Internet's cellular/VPN path; URLSession forbids cellular transport")
         XCTAssertTrue(policy.canPrewarmExtraTracks, "User approved up to three prepared tracks on mobile data")
         XCTAssertEqual(policy.catalogParallelism, 1)
         XCTAssertEqual(policy.extractionDeadline(base: 12), 24)

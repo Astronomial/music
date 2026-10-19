@@ -38,6 +38,8 @@ app.whenReady().then(async () => {
   handle('sync:stop',()=>syncServer.stop());
   handle('sync:pair',()=>syncServer.newPairing());
   handle('sync:forget',()=>syncServer.forget());
+  handle('sync:address',address=>syncServer.selectAddress(address));
+  handle('sync:firewall',async()=>{if(!syncServer.server)throw new Error('Сначала включи синхронизацию.');await require('./sync-firewall.cjs').allowLocalSync(syncServer.server.address().port);return syncServer.status();});
   handle('sync:approve',async id=>{await syncServer.approvals.approve(id);return syncServer.status();});
   handle('sync:reject',async id=>{await syncServer.approvals.reject(id);return syncServer.status();});
   const saveState = async state => {

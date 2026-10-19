@@ -16,7 +16,9 @@ public struct NetworkPolicy: Sendable, Equatable {
     public var canPrewarmExtraTracks: Bool { known && reachable }
     public var catalogParallelism: Int { lean ? 1 : 3 }
     public var automaticRefreshInterval: TimeInterval { lean ? 120 : 30 }
-    public func canSyncPC(localWiFi: Bool) -> Bool { localWiFi && !cellular }
+    // Internet may use cellular/VPN while the separately monitored LAN is usable.
+    // The pinned LAN URLSession itself forbids cellular transport.
+    public func canSyncPC(localWiFi: Bool) -> Bool { localWiFi }
     public func extractionDeadline(base: TimeInterval) -> TimeInterval { lean ? base * 2 : base }
     public func bufferDeadline(base: TimeInterval) -> TimeInterval { lean ? base * 1.5 : base }
 }

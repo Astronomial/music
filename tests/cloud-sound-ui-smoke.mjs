@@ -7,7 +7,9 @@ const bytes=[...await fs.readFile('tests/fixtures/acoustic-sample.m4a')];
 await page.addInitScript(({bytes})=>{
   window.syncState={enabled:false,devices:[],pending:[]};window.forma.desktop=true;window.forma.soundAudio=async()=>bytes;window.forma.cancelSound=async()=>{};
   window.forma.syncStatus=async()=>structuredClone(window.syncState);window.forma.onSync=()=>()=>{};
-  window.forma.syncStart=async()=>window.syncState={enabled:true,devices:[{id:'phone',name:'iPhone'}],pending:[],pairing:'forma://pair?host=192.168.1.2&code=123456'};
+  window.forma.syncStart=async()=>window.syncState={enabled:true,devices:[{id:'phone',name:'iPhone'}],pending:[],address:'192.168.1.2',port:30377,canConfigureFirewall:true,addresses:[{name:'Ethernet',address:'192.168.1.2',kind:'lan'},{name:'VPN',address:'10.8.0.2',kind:'virtual'}],pairing:'forma://pair?host=192.168.1.2&code=123456'};
+  window.forma.syncAddress=async address=>{window.syncState.address=address;window.syncState.pairing='forma://pair?host='+address+'&code=123456';return window.syncState;};
+  window.forma.syncFirewall=async()=>{window.firewallPermissionCalls=(window.firewallPermissionCalls||0)+1;return window.syncState;};
   window.forma.syncStop=async()=>window.syncState={enabled:false,devices:[],pending:[]};
   window.forma.syncApprove=async id=>{window.confirmedExchange=id;window.syncState.pending=[];return window.syncState;};
   window.forma.syncReject=async id=>{window.rejectedExchange=id;window.syncState.pending=[];return window.syncState;};
@@ -47,6 +49,13 @@ try{
   const profile=await page.evaluate(()=>Object.values(window.savedState.tracks).find(t=>t.soundProfile)?.soundProfile);assert.ok(profile.seconds>=8);assert.ok(profile.brightness<.1);assert.ok(profile.tempoConfidence>.3);
   await page.getByRole('button',{name:'Настройки',exact:true}).click();assert.equal(await page.getByRole('button',{name:'Войти через Google',exact:true}).count(),0);
   await page.getByRole('button',{name:'Подключить iPhone',exact:true}).click();await page.getByRole('textbox',{name:'Код подключения iPhone'}).waitFor();
+  const adapter=page.getByRole('combobox',{name:'Сетевое подключение ПК'});
+  await adapter.selectOption('10.8.0.2');await expectHost('10.8.0.2');
+  await adapter.selectOption('192.168.1.2');await expectHost('192.168.1.2');
+  assert.equal(await page.evaluate(()=>window.firewallPermissionCalls||0),0);
+  await page.getByRole('button',{name:'Разрешить обмен в брандмауэре',exact:true}).click();
+  assert.equal(await page.evaluate(()=>window.firewallPermissionCalls),1);
+  async function expectHost(host){await page.waitForFunction(h=>document.querySelector('textarea[aria-label="Код подключения iPhone"]').value.includes('host='+h),host);}
   const draft={id:'preview-test',deviceName:'iPhone',summary:{toPC:{likesAdded:2,details:['Лайк: Артист — Трек']},toPhone:{playlistsAdded:1,details:['Добавить плейлист: Любимое']}}};
   await page.evaluate(p=>window.syncState.pending=[p],draft);await page.getByRole('article',{name:'Обмен ожидает подтверждения'}).waitFor();assert.equal(await page.evaluate(()=>window.confirmedExchange),undefined);
   await page.getByText('Новые лайки: 2',{exact:true}).waitFor();await page.getByRole('button',{name:'Отклонить обмен',exact:true}).click();assert.equal(await page.evaluate(()=>window.rejectedExchange),'preview-test');

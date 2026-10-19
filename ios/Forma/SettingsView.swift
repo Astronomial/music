@@ -1,3 +1,4 @@
+import UIKit
 import SwiftUI
 import FormaCore
 
@@ -75,10 +76,17 @@ private struct WiFiSettingsView: View {
         GlassPanel {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Синхронизация с ПК").font(.title2.bold())
-                Text("Нужна общая Wi-Fi сеть. На ПК: Настройки → Подключить iPhone. Обмен — после подтверждения на одном из устройств.").foregroundStyle(.secondary)
+                Text("ПК подключи к роутеру по Ethernet или Wi-Fi, iPhone — к его Wi-Fi. USB нужен для установки, обмен идёт по сети. Изменения применяются после подтверждения.").foregroundStyle(.secondary)
                 TextField("Код подключения", text: $code, prompt: Text("Код подключения").foregroundColor(Color.white.opacity(0.65))).foregroundStyle(.primary)
                     .textInputAutocapitalization(.never).autocorrectionDisabled().textFieldStyle(.roundedBorder)
-                Button("Подключить ПК") { Task { await model.pairPC(code) } }.buttonStyle(.borderedProminent).primaryActionForeground().disabled(model.isSyncing || code.isEmpty || !model.canSynchronizePC)
+                Button("Подключить ПК") { Task { await model.pairPC(code) } }.buttonStyle(.borderedProminent).primaryActionForeground().disabled(model.isSyncing || code.isEmpty)
+                Button("Проверить соединение") { Task { await model.checkPCConnection(code) } }.buttonStyle(.bordered).disabled(model.isSyncing || code.isEmpty && model.pcHost == nil)
+                DisclosureGroup("Если ПК недоступен") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Разреши Forma доступ к локальной сети iPhone. В Forma на ПК выбери адрес Ethernet/Wi-Fi и разреши обмен в брандмауэре. В VPN включи доступ к локальной сети.")
+                        Button("Открыть настройки iPhone") { if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) } }
+                    }.font(.footnote).padding(.top, 8)
+                }
                 if let host = model.pcHost {
                     Text("ПК: \(host)").font(.subheadline)
                     if let proposal = model.syncProposal {

@@ -4,42 +4,40 @@ import Security
 import FormaCore
 
 struct PCConnection: Codable, Sendable {
-    let host: String
+    var host: String
+    var hosts: [String]? = nil
     let port: Int
     let pin: String
     var token: String
     var baselineVersion: Int? = nil
     static func parse(_ code: String) throws -> (PCConnection, String) {
-        guard let url = URLComponents(string: code.trimmingCharacters(in: .whitespacesAndNewlines)), url.scheme == "forma", url.host == "pair", url.user == nil, url.password == nil else { throw SyncError.invalidCode }
-        func value(_ key: String) -> String? { url.queryItems?.first { $0.name == key }?.value }
-        guard let host = value("host"), let portText = value("port"), let port = Int(portText), (1...65535).contains(port),
-              let pin = value("pin"), pin.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil,
-              let secret = value("code"), secret.range(of: "^[0-9]{6}$", options: .regularExpression) != nil else { throw SyncError.invalidCode }
-        guard host.range(of: #"^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"#, options: .regularExpression) != nil else { throw SyncError.invalidCode }
-        let parts = host.split(separator: ".", omittingEmptySubsequences: false).compactMap { Int($0) }
-        var allowedLoopback = false
+        var loopback = false
 #if DEBUG
-        allowedLoopback = ProcessInfo.processInfo.arguments.contains("--forma-smoke") && host == "127.0.0.1"
+        loopback = ProcessInfo.processInfo.arguments.contains("--forma-smoke")
 #endif
-        guard host.split(separator: ".", omittingEmptySubsequences: false).count == 4, parts.count == 4, parts.allSatisfy({ (0...255).contains($0) }),
-              allowedLoopback || parts[0] == 10 || (parts[0] == 192 && parts[1] == 168) || (parts[0] == 172 && (16...31).contains(parts[1])) else { throw SyncError.invalidCode }
-        return (PCConnection(host: parts.map(String.init).joined(separator: "."), port: port, pin: pin, token: ""), secret)
+        guard let code = PCPairingCode(code, allowLoopback: loopback), let host = code.hosts.first else { throw SyncError.invalidCode }
+        var connection = PCConnection(host: host, port: code.port, pin: code.pin, token: "")
+        connection.hosts = code.hosts
+        return (connection, code.secret)
     }
+    var endpoints: [String] { var seen = Set<String>(); return ([host] + (hosts ?? [])).filter { seen.insert($0).inserted } }
+
     func url(_ path: String) -> URL { URL(string: "https://\(host):\(port)\(path)")! }
     func validated() -> PCConnection? {
         guard !token.isEmpty, token.count <= 512 else { return nil }
         var code = URLComponents(); code.scheme = "forma"; code.host = "pair"
         code.queryItems = [URLQueryItem(name: "host", value: host), URLQueryItem(name: "port", value: String(port)), URLQueryItem(name: "pin", value: pin), URLQueryItem(name: "code", value: "000000")]
+        if let hosts { code.queryItems?.append(URLQueryItem(name: "hosts", value: hosts.joined(separator: ","))) }
         guard let text = code.string, var checked = try? Self.parse(text).0 else { return nil }
         checked.token = token; checked.baselineVersion = baselineVersion; return checked
     }
 }
 enum SyncError: LocalizedError {
-    case invalidCode, rejected(String), tooLarge, proposalMissing
+    case invalidCode, rejected(String), response(Int, String), tooLarge, proposalMissing
     var errorDescription: String? {
         switch self {
         case .invalidCode: return "Скопируй полный код подключения из настроек Forma на ПК."
-        case .rejected(let message): return message
+        case .rejected(let message), .response(_, let message): return message
         case .tooLarge: return "Библиотека слишком большая для синхронизации."
         case .proposalMissing: return "Пакет больше не хранится на ПК. Подготовь новый обмен и подтверди его."
         }
@@ -84,6 +82,9 @@ actor SyncClient {
     private var restored = false
     private var pendingSessions: [UUID: URLSession] = [:]
     private var pairingGeneration = UUID()
+    private var healthyEndpoint: (pin: String, host: String, at: Date)?
+    private struct Health: Decodable, Sendable { let protocolVersion: Int }
+    private struct Empty: Encodable, Sendable {}
     init(readConnection: @escaping @Sendable () -> ConnectionRead = SyncClient.readSavedConnection) {
         self.readConnection = readConnection
     }
@@ -108,14 +109,33 @@ actor SyncClient {
     func pair(_ code: String) async throws {
         var (next, secret) = try PCConnection.parse(code)
         let generation = UUID(); pairingGeneration = generation
-        struct Request: Encodable { let code: String; let name: String }
+        let previous = await restore()
+        guard pairingGeneration == generation else { throw CancellationError() }
+        if let previous, previous.pin == next.pin {
+            next.token = previous.token; next.baselineVersion = previous.baselineVersion
+            do {
+                let _: Health = try await request(next, path: "/sync/ping", body: Empty())
+                try Task.checkCancellation()
+                guard pairingGeneration == generation else { throw CancellationError() }
+                next.host = healthyEndpoint?.host ?? next.host
+                try saveConnection(next); return
+            } catch SyncError.response(let status, _) where status == 401 || status == 404 {
+                // Revoked token/older PC: use the fresh code, preserving the PC pin.
+            }
+        }
+        guard pairingGeneration == generation else { throw CancellationError() }
+        struct Request: Encodable { let code: String; let name: String; let requestID: String }
         struct Reply: Decodable { let token: String; let protocolVersion: Int? }
-        let reply: Reply = try await request(next, path: "/pair", body: Request(code: secret, name: "iPhone · Forma"))
+        let reply: Reply = try await request(next, path: "/pair", body: Request(code: secret, name: "iPhone · Forma", requestID: UUID().uuidString))
         try Task.checkCancellation()
         guard reply.protocolVersion == 2 else { throw SyncError.rejected("Обнови Forma на ПК: нужен обмен с подтверждением.") }
         guard pairingGeneration == generation, !reply.token.isEmpty, reply.token.count <= 512 else { throw CancellationError() }
         next.token = reply.token
         next.baselineVersion = 3
+        next.host = healthyEndpoint?.host ?? next.host
+        try saveConnection(next)
+    }
+    private func saveConnection(_ next: PCConnection) throws {
         let data = try JSONEncoder().encode(next)
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrAccount as String: account]
         let changes: [String: Any] = [kSecValueData as String: data, kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]
@@ -130,7 +150,7 @@ actor SyncClient {
     func retireGoogleCredentials() {
         SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "music.forma.google", kSecAttrAccount as String: "oauth"] as CFDictionary)
     }
-    func cancelPendingRequests() { pairingGeneration = UUID(); pendingSessions.values.forEach { $0.invalidateAndCancel() }; pendingSessions.removeAll() }
+    func cancelPendingRequests() { pairingGeneration = UUID(); healthyEndpoint = nil; pendingSessions.values.forEach { $0.invalidateAndCancel() }; pendingSessions.removeAll() }
     func disconnect() { cancelPendingRequests(); restored = true; SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrAccount as String: account] as CFDictionary); connection = nil }
     func prepare(_ checkpoint: WiFiCheckpoint) async throws -> WiFiProposal {
         guard let connection, connection.pin == checkpoint.peerID else { throw SyncError.rejected("Сначала подключи ПК.") }
@@ -153,11 +173,72 @@ actor SyncClient {
         let reply: Reply = try await request(connection, path: "/sync/ack", body: Request(id: id))
         guard reply.protocolVersion == 2 else { throw WiFiExchangeError.invalidProposal }
     }
+    func checkConnection(_ code: String? = nil) async throws -> String {
+        let candidate: PCConnection
+        if let code { candidate = try PCConnection.parse(code).0 }
+        else if let saved = await restore() { candidate = saved }
+        else { throw SyncError.invalidCode }
+        let found = try await resolveEndpoint(candidate, force: true)
+        if var current = connection, current.pin == found.pin {
+            current.host = found.host; current.hosts = found.endpoints; try saveConnection(current)
+        }
+        return found.host
+    }
+    private struct Probe: Sendable { let connection: PCConnection?; let issue: String }
+    private func resolveEndpoint(_ connection: PCConnection, force: Bool = false) async throws -> PCConnection {
+        if !force, let healthyEndpoint, healthyEndpoint.pin == connection.pin, connection.endpoints.contains(healthyEndpoint.host), Date().timeIntervalSince(healthyEndpoint.at) < 30 {
+            var result = connection; result.host = healthyEndpoint.host; return result
+        }
+        let generation = pairingGeneration
+        return try await withThrowingTaskGroup(of: Probe.self) { group in
+            for host in connection.endpoints {
+                var candidate = connection; candidate.host = host
+                group.addTask { [candidate] in
+                    do {
+                        let reply: Health = try await self.requestOnce(candidate, path: "/health", body: Empty(), probe: true)
+                        guard reply.protocolVersion == 2 else { return Probe(connection: nil, issue: "Обнови Forma на ПК.") }
+                        return Probe(connection: candidate, issue: "")
+                    } catch SyncError.response(404, _) {
+                        // A successfully pinned older PC may not expose /health.
+                        return Probe(connection: candidate, issue: "")
+                    } catch { return Probe(connection: nil, issue: error.localizedDescription) }
+                }
+            }
+            var issue = ""
+            for try await result in group {
+                try Task.checkCancellation()
+                guard generation == pairingGeneration else { throw CancellationError() }
+                if let found = result.connection {
+                    healthyEndpoint = (found.pin, found.host, Date()); group.cancelAll(); return found
+                }
+                issue = result.issue
+            }
+            throw SyncError.rejected("ПК недоступен. Разреши Forma доступ к локальной сети iPhone и частной сети Windows. VPN должен разрешать локальную сеть. USB сам по себе не заменяет Wi-Fi. " + issue)
+        }
+    }
     private func request<Body: Encodable, Reply: Decodable>(_ connection: PCConnection, path: String, body: Body) async throws -> Reply {
+        let generation = pairingGeneration
+        var endpoint = try await resolveEndpoint(connection)
+        guard generation == pairingGeneration else { throw CancellationError() }
+        let reply: Reply
+        do { reply = try await requestOnce(endpoint, path: path, body: body) }
+        catch where error is URLError && (error as? URLError)?.code != .cancelled && !Task.isCancelled {
+            guard generation == pairingGeneration else { throw CancellationError() }
+            endpoint = try await resolveEndpoint(connection, force: true)
+            reply = try await requestOnce(endpoint, path: path, body: body)
+        }
+        guard generation == pairingGeneration else { throw CancellationError() }
+        if var current = self.connection, current.pin == endpoint.pin, current.host != endpoint.host {
+            current.host = endpoint.host; try? saveConnection(current)
+        }
+        return reply
+    }
+    private func requestOnce<Body: Encodable, Reply: Decodable>(_ connection: PCConnection, path: String, body: Body, probe: Bool = false) async throws -> Reply {
+
         let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .millisecondsSince1970
         let data = try encoder.encode(body); guard data.count <= 8 * 1024 * 1024 else { throw SyncError.tooLarge }
         let delegate = PinnedPCSession(connection), config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 12; config.timeoutIntervalForResource = 20; config.allowsCellularAccess = false; config.waitsForConnectivity = false; config.networkServiceType = .background; config.httpShouldSetCookies = false
+        config.timeoutIntervalForRequest = probe ? 2 : 12; config.timeoutIntervalForResource = probe ? 3 : 30; config.allowsCellularAccess = false; config.waitsForConnectivity = false; config.networkServiceType = .default; config.allowsExpensiveNetworkAccess = true; config.allowsConstrainedNetworkAccess = true; config.connectionProxyDictionary = [:]; config.httpShouldSetCookies = false
         let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
         let requestID = UUID(); pendingSessions[requestID] = session
         defer { session.invalidateAndCancel(); pendingSessions[requestID] = nil }
@@ -170,7 +251,7 @@ actor SyncClient {
         guard (response as? HTTPURLResponse)?.statusCode == 200 else {
             let failure = try? JSONDecoder().decode(Failure.self, from: bytes)
             if (response as? HTTPURLResponse)?.statusCode == 409, failure?.code == "proposal_missing" { throw SyncError.proposalMissing }
-            throw SyncError.rejected(failure?.error ?? "ПК недоступен. Проверь сеть и разрешение брандмауэра.")
+            throw SyncError.response((response as? HTTPURLResponse)?.statusCode ?? 0, failure?.error ?? "ПК недоступен. Проверь сеть и разрешение брандмауэра.")
         }
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .millisecondsSince1970
         return try decoder.decode(Reply.self, from: bytes)

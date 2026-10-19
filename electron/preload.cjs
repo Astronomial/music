@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('forma',{
   syncStop:()=>ipcRenderer.invoke('sync:stop'),
   syncPair:()=>ipcRenderer.invoke('sync:pair'),
   syncForget:()=>ipcRenderer.invoke('sync:forget'),
+  syncAddress:address=>ipcRenderer.invoke('sync:address',address),
+  syncFirewall:()=>ipcRenderer.invoke('sync:firewall'),
   syncApprove:id=>ipcRenderer.invoke('sync:approve',id),
   syncReject:id=>ipcRenderer.invoke('sync:reject',id),
   onSync:callback=>{const fn=(_event,value)=>callback(value);ipcRenderer.on('sync:changed',fn);return()=>ipcRenderer.removeListener('sync:changed',fn);},

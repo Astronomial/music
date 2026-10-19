@@ -25,7 +25,8 @@ final class AppModel: ObservableObject {
     private var pendingExchange: WiFiCheckpoint?
     @Published var message: String?
     @Published private(set) var localWiFiAvailable = false
-    var canSynchronizePC: Bool { player.networkPolicy.canSyncPC(localWiFi: localWiFiAvailable) }
+    @Published private(set) var verifiedPCNetwork = false
+    var canSynchronizePC: Bool { player.networkPolicy.canSyncPC(localWiFi: localWiFiAvailable || verifiedPCNetwork) }
     private let localWiFiMonitor = NWPathMonitor(requiredInterfaceType: .wifi)
     private var syncBackoff = SyncBackoff()
     private var syncRouteAllowed = false
@@ -557,25 +558,40 @@ final class AppModel: ObservableObject {
     }
     func pairPC(_ code: String) async {
         guard !isRestoringLibrary else { return }
-        guard canSynchronizePC else { message = "Для подключения ПК нужна общая Wi-Fi сеть."; return }
         guard !isSyncing else { return }
         connectionEpoch = UUID(); let epoch = connectionEpoch; syncEpoch = UUID(); syncTask?.cancel()
         isSyncing = true
         do {
+            let previous = await sync.restore()
             try await sync.pair(code)
             guard connectionEpoch == epoch else { return }
             let connection = await sync.connection
             guard connectionEpoch == epoch else { return }
-            pcHost = connection?.host; pcIdentity = connection?.pin; syncBase = nil
-            try await storage?.saveSyncBase(nil)
-            try await storage?.savePendingSync(nil); pendingExchange = nil; syncProposal = nil
+            let samePeer = pcIdentity == connection?.pin
+            let sameDevice = samePeer && previous?.token == connection?.token
+            pcHost = connection?.host; pcIdentity = connection?.pin; verifiedPCNetwork = true
+            if !samePeer { syncBase = nil; try await storage?.saveSyncBase(nil) }
+            if !sameDevice { try await storage?.savePendingSync(nil); pendingExchange = nil; syncProposal = nil }
+            updateSyncRoute()
             guard connectionEpoch == epoch else { return }
             isSyncing = false; await synchronize(showErrors: true)
         } catch { guard connectionEpoch == epoch else { return }; isSyncing = false; syncStatus = error.localizedDescription; message = error.localizedDescription }
     }
+    func checkPCConnection(_ code: String) async {
+        guard !isSyncing else { return }
+        let epoch = connectionEpoch; isSyncing = true
+        defer { if epoch == connectionEpoch { isSyncing = false; scheduleSync() } }
+        do {
+            let host = try await sync.checkConnection(code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : code)
+            guard epoch == connectionEpoch else { return }
+            verifiedPCNetwork = true; updateSyncRoute()
+            syncStatus = "ПК доступен · \(host). " + (pcHost == nil ? "Нажми «Подключить ПК»." : "Можно подготовить обмен.")
+        } catch { guard epoch == connectionEpoch else { return }; syncStatus = error.localizedDescription; message = error.localizedDescription }
+    }
     func disconnectPC() async {
         connectionEpoch = UUID(); let epoch = connectionEpoch; syncEpoch = UUID(); isSyncing = false; syncTask?.cancel(); await sync.disconnect()
         guard connectionEpoch == epoch else { return }
+        verifiedPCNetwork = false
         pcHost = nil; pcIdentity = nil; syncBase = nil; pendingExchange = nil; syncProposal = nil
         try? await storage?.saveSyncBase(nil)
         try? await storage?.savePendingSync(nil)
@@ -608,7 +624,7 @@ final class AppModel: ObservableObject {
             syncStatus = "Срок хранения пакета истёк. Подготовь новый обмен; библиотека сохранена"
         } catch {
             guard epoch == syncEpoch else { return }; syncBackoff.failed()
-            syncStatus = "Обмен не завершён. Библиотека сохранена на iPhone"
+            syncStatus = error.localizedDescription
             if showErrors { message = error.localizedDescription }
         }
     }

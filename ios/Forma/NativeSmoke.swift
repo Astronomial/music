@@ -165,7 +165,12 @@ enum NativeSmoke {
             var rejectedWrongPin = false
             do { try await sync.pair(invalid.string!) } catch { rejectedWrongPin = true }
             guard rejectedWrongPin else { throw SyncError.rejected("Wrong certificate pin was accepted") }
-            try await sync.pair(args[index + 1])
+            var multiple = URLComponents(string: args[index + 1])!
+            let originalHost = multiple.queryItems!.first { $0.name == "host" }!.value!
+            multiple.queryItems = multiple.queryItems?.filter { $0.name != "hosts" }.map { $0.name == "host" ? URLQueryItem(name: "host", value: "127.0.0.2") : $0 }
+            multiple.queryItems?.append(URLQueryItem(name: "hosts", value: originalHost))
+            try await sync.pair(multiple.string!)
+            guard await sync.connection?.host == originalHost else { throw SyncError.rejected("LAN adapter fallback did not select the reachable pinned PC") }
             advanceStage("first-sync")
             guard let connection = await sync.connection else { throw SyncError.rejected("Connection missing") }
             let firstCheckpoint = WiFiCheckpoint(peerID: connection.pin, sent: Library(), base: nil)
@@ -180,6 +185,9 @@ enum NativeSmoke {
             library.settings.artistDiversity = 1
             let secondCheckpoint = WiFiCheckpoint(peerID: connection.pin, sent: library, base: base)
             let secondPreview = try await sync.prepare(secondCheckpoint)
+            let previousToken = await sync.connection?.token
+            try await sync.pair(args[index + 1])
+            guard await sync.connection?.token == previousToken, try await sync.review(secondCheckpoint.id).status == .pending else { throw SyncError.rejected("Reconnecting the same PC replaced its token or lost the pending exchange") }
             guard secondPreview.status == .pending, secondPreview.summary.toPC.playlistsAdded == 1 else { throw SyncError.rejected("Bidirectional preview failed") }
             let merged = try secondCheckpoint.mergingApproved(try await sync.approve(secondCheckpoint.id), into: library)
             try await sync.acknowledge(secondCheckpoint.id)
@@ -346,7 +354,7 @@ enum NativeSmoke {
             guard !player.isPlaying else { throw SyncError.rejected("Explicit pause failed") }
             player.resume(); try await Task.sleep(nanoseconds: 500_000_000)
             guard player.isPlaying else { throw SyncError.rejected("Resume failed") }
-            var final: [String: Any] = ["status": "passed", "realPCMAnalysis": true, "nativeStarts": starts.count, "automaticTransitions": feedback.count, "background": background, "pinnedTLS": true, "wrongPinRejected": rejectedWrongPin, "bidirectionalSync": true, "wifiApprovalRequired": true, "pauseResume": true, "miniPlayerAboveTabs": true, "miniPlayerBottom": miniFrame.maxY, "tabBarTop": barFrame.minY, "preparedManualSwitchMilliseconds": switchDelay * 1000, "preparedStreamReused": true, "controlledColdStartMilliseconds": coldStartMilliseconds, "preparedPlayingMilliseconds": preparedPlayingMilliseconds, "startupTimeoutRecovered": true, "recommendationSnapshotCaptured": true, "explicitLearningFeedbackCaptured": true, "networkHandoffRecovered": true, "oldNetworkPreparedItemDiscarded": true, "networkRecoveryRespectsPause": true]
+            var final: [String: Any] = ["status": "passed", "realPCMAnalysis": true, "nativeStarts": starts.count, "automaticTransitions": feedback.count, "background": background, "pinnedTLS": true, "wrongPinRejected": rejectedWrongPin, "bidirectionalSync": true, "wifiApprovalRequired": true, "multipleLANAddressesRecovered": true, "samePCReconnectionPreservesDraft": true, "pauseResume": true, "miniPlayerAboveTabs": true, "miniPlayerBottom": miniFrame.maxY, "tabBarTop": barFrame.minY, "preparedManualSwitchMilliseconds": switchDelay * 1000, "preparedStreamReused": true, "controlledColdStartMilliseconds": coldStartMilliseconds, "preparedPlayingMilliseconds": preparedPlayingMilliseconds, "startupTimeoutRecovered": true, "recommendationSnapshotCaptured": true, "explicitLearningFeedbackCaptured": true, "networkHandoffRecovered": true, "oldNetworkPreparedItemDiscarded": true, "networkRecoveryRespectsPause": true]
             final["threeTracksPreparedOnCellular"] = true; final["mutedPrerollReusedWithoutExtraction"] = true; final["bufferedThirdTrackMilliseconds"] = preparation.ready
             final["parallelPreparation"] = true; final["pendingBufferTransferred"] = true
             final["pendingBufferStartMilliseconds"] = preparation.pending; final["threeTrackPreparationMilliseconds"] = preparation.window
