@@ -1,0 +1,43 @@
+{
+  "sourceCommit": "8a3f3afc7fa42f2c21236922c15a2ea23697676a",
+  "windowsVersion": "1.17.1",
+  "iosVersion": "1.9.2",
+  "iosBuild": "20",
+  "windowsWorkflow": "https://github.com/Astronomial/music/actions/runs/39207456994",
+  "iosWorkflow": "https://github.com/Astronomial/music/actions/runs/39207456970",
+  "windowsWorkflowPassed": true,
+  "iosWorkflowPassed": true,
+  "nodeTestsPassed": 172,
+  "swiftCoreTestsPassed": 116,
+  "audioLoadingTestsPassed": 23,
+  "releasePerformanceTestsPassed": 2,
+  "browserSmokeProgramsPassed": 7,
+  "nativeWindowsAppPassed": true,
+  "packagedWindowsAppPassed": true,
+  "nativeIOSSimulatorPassed": true,
+  "multipleLANAddressesRecovered": true,
+  "samePCReconnectionPreservesDraft": true,
+  "backgroundAudioVerified": true,
+  "approvedBidirectionalTransferVerified": true,
+  "disallowWrongPinVerified": true,
+  "approvalRequiredVerified": true,
+  "windowsAsset": {
+    "name": "Forma-1.17.1-Windows-x64.exe",
+    "size": 92573822,
+    "sha256": "478b4f30e91a4d217360ff69555c76b644c77b1af65cfa49d95a24cbda001630"
+  },
+  "iosAsset": {
+    "name": "Forma-iOS-1.9.2-unsigned.ipa",
+    "size": 5842884,
+    "sha256": "af43b35d2ef3a44f8538b146863c16551f40cc1c843e7a541dc96a740daa760e"
+  },
+  "physicalUserNetworkTested": false,
+  "UACAcceptedInCI": false,
+  "firewallScriptScopeVerified": "TCP, selected sync port, LocalSubnet, Private, EdgeTraversal Block",
+  "limitation": "Controlled TLS peers and actual native audio were tested on Windows and iOS Simulator. The user's physical router/iPhone/VPN and Windows UAC acceptance were not tested.",
+  "publicDownloadsVerified": true,
+  "manifestAndGitHubDigestsMatch": true,
+  "iosArchitecture": "arm64",
+  "minimumIOS": "17.0",
+  "localNetworkUsageDeclared": true
+}
