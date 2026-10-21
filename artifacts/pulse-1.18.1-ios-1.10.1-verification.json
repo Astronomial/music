@@ -1,0 +1,77 @@
+{
+  "sourceCommit": "724d98a2cb3776505e98b5766b556baa907a5633",
+  "releases": {
+    "windows": {
+      "version": "1.18.1",
+      "url": "https://github.com/Astronomial/music/releases/download/win-v1.18.1/Forma-1.18.1-Windows-x64.exe",
+      "bytes": 92582216,
+      "sha256": "54547811faa1250cb4f93cf584bcaddcf9fa3fd7123091ff13431775a08c2f07",
+      "manifestMatches": true,
+      "githubDigestMatches": true,
+      "portableWrapperMachine": "0x14c",
+      "x64PayloadCheck": "native packaged application smoke in Windows CI"
+    },
+    "ios": {
+      "version": "1.10.1",
+      "url": "https://github.com/Astronomial/music/releases/download/ios-v1.10.1/Forma-iOS-1.10.1-unsigned.ipa",
+      "bytes": 5883537,
+      "sha256": "5b07843b3c665e066e5e0dcd9811336bec42daa4376d2771d1fae0565e7420d6",
+      "manifestMatches": true,
+      "githubDigestMatches": true,
+      "moodAnnotationResourcePresent": true,
+      "moodAnnotationEntries": 197,
+      "build": "22",
+      "minimumIOS": "17.0",
+      "architecture": "arm64",
+      "backgroundAudio": true,
+      "localNetworkDescriptionPresent": true
+    }
+  },
+  "verifiedAtUTC": "2026-10-21T07:33:14.700332+00:00",
+  "ci": {
+    "windows": {
+      "url": "https://github.com/Astronomial/music/actions/runs/39561246167",
+      "conclusion": "success",
+      "unitTests": 182,
+      "browserScenarios": 8,
+      "nativeElectronPassed": true,
+      "packagedWindowsAppPassed": true
+    },
+    "ios": {
+      "url": "https://github.com/Astronomial/music/actions/runs/39561246039",
+      "conclusion": "success",
+      "coreTests": 126,
+      "releasePerformanceTests": 2,
+      "audioLoadingTests": 23,
+      "simulatorBuildPassed": true,
+      "deviceReleaseBuildPassed": true,
+      "nativeScenario": "passed",
+      "nativeBooleanChecks": 54,
+      "cachedChoiceSeconds": 0.13644194602966309,
+      "pulseAndSixMoodsRankingSeconds": 2.4544910192489624,
+      "benchmarkFixture": {
+        "tracks": 3000,
+        "events": 3000,
+        "savedRecordings": 780
+      },
+      "nativeReport": "ios-1.10.1-native-smoke.json"
+    }
+  },
+  "audits": {
+    "windows": "windows-1.18.1-pulse-audit.json",
+    "ios": "ios-1.10.1-pulse-audit.json",
+    "choicesPerPlatform": 1400,
+    "eligibleSavedRecordingsPerPlatform": 340,
+    "eligibleLikesPerPlatform": 180,
+    "allSavedRecordingsReached": true,
+    "unrelatedOrUtilitySelections": 0
+  },
+  "limits": {
+    "actualUserLibraryAvailable": false,
+    "subjectiveTasteMeasured": false,
+    "liveYouTubeTested": false,
+    "physicalUserDevicesTested": false,
+    "nativeAudioUsesControlledSources": true,
+    "ciPerformanceIsNotPhoneNetworkLatency": true
+  }
+}
