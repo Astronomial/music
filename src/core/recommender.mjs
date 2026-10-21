@@ -208,7 +208,7 @@ export function rankTracks(candidates, state, options = {}) {
   const spacing=artistSpacing(settings.artistDiversity);
   const unique = new Map(candidates.map(t => [t.id, t]));
   const qualitySource=playlistSeedState(state,context);
-  const knownRecordings=new Set([...qualitySource.likes,...activeSeedPlaylists(qualitySource,settings).flatMap(p=>p.trackIds)]);
+  const knownRecordings=new Set([...qualitySource.likes,...qualitySource.playlists.flatMap(p=>p.trackIds)]);
   const utilitySeeds=new Set([...qualitySource.likes,...activeSeedPlaylists(qualitySource,settings).flatMap(p=>p.trackIds)].filter(id=>qualitySource.tracks[id]&&utilityRecording(qualitySource.tracks[id])));
   const seedTrack=context?.trackId?state.tracks[context.trackId]:null;
   let ranked = [...unique.values()].filter(t => (!context?.trackId||seedTrack&&!sameSong(t,seedTrack)&&trackPulseFit(t,seedTrack)>.1) && t.streamable && !banned.has(t.id) && (allowRecent || !recentRecordings.has(recordingKey(t,artistKeys))) && !blockedByPreferences(t,settings) && (settings.includeLibrary||!library.has(t.id)) && (allowRecent || !recent.has(t.id)) && (!context?.mood||moodEvidence(t,context)>0)).map(track => {
@@ -370,10 +370,11 @@ export function rankTracks(candidates, state, options = {}) {
     const novelSlot=discoveryDeficit>=.5;
     const balanced=pool.filter(i=>ranked[i].known!==novelSlot&&ranked[i].nearby&&relevant(ranked[i]));
     if(balanced.length)pool=balanced;
+    const rotateFamiliar=pool.every(i=>ranked[i].known);
     let best = -1, bestScore = -Infinity;
     for (const i of pool) {
       const item = ranked[i];
-      if(familiarSlot&&pool.every(j=>ranked[j].known)){
+      if(rotateFamiliar){
         if(best<0||compareFamiliar(item.track.id,ranked[best].track.id,rotation,seed)<0)best=i;
         continue;
       }

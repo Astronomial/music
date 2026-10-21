@@ -4,7 +4,7 @@ import Foundation
 /// cutoffs. Persisted timestamps outlive the bounded listening-event log.
 public enum FamiliarRotation {
     public static func ids(_ library: Library) -> Set<String> {
-        Set(library.likedIDs.isEmpty ? library.playlists.flatMap(\.trackIDs) : library.likedIDs)
+        Set(library.likedIDs + library.playlists.flatMap(\.trackIDs))
     }
     public static func times(_ library: Library, now: Date) -> [String: Double] {
         let cutoff = now.timeIntervalSince1970 * 1000

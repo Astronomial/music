@@ -110,6 +110,22 @@ final class FamiliarRotationTests: XCTestCase {
         var planner = DiscoveryPlanner()
         XCTAssertTrue(planner.plan(library: library, limit: 10, now: now).contains { $0.kind == .artist && $0.seed.id == heard.id })
     }
+    func testLikesAndPlaylistsShareACompleteRotationWhenOnlySavedMusicIsAvailable() throws {
+        let tracks = (0..<70).map { song($0) }
+        var library = Library(); library.merge(tracks); library.likedIDs = tracks.prefix(20).map(\.id)
+        library.playlists = [.init(name: "Перенос", trackIDs: tracks.dropFirst(20).map(\.id))]; library.settings.repeatHours = 0; library.settings.artistDiversity = 0
+        let index = PulseEngine.makeIndex(tracks, library: library)
+        let cache = PulseEngine.rank(tracks, library: library, limit: 25, now: now, index: index, retainFamiliarPool: true)
+        XCTAssertEqual(cache.count, 70)
+        var heard = Set<String>()
+        for i in 0..<70 {
+            let at = now.addingTimeInterval(Double(i))
+            let next = try XCTUnwrap(PulseEngine.selectCached(cache, library: library, exclude: [], now: at, index: index))
+            XCTAssertTrue(next.known); XCTAssertTrue(heard.insert(next.id).inserted)
+            library.record(.init(trackID: next.id, kind: .play, at: at, seconds: 0, ratio: 0)); library.events = []
+        }
+        XCTAssertEqual(heard.count, 70)
+    }
     func testRotationSurvivesApprovedSyncAndLegacyPeer() {
         let tracks = [song(1), song(2)]
         var local = Library(); local.merge(tracks); local.likedIDs = tracks.map(\.id); local.familiarPlays[tracks[0].id] = 1_800_000_000_000

@@ -3,7 +3,7 @@
 export function familiarIDs(state,context=null){
   if(context?.trackId)return new Set([context.trackId]);
   if(context?.playlistId)return new Set(state.playlists.find(p=>p.id===context.playlistId)?.trackIds||[]);
-  return new Set(state.likes.length?state.likes:state.playlists.flatMap(p=>p.trackIds));
+  return new Set([...state.likes,...state.playlists.flatMap(p=>p.trackIds)]);
 }
 export function familiarRotation(state,now=Date.now()){
   const times=new Map(Object.entries(state.familiarPlays||{}).filter(([,at])=>Number.isFinite(at)&&at>0&&at<=now));

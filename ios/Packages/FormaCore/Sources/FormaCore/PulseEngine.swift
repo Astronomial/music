@@ -96,7 +96,7 @@ public enum PulseEngine {
     public static func rank(_ candidates: [Track], library: Library, limit: Int = 30, mood: String? = nil, exclude: Set<String> = [], allowRecent: Bool = false, now: Date = Date(), currentID: String? = nil, index: RankingIndex? = nil, playlistID: String? = nil, trackID: String? = nil, retainFamiliarPool: Bool = false) -> [Recommendation] {
         guard limit > 0, let source = profileSource(library, playlistID: playlistID, trackID: trackID) else { return [] }
         let prepared = index ?? makeIndex(candidates, library: library), profile = TasteProfile(library: source, now: now), familiarPool = FamiliarRotation.ids(source)
-        let knownRecordings = profile.explicitIDs
+        let knownRecordings = Set(source.likedIDs + source.playlists.flatMap(\.trackIDs))
         let context = mood ?? (library.settings.mood == "any" ? nil : library.settings.mood)
         let recent = recentIDs(library, now: now), saved = Set(library.likedIDs + library.playlists.flatMap(\.trackIDs))
         let feedback = ConsumptionFeedback.model(library, now: now), learner = ContextualLearning.model(library, now: now)
@@ -173,7 +173,7 @@ public enum PulseEngine {
             let track = library.tracks[item.id] ?? item.track
             guard !exclude.contains(item.id), !recent.contains(item.id), !recentRecordings.contains(prepared.recordings[item.id] ?? item.id), !library.hiddenIDs.contains(item.id), !PulseDiversity.blocked(track, settings: library.settings), library.settings.includeLibrary || !saved.contains(item.id), context.map({ MoodFitness.scores(track)[$0, default: 0] > 0 }) ?? true else { continue }
             // Refresh changed recording metadata, not a stale genre index.
-            let updatedEvidence = evidence(track, profile: profile, index: prepared, library: library, familiarIDs: profile.explicitIDs, liveMetadata: true)
+            let updatedEvidence = evidence(track, profile: profile, index: prepared, library: library, familiarIDs: saved, liveMetadata: true)
             let focus = focusMatch(track, context: context) && !RecordingQuality.utility(track) && !library.dislikedIDs.contains(track.id)
             guard updatedEvidence.eligible || focus else { continue }
             var choice = item
@@ -246,9 +246,10 @@ public enum PulseEngine {
                 let occurrences: Int = names.map { counts[$0] ?? 0 }.max() ?? 0
                 return pool[position].score - Double(occurrences) * library.settings.artistDiversity * 0.75
             }
+            let rotateFamiliar = indices.allSatisfy { pool[$0].known }
             var best = indices[0]
             for candidate in indices.dropFirst() {
-                if deficit < 0.5, pool[best].known, pool[candidate].known {
+                if rotateFamiliar {
                     if FamiliarRotation.precedes(pool[candidate].id, pool[best].id, times: rotation, seed: rotationSeed) { best = candidate }
                     continue
                 }

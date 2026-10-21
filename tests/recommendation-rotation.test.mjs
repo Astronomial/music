@@ -86,3 +86,11 @@ test('an imported recording is familiar, while recently completed artists get th
  const calls=[];await collectYouTubeCandidates(s,async(route,params)=>{calls.push({route,...params});return [];});
  assert.ok(calls.some(c=>c.route==='/related/'+heard.videoId));assert.ok(calls.some(c=>c.query?.includes(heard.artist)));
 });
+test('likes and playlist recordings share a complete rotation even when discovery has no new candidates',()=>{
+ const tracks=Array.from({length:70},(_,i)=>song(i)),s=library(tracks,tracks.slice(0,20));s.playlists=[{id:'saved',name:'Перенос',trackIds:tracks.slice(20).map(t=>t.id)}];s.settings.discovery=.7;
+ let current=s;const seen=new Set();
+ for(let i=0;i<70;i++){
+  const at=now+i*1000,item=rankTracks(tracks,current,{limit:1,now:at})[0];assert.ok(item.known);assert.ok(!seen.has(item.track.id));seen.add(item.track.id);current=recordEvent(current,item.track.id,'play',{},at);current.events=[];
+ }
+ assert.equal(seen.size,70);
+});

@@ -100,10 +100,10 @@ final class ContextualLearningTests: XCTestCase {
     func testIndexedCachedChoiceIsBoundedWithLongHistoryAndPlaylistProfileStaysIsolated() throws {
         var library = Library(); library.settings.genres = []
         let tracks = (0..<3000).map { track($0, genre: $0 % 2 == 0 ? "Pop" : "Rock") }
-        library.merge(tracks); library.likedIDs = Array(tracks.prefix(80).map(\.id))
+        library.merge(tracks); library.likedIDs = Array(tracks.prefix(80).map(\.id)); library.playlists = [.init(name: "Saved", trackIDs: tracks[300..<1000].map(\.id))]
         library.events = (0..<3000).map { i in .init(trackID: tracks[i % 300].id, kind: i % 3 == 0 ? .play : .listen, at: now.addingTimeInterval(-Double(i + 1) * 200), seconds: 190, ratio: 0.95) }
         let index = PulseEngine.makeIndex(tracks, library: library)
-        let cache = PulseEngine.rank(tracks, library: library, limit: 60, now: now, index: index)
+        let cache = PulseEngine.rank(tracks, library: library, limit: 60, now: now, index: index, retainFamiliarPool: true)
         let begin = Date()
         XCTAssertNotNil(PulseEngine.selectCached(cache, library: library, exclude: [], now: now, index: index))
         let elapsed = Date().timeIntervalSince(begin)

@@ -11,6 +11,10 @@ struct Replay: Codable {
     var selected = 0
     var uniqueRecordings = 0
     var uniqueArtists = 0
+    var eligibleSavedRecordings = 0
+    var distinctSavedRecordings = 0
+    var savedDrawRange: [Int] = []
+    var allSavedReachedAt: Int?
     var eligibleFavourites = 0
     var distinctFavourites = 0
     var favouriteDrawRange: [Int] = []
@@ -44,8 +48,10 @@ func replay(label: String, original: Library, count: Int, negatives: Set<String>
     result.syntheticNegativeSelections = negatives == nil ? nil : 0
     result.initialGenres = profile.genres; result.initialSavedCount = profile.explicitIDs.count
     result.confirmedSavedGenres = profile.confirmedGenreCount
-    let favourites = FamiliarRotation.ids(library)
+    let favourites = Set(library.likedIDs), saved = FamiliarRotation.ids(library)
     result.eligibleFavourites = favourites.count
+    result.eligibleSavedRecordings = saved.count
+    var savedDraws: [String: Int] = [:]
     var favouriteDraws: [String: Int] = [:]
     var heard = Set<String>(), recordings = Set<String>(), artists = Set<String>(), rolling: [Set<String>] = []
     var cache: [Recommendation] = [], current: String?
@@ -64,6 +70,8 @@ func replay(label: String, original: Library, count: Int, negatives: Set<String>
         guard let choice = next else { break }
         let track = choice.track, names = PulseDiversity.artists(track)
         result.selected += 1
+        if saved.contains(track.id) { savedDraws[track.id, default: 0] += 1 }
+        if savedDraws.count == saved.count && result.allSavedReachedAt == nil { result.allSavedReachedAt = step + 1 }
         if favourites.contains(track.id) { favouriteDraws[track.id, default: 0] += 1 }
         if favouriteDraws.count == favourites.count && result.allFavouritesReachedAt == nil { result.allFavouritesReachedAt = step + 1 }
         if !choice.known && !names.isDisjoint(with: profile.artists.keys) { result.newRecordingsByFamiliarArtists += 1 }
@@ -94,6 +102,7 @@ func replay(label: String, original: Library, count: Int, negatives: Set<String>
         current = track.id
         if step % 100 == 99 { FileHandle.standardError.write(Data("\(label): \(step + 1)/\(count)\n".utf8)) }
     }
+    result.distinctSavedRecordings = savedDraws.count; result.savedDrawRange = [savedDraws.values.min() ?? 0, savedDraws.values.max() ?? 0]
     result.distinctFavourites = favouriteDraws.count; result.favouriteDrawRange = [favouriteDraws.values.min() ?? 0, favouriteDraws.values.max() ?? 0]
     result.uniqueRecordings = recordings.count; result.uniqueArtists = artists.count
     result.elapsedSeconds = Date().timeIntervalSince(start)

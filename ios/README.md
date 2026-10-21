@@ -1,12 +1,12 @@
-# Forma iOS 1.10.0
+# Forma iOS 1.10.1
 
-В **1.10.0** Пульс использует всю коллекцию лайков для знакомых слотов, расширенный музыкальный профиль и пополняемые подборки до 25 треков. [Алгоритм и проверки](../docs/PULSE_1_18_0.md).
+В **1.10.1** Пульс использует общий пул лайков и сохранённых плейлистов для знакомых слотов, расширенный музыкальный профиль и пополняемые подборки до 25 треков. [Алгоритм и проверки](../docs/PULSE_1_18_1.md).
 
 В **1.9.1** исправлены жанровые веса лайков и плейлистов, допуск фоновых загрузок и обучение от исключённых записей. Проверка: два прогона по 1 100 выборов и отдельный сценарий приоритета источников. Это искусственные сценарии; пользовательская библиотека не выдаётся за проверенную. [Отчёт](RECOMMENDATION_AUDIT_1_9_1.md) · [Алгоритм](RECOMMENDATIONS.md).
 
 Нативная **SwiftUI + AVQueuePlayer** для iPhone и iPad, **iOS 17+**, включая iOS 18. YouTube/YouTube Music, персональный Пульс, плейлисты, подборки по настроению и обмен с Windows. Аккаунт YouTube, музыкальная подписка и обязательный сервер не требуются.
 
-**[Скачать IPA для подписи](https://github.com/Astronomial/music/releases/download/ios-v1.10.0/Forma-iOS-1.10.0-unsigned.ipa)** · **[Установка с Windows](INSTALL_WINDOWS.md)** · [Лицензии](THIRD_PARTY.md)
+**[Скачать IPA для подписи](https://github.com/Astronomial/music/releases/download/ios-v1.10.1/Forma-iOS-1.10.1-unsigned.ipa)** · **[Установка с Windows](INSTALL_WINDOWS.md)** · [Лицензии](THIRD_PARTY.md)
 
 Устанавливай поверх прежней Forma с теми же Apple ID и фактическим Bundle ID Sideloadly. Бесплатная личная подпись обычно действует 7 дней; повторная подпись с прежним идентификатором сохраняет данные.
 
@@ -79,7 +79,7 @@ xcodebuild -project ios/Forma.xcodeproj -scheme Forma \
   -derivedDataPath ios/.derived-data CODE_SIGNING_ALLOWED=NO build
 ```
 
-После добавления Swift-файлов/ресурсов обнови проект командой `python3 ios/Scripts/generate_project.py`. GitHub Actions упаковывает `Release-iphoneos/Forma.app` в Payload и IPA; при публикации main размещает IPA и SHA-256 в релизе `ios-v1.10.0`.
+После добавления Swift-файлов/ресурсов обнови проект командой `python3 ios/Scripts/generate_project.py`. GitHub Actions упаковывает `Release-iphoneos/Forma.app` в Payload и IPA; при публикации main размещает IPA и SHA-256 в релизе `ios-v1.10.1`.
 
 | Модуль | Назначение |
 | --- | --- |

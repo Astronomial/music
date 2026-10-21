@@ -1,0 +1,32 @@
+{
+  "kind": "synthetic-sequential-regression",
+  "platform": "Windows actual ranker",
+  "subjectiveTasteMeasured": false,
+  "liveYouTubeUsed": false,
+  "requested": 1400,
+  "candidates": 1560,
+  "eligibleFavourites": 180,
+  "eligibleSavedRecordings": 340,
+  "distinctSavedRecordings": 340,
+  "allSavedReachedAt": 1104,
+  "played": 1400,
+  "familiar": 431,
+  "discoveries": 969,
+  "newRecordingsByFamiliarArtists": 108,
+  "unrelatedOrUtility": 0,
+  "modelFeatures": 14,
+  "distinctFavourites": 180,
+  "allFavouritesReachedAt": 1101,
+  "maxArtistIn12": 1,
+  "savedDrawRange": [
+    1,
+    2
+  ],
+  "favouriteDrawRange": [
+    1,
+    2
+  ],
+  "uniqueTracks": 1227,
+  "elapsedSeconds": 138.441458618,
+  "passed": true
+}
