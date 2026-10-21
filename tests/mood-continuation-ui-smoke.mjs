@@ -32,6 +32,7 @@ try{
  await page.evaluate(()=>{window.remotePage=1;});
  await page.getByRole('button',{name:'Следующий трек',exact:true}).click();
  await page.waitForFunction(()=>window.nativeAudio?.state===1&&Number(window.nativeAudio.id)>=1010);
+ await page.waitForFunction(()=>window.saved?.events?.some(e=>e.type==='play'&&e.trackId==='yt_'+window.nativeAudio?.id&&e.surface==='mood'));
  const log=await page.evaluate(()=>window.saved.events);
  assert.ok(log.filter(e=>e.type==='play').every(e=>e.surface==='mood'));
  assert.ok(await page.evaluate(()=>window.remoteCalls>0));
