@@ -1,0 +1,78 @@
+{
+  "sourceCommit": "9a5f65789232cd237fa5864dad4bbfe0378aaeef",
+  "releases": {
+    "windows": {
+      "version": "1.19.1",
+      "url": "https://github.com/Astronomial/music/releases/download/win-v1.19.1/Forma-1.19.1-Windows-x64.exe",
+      "bytes": 92586374,
+      "sha256": "a5b0178a06fe023480b62dad015b0c398ff193d3f87bdeccaf8c28e528f6392c",
+      "manifestMatches": true,
+      "githubDigestMatches": true,
+      "portableWrapperMachine": "0x14c",
+      "x64PayloadCheck": "native packaged application smoke in Windows CI"
+    },
+    "ios": {
+      "version": "1.11.1",
+      "url": "https://github.com/Astronomial/music/releases/download/ios-v1.11.1/Forma-iOS-1.11.1-unsigned.ipa",
+      "bytes": 5926114,
+      "sha256": "15789a8d18c7cb20e6bf1e79d125f69140b1a5fba6607cd082ecf574f18312aa",
+      "manifestMatches": true,
+      "githubDigestMatches": true,
+      "moodAnnotationResourcePresent": true,
+      "moodAnnotationEntries": 197,
+      "build": "24",
+      "minimumIOS": "17.0",
+      "architecture": "arm64",
+      "backgroundAudio": true,
+      "localNetworkDescriptionPresent": true
+    }
+  },
+  "verifiedAtUTC": "2026-10-21T16:29:24.794677+00:00",
+  "ci": {
+    "windows": {
+      "url": "https://github.com/Astronomial/music/actions/runs/39632891802",
+      "conclusion": "success",
+      "unitTests": 194,
+      "browserScenarios": 8,
+      "nativeElectronPassed": true,
+      "packagedWindowsAppPassed": true
+    },
+    "ios": {
+      "url": "https://github.com/Astronomial/music/actions/runs/39632891328",
+      "conclusion": "success",
+      "coreTests": 136,
+      "releasePerformanceTests": 2,
+      "audioLoadingTests": 23,
+      "simulatorBuildPassed": true,
+      "deviceReleaseBuildPassed": true,
+      "nativeScenario": "passed",
+      "nativeBooleanChecks": 54,
+      "cachedChoiceSeconds": 0.15389502048492432,
+      "pulseAndSixMoodsRankingSeconds": 3.2009809017181396,
+      "benchmarkFixture": {
+        "tracks": 3000,
+        "events": 3000,
+        "savedRecordings": 780
+      },
+      "nativeReport": "ios-1.11.1-native-smoke.json"
+    }
+  },
+  "audits": {
+    "windows": "windows-1.19.0-fresh-audit.json",
+    "ios": "ios-1.11.0-fresh-audit.json",
+    "totalChoices": 2400,
+    "candidatesPerRun": 3700,
+    "offSyntheticProfileSelections": 0,
+    "simulatedRewards": false,
+    "note": "The ranking is unchanged in the patch release; promotional-publication filtering is tested independently on both platforms."
+  },
+  "limits": {
+    "actualUserLibraryAvailable": false,
+    "subjectiveTasteMeasured": false,
+    "liveYouTubeTested": false,
+    "liveITunesTested": false,
+    "physicalUserDevicesTested": false,
+    "nativeAudioUsesControlledSources": true,
+    "ciPerformanceIsNotPhoneNetworkLatency": true
+  }
+}
