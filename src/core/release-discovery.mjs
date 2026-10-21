@@ -1,6 +1,11 @@
-import {artistIdentity,recordingIdentity,validateGenreEvidence} from './genre-evidence.mjs';
+import {artistIdentity,recordingIdentity,validateGenreEvidence,genreFold} from './genre-evidence.mjs';
 import {feedbackReward} from './feedback.mjs';
+import {utilityRecording} from './recording-quality.mjs';
 const DAY=86400000;
+export function recentSongPublication(track,artist){
+  const title=' '+genreFold(track.title)+' ';
+  return artistIdentity(track.artist)===artistIdentity(artist)&&track.duration>=60&&track.duration<=1200&&!utilityRecording(track)&&!/(?:^| )(?:teaser|trailer|snippet|shorts|interview|reaction|podcast|preview|vlog|тизер|трейлер|интервью|превью|подкаст|отрывок|бэкстейдж|сниппет|закулисье)(?: |$)/.test(title);
+}
 // A publication date is weak evidence; a matched older catalogue release wins.
 export function releaseFreshness(track,now=Date.now()){
   const evidence=validateGenreEvidence(track.genreEvidence),released=evidence?.releasedAt;

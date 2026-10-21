@@ -1,6 +1,11 @@
 import Foundation
 
 public enum ReleaseDiscovery {
+    public static func songPublication(_ track: Track, artist: String) -> Bool {
+        let title = " " + PulseEngine.fold(track.title) + " "
+        let noise = #"(?:^| )(?:teaser|trailer|snippet|shorts|interview|reaction|podcast|preview|vlog|тизер|трейлер|интервью|превью|подкаст|отрывок|бэкстейдж|сниппет|закулисье)(?: |$)"#
+        return GenreClassifier.artistIdentity(track.artist) == GenreClassifier.artistIdentity(artist) && track.duration >= 60 && track.duration <= 1200 && !RecordingQuality.utility(track) && title.range(of: noise, options: .regularExpression) == nil
+    }
     public struct Freshness: Sendable { public let score: Double; public let recent: Bool; public let verified: Bool }
     public static func timestamp(_ value: String?) -> Double? {
         guard let value, let date = ISO8601DateFormatter().date(from: value), date.timeIntervalSince1970 > 0 else { return nil }

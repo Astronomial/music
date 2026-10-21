@@ -6,6 +6,12 @@ final class FreshDiscoveryTests: XCTestCase {
     let now = Date(timeIntervalSince1970: 1_800_000_000), day = 86400000.0
     func song(_ id: Int, artist: String? = nil) -> Track { Track(videoID: String(format: "%011d", id), title: "Песня \(id)", artist: artist ?? "Артист \(id)", duration: 200, genre: "Pop") }
     func evidence(_ days: Double) -> GenreEvidence { .init(values: ["Pop"], confidence: 0.95, checkedAt: now.timeIntervalSince1970 * 1000, recordingId: "1", releasedAt: now.timeIntervalSince1970 * 1000 - days * day) }
+    func testRecentPublicationsExcludePromosShortsAndInterviews() {
+        let seed = song(1)
+        for title in ["Песня (Teaser)", "Новый клип #Shorts", "Интервью с артистом", "Energetic Music"] { var clip = seed; clip.title = title; XCTAssertFalse(ReleaseDiscovery.songPublication(clip, artist: seed.artist)) }
+        var short = seed; short.duration = 25; XCTAssertFalse(ReleaseDiscovery.songPublication(short, artist: seed.artist))
+        XCTAssertTrue(ReleaseDiscovery.songPublication(seed, artist: seed.artist))
+    }
     func testReleaseDateOverridesRecentUploadAndFutureOrUnknownDatesCannotBecomeNewReleases() {
         var track = song(1); track.publishedAt = now.timeIntervalSince1970 * 1000 - day
         XCTAssertTrue(ReleaseDiscovery.freshness(track, now: now).recent); XCTAssertFalse(ReleaseDiscovery.freshness(track, now: now).verified)

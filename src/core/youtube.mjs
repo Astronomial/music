@@ -1,6 +1,7 @@
 import {publicationAgeDays} from './search.mjs';
 import {normalizeTrack} from './model.mjs';
-import {artistIdentity,matchRecordingGenre} from './genre-evidence.mjs';
+import {matchRecordingGenre} from './genre-evidence.mjs';
+import {recentSongPublication} from './release-discovery.mjs';
 
 export const validVideoID=id=>typeof id==='string'&&/^[\w-]{11}$/.test(id);
 export function youtubeTrack(item,relatedTo=[]) {
@@ -29,7 +30,7 @@ export class YouTubeCatalog {
     for(const result of pages)if(result.status==='fulfilled')for(const track of result.value.items){const evidence=matchRecordingGenre(track,rows);if(evidence.releasedAt&&evidence.recordingId){found.push({...track,genreEvidence:evidence,retrievalSources:['release-catalog']});break;}}
     if(found.length)return {items:found,hasMore:false};
     const fallback=await this.orderedSearch(artist,'recent',offset);
-    return {...fallback,items:fallback.items.filter(t=>artistIdentity(t.artist)===artistIdentity(artist)).map(t=>({...t,retrievalSources:['recent-upload']}))};
+    return {...fallback,items:fallback.items.filter(t=>recentSongPublication(t,artist)).map(t=>({...t,retrievalSources:['recent-upload']}))};
   }
   async music(){if(!this.client)this.client=Promise.resolve(this.createClient()).catch(e=>{this.client=null;throw e;});return (await this.client).music;}
   async search(query,type,offset=0){

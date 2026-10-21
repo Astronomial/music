@@ -103,7 +103,7 @@ actor YouTubeCatalog: MusicCatalogProviding {
             }
             if !tracks.isEmpty { return DiscoveryPage(tracks: tracks) }
             let fallback = try await orderedSearch(intent.seed.artist, recent: true)
-            return DiscoveryPage(tracks: fallback.filter { GenreClassifier.artistIdentity($0.artist) == GenreClassifier.artistIdentity(intent.seed.artist) }.map { var track = $0; track.retrievalSources = ["recent-upload"]; return track })
+            return DiscoveryPage(tracks: fallback.filter { ReleaseDiscovery.songPublication($0, artist: intent.seed.artist) }.map { var track = $0; track.retrievalSources = ["recent-upload"]; return track })
         }
         var body: [String: Any] = [:]
         let route: String

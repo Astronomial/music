@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {initialState,normalizeTrack,mergeTracks,recordEvent} from '../src/core/model.mjs';
 import {rankTracks,buildProfile} from '../src/core/recommender.mjs';
-import {releaseFreshness,recentReleaseRows,freshReleaseTarget} from '../src/core/release-discovery.mjs';
+import {releaseFreshness,recentReleaseRows,freshReleaseTarget,recentSongPublication} from '../src/core/release-discovery.mjs';
 import {matchRecordingGenre} from '../src/core/genre-evidence.mjs';
 import {portableLibrary,applyPortable} from '../src/core/sync.mjs';
 import {YouTubeCatalog} from '../src/core/youtube.mjs';
@@ -11,6 +11,10 @@ const now=1800000000000,day=86400000;
 const song=(i,extra={})=>normalizeTrack({id:'yt_'+String(i).padStart(11,'0'),videoId:String(i).padStart(11,'0'),source:'youtube',title:'Песня '+i,artist:'Артист '+i,genre:'Pop',duration:200,...extra});
 const evidence=(at)=>({version:1,source:'itunes',values:['Pop'],confidence:.95,checkedAt:now,recordingId:'1',releasedAt:at});
 const state=(tracks,likes)=>({...initialState(),tracks:Object.fromEntries(tracks.map(t=>[t.id,t])),likes:likes.map(t=>t.id),settings:{...initialState().settings,artistDiversity:0,repeatCooldown:0,discovery:1}});
+test('recent upload fallback rejects promotional clips, Shorts, interviews and compilation music',()=>{
+ const seed=song(1);for(const extra of [{duration:25},{title:'Новая песня (Teaser)'},{title:'Мой новый клип #Shorts'},{title:'Интервью с артистом'},{title:'Energetic Music'},{artist:'Другой'}])assert.equal(recentSongPublication({...seed,...extra},seed.artist),false);
+ assert.equal(recentSongPublication({...seed,title:'Новая песня (Official Audio)'},seed.artist),true);
+});
 test('old catalogue dates override recent uploads; unknown, future, discovery time and years in titles are not releases',()=>{
  assert.equal(releaseFreshness(song(1,{publishedAt:now-day,genreEvidence:evidence(now-1000*day)}),now).recent,false);
  for(const t of [song(1,{discoveredAt:now,releaseDate:new Date(now).toISOString(),title:'Новинка 2027'}),song(2,{publishedAt:now+2*day}),song(3)])assert.equal(releaseFreshness(t,now).recent,false);
