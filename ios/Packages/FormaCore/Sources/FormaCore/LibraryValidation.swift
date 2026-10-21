@@ -35,6 +35,8 @@ public enum LibraryValidation {
             }
         }
         result.playlists = playlists
+        let saved = Set(result.likedIDs + playlists.flatMap(\.trackIDs))
+        result.familiarPlays = source.familiarPlays.filter { saved.contains($0.key) && $0.value.isFinite && $0.value > 0 }
         result.events = source.events.suffix(3000).filter {
             VideoID.isValid($0.trackID) && $0.at.timeIntervalSince1970.isFinite && (-62135596800...253402300799).contains($0.at.timeIntervalSince1970)
         }.map { event in

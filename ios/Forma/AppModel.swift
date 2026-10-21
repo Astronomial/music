@@ -52,6 +52,8 @@ final class AppModel: ObservableObject {
     private var syncBase: Library?
     private var pcIdentity: String?
     private var saveRevision: UInt64 = 0
+    private var moodWarmTask: Task<Void, Never>?
+    private var moodWarmRounds = 0
     private var moodCache: [String: [Recommendation]] = [:]
     private var pulseCache: [Recommendation] = []
     private var pulseCacheTrackID: String?
@@ -133,6 +135,7 @@ final class AppModel: ObservableObject {
         }
     }
     deinit {
+        moodWarmTask?.cancel()
         localWiFiMonitor.cancel(); recommendationTask?.cancel(); rankingWork?.cancel()
         settingsTask?.cancel(); persistTask?.cancel(); syncTask?.cancel()
         pulseWork?.cancel(); linkTask?.cancel(); soundTask?.cancel(); genreTask?.cancel(); discoveryTask?.cancel()
@@ -237,7 +240,7 @@ final class AppModel: ObservableObject {
         }
     }
     private func changed() { persist(); updateRecommendations() }
-    func moodTracks(_ mix: MoodMix) -> [Track] { (moodCache[mix.id] ?? []).map(\.track) }
+    func moodTracks(_ mix: MoodMix) -> [Track] { Array((moodCache[mix.id] ?? []).prefix(25)).map(\.track) }
     private func context(for track: Track) -> RecommendationContext? {
         if player.current?.id == track.id, let activeContext { return activeContext }
         let source = player.selectionMood.flatMap { moodCache[$0] } ?? recommendations
@@ -294,7 +297,7 @@ final class AppModel: ObservableObject {
         }
         Task {
             guard pulseGeneration == token else { return }
-            let work = Task.detached(priority: .userInitiated) { PulseEngine.rank(Array(snapshot.tracks.values), library: snapshot, limit: 60, mood: mood, exclude: excluded, playlistID: playlistID) }
+            let work = Task.detached(priority: .userInitiated) { PulseEngine.rank(Array(snapshot.tracks.values), library: snapshot, limit: 60, mood: mood, exclude: excluded, playlistID: playlistID, retainFamiliarPool: true) }
             pulseWork = work
             let result = await work.value
             guard pulseGeneration == token else { return }
@@ -384,7 +387,18 @@ final class AppModel: ObservableObject {
     }
     private func discoverBatch() async {
         let source = contextualLibrary()
-        let jobs = discoveryPlanner.plan(library: source, discoveries: pulseCache.map(\.track), limit: 10)
+        let underfilled = MoodMix.all.filter { (moodCache[$0.id]?.prefix(25).count ?? 0) < 25 }.map(\.id)
+        let planner = discoveryPlanner, discoveries = pulseCache.map(\.track)
+        let mood = player.isPlaying || player.isLoading ? player.selectionMood : nil
+        let jobLimit = !underfilled.isEmpty && !player.isPlaying && !player.isLoading ? 18 : 10
+        let planning = Task.detached(priority: .utility) {
+            var next = planner
+            let jobs = next.plan(library: source, discoveries: discoveries, limit: jobLimit, mood: mood, underfilledMoods: underfilled)
+            return (next, jobs)
+        }
+        let (nextPlanner, jobs) = await planning.value
+        guard !Task.isCancelled else { planning.cancel(); return }
+        discoveryPlanner = nextPlanner
         guard !jobs.isEmpty else { return }
         let catalog = self.catalog
         let parallelism = min(3, player.networkPolicy.catalogParallelism)
@@ -475,8 +489,8 @@ final class AppModel: ObservableObject {
                 let candidates = Array(snapshot.tracks.values)
                 let index = PulseEngine.makeIndex(candidates, library: snapshot)
                 let home = BilingualDiscovery.rankHome(candidates, library: snapshot, limit: 40, index: index)
-                let next = PulseEngine.rank(candidates, library: snapshot, limit: 60, index: index, playlistID: playlistID, trackID: trackID)
-                let moods = Dictionary(uniqueKeysWithValues: MoodMix.all.map { ($0.id, BilingualDiscovery.rankHome(candidates, library: snapshot, limit: 30, mood: $0.id, allowRecent: true, index: index)) })
+                let next = PulseEngine.rank(candidates, library: snapshot, limit: 60, index: index, playlistID: playlistID, trackID: trackID, retainFamiliarPool: true)
+                let moods = Dictionary(uniqueKeysWithValues: MoodMix.all.map { ($0.id, PulseEngine.rank(candidates, library: snapshot, limit: 25, mood: $0.id, allowRecent: true, index: index, retainFamiliarPool: true)) })
                 return (home, next, moods, index, TasteProfile(library: snapshot))
             }
             rankingWork = work
@@ -484,8 +498,25 @@ final class AppModel: ObservableObject {
             guard recommendationGeneration == token, !Task.isCancelled, playlistID == pulsePlaylistID, trackID == pulseTrackID else { return }
             recommendations = result.0; pulseCache = result.1; pulseCacheTrackID = trackID; pulseCachePlaylistID = playlistID; moodCache = result.2; playbackIndex = result.3; tasteProfile = result.4
             scheduleGenreMetadata()
+            scheduleMoodWarmup()
             player.pulseCandidatesChanged()
             if player.current == nil, player.networkPolicy.canPrewarmExtraTracks { await audioResolver.prewarm(videoIDs: Array(pulseCache.prefix(3).map(\.id))) }
+        }
+    }
+    private func scheduleMoodWarmup() {
+#if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--forma-smoke") { return }
+#endif
+        guard moodWarmTask == nil, moodWarmRounds < 8, didLoadLibrary, player.networkPolicy.reachable,
+              UIApplication.shared.applicationState == .active,
+              MoodMix.all.contains(where: { (moodCache[$0.id]?.count ?? 0) < 25 }) else { return }
+        moodWarmTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 8_000_000_000)
+            guard let self else { return }
+            defer { self.moodWarmTask = nil }
+            guard !Task.isCancelled, UIApplication.shared.applicationState == .active else { return }
+            self.moodWarmRounds += 1
+            await self.refresh(automatic: true)
         }
     }
     private func scheduleGenreMetadata() {

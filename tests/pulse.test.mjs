@@ -24,7 +24,7 @@ test('shared listening feedback predicts enjoyment in Pulse and mood playlists, 
   const before=JSON.stringify(s.events);moodRecommendations([a,b],s,{now});assert.equal(JSON.stringify(s.events),before);
 });
 test('feedback from the same repeated track in a day is bounded and network errors do not train taste',()=>{
-  let s=initialState();s.tracks={a:track('a','One')};for(let i=0;i<100;i++)s=recordEvent(s,'a','listen',{ratio:1},now-i*1000);
+  let s=initialState();s.tracks={a:track('a','One')};for(let i=0;i<100;i++)s=recordEvent(s,'a','listen',{ratio:1,seconds:190},now-i*1000);
   assert.ok(buildFeedbackModel(s,now).global.get('artist:one').positive<=1);assert.ok(buildFeedbackModel(s,now).global.get('artist:one').positive>.99);
   const before=predictFeedback(s.tracks.a,buildFeedbackModel(s,now));s=recordEvent(s,'a','error',{seconds:8,ratio:0},now);assert.deepEqual(predictFeedback(s.tracks.a,buildFeedbackModel(s,now)),before);
   s=recordEvent(s,'a','skip',{seconds:1,ratio:.01},now);assert.deepEqual(predictFeedback(s.tracks.a,buildFeedbackModel(s,now)),before);

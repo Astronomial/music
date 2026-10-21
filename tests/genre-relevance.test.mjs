@@ -51,7 +51,7 @@ test('trusted recording genres survive catalogue refresh and approved portable s
  const t=song(1);t.genreEvidence={version:1,source:'itunes',values:['Rock'],confidence:.95,checkedAt:now,recordingId:'12'};
  let s=initialState();s.tracks={[t.id]:t};s.likes=[t.id];s=mergeTracks(s,[song(1)],now);
  assert.deepEqual(genresOf(s.tracks[t.id]).values,['Rock']);const restored=applyPortable(initialState(),portableLibrary(s));assert.deepEqual(genresOf(restored.tracks[t.id]).values,['Rock']);
- assert.equal(CONTEXT_VERSION,2);assert.equal(validContext({version:1,features:[1,0,0,0,0,0,0,0,0,0],lane:'nearby'}),false);
+ assert.equal(CONTEXT_VERSION,3);assert.equal(validContext({version:1,features:[1,0,0,0,0,0,0,0,0,0],lane:'nearby'}),false);
 });
 test('metadata requests are bounded, shared, cached, and contain no audio requests',async()=>{
  let calls=0;const service=new GenreCatalog(async url=>{calls++;assert.equal(new URL(url).hostname,'itunes.apple.com');return Response.json({results:[{kind:'song',trackName:'Песня 1',artistName:'Артист 1',trackTimeMillis:200000,primaryGenreName:'Rock',trackId:12}]});});

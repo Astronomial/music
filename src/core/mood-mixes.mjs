@@ -2,12 +2,23 @@ import rules from './mood-rules.json' with {type:'json'};
 import recordings from './mood-recordings.json' with {type:'json'};
 import {fold} from './wave-settings.mjs';
 import {validateSoundProfile} from './sound-profile.mjs';
+import {artistIdentity,genreRelation} from './genre-evidence.mjs';
+export const MOOD_COLLECTION_SIZE=25;
 export const MOOD_MIXES=rules.map((r,i)=>({...r,className:['mix-sage','mix-sand','mix-lilac','mix-blue','mix-focus','mix-night'][i],context:{id:r.id,mood:r.id,genres:r.genres,...(['calm','focus','night'].includes(r.id)?{energy:'low'}:r.id==='energetic'?{energy:'high'}:{}),...(r.id==='focus'?{vocals:'instrumental'}:{})}}));
 // Conservative catalogue annotations match the original recording only.
 const canonical=s=>fold(s).replace(/(?: official (?:music )?(?:video|audio)| lyrics| lyric video| topic| audio| video)$/, '').trim();
 const recordingIndex=new Map(recordings.map(r=>[canonical(r.artist)+'|'+canonical(r.title),r]));
 export function moodRecording(track){return recordingIndex.get(canonical(track.artist||'')+'|'+canonical(track.title||''));}
 export function moodSeedQuery(id,offset=0){const pool=recordings.filter(r=>r.moods.includes(id));const r=pool[((offset%pool.length)+pool.length)%pool.length];return r?r.artist+' '+r.title:'';}
+export function moodSeedQueries(id,{artists=[],genres=[],offset=0,limit=3}={}){
+  const names=new Set(artists.map(artistIdentity)),pool=recordings.filter(r=>r.moods.includes(id));
+  const favourites=pool.filter(r=>names.has(artistIdentity(r.artist)));
+  const compatible=pool.filter(r=>(r.genres||[]).some(g=>genres.some(genre=>genreRelation({genre:g},{genre})>0)));
+  // Known artists first, then nearby styles. Rotate songs, never freeze the
+  // shelf on a single hard-coded example. Query provenance is not a mood label.
+  const group=[...new Map([...favourites,...compatible,...pool].map(r=>[r.artist+"|"+r.title,r])).values()];
+  return Array.from({length:Math.min(limit,group.length)},(_,i)=>group[(Math.max(0,offset)+i)%group.length]).map(r=>r.artist+' '+r.title);
+}
 const cache=new WeakMap();
 const normalized=rules.map(r=>({...r,positive:r.positive.map(fold),titleSignals:r.titleSignals.map(fold)}));
 function contains(text,word){return text.includes(' '+word+' ');}

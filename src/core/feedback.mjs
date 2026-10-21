@@ -1,17 +1,18 @@
 import {fold,genresOf} from './wave-settings.mjs';
+import {moodFitness} from './mood-mixes.mjs';
 const DAY=86400000;
 export function feedbackReward(event){
   if(event.type==='dislike')return 0;
   if(event.type==='like'||event.type==='playlist-add')return 1;
-  if(event.type==='listen'&&event.ratio>=.8)return 1;
-  if(event.type==='listen'&&event.ratio>=.5)return .7;
+  if(event.type==='listen'&&event.seconds>=3&&event.ratio>=.8)return 1;
+  if(event.type==='listen'&&event.seconds>=3&&event.ratio>=.5)return .7;
   if(event.type==='skip'&&event.seconds>=3&&event.seconds<30&&event.ratio<.25)return 0;
   if(event.type==='skip'&&event.seconds>=3&&event.ratio<.65)return .25;
   return null;
 }
 function arms(track){
   const artist=fold(track.artist);
-  return [...(artist?[[`artist:${artist}`,1.5]]:[]),...genresOf(track).values.map(g=>[`genre:${g}`,.6]),...(track.relatedTo||[]).slice(0,5).map(id=>[`seed:${id}`,.8])];
+  return [...(artist?[[`artist:${artist}`,1.5]]:[]),...genresOf(track).values.map(g=>[`genre:${g}`,.6]),...Object.entries(moodFitness(track)).filter(([,fit])=>fit>=.6).map(([id])=>[`mood:${id}`,.5]),...(track.relatedTo||[]).slice(0,5).map(id=>[`seed:${id}`,.8])];
 }
 // A local Beta posterior: only actual consumption trains it, never a generated shelf.
 // This is a small online-learning approximation, not Spotify's production RL model.

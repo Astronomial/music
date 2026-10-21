@@ -74,7 +74,7 @@ export default function App() {
   const readyRef=useRef(false),pendingCloudSync=useRef(null);
   const audio = useRef(null), stateRef=useRef(state), currentRef=useRef(null), session=useRef({clock:new ListeningClock(),recorded:false}), playToken=useRef(0), queueRef=useRef([]), waveRef=useRef(false), contextRef=useRef(null);
   const audioElement=useCallback(element=>{audio.current?.dispose?.();audio.current=element?createHybridAudio(element,bridge):null;},[]);
-  const toastTimer=useRef(null), refreshBusy=useRef(false), refreshPending=useRef(false), refreshSignature=useRef(null), saveChain=useRef(Promise.resolve()), navHistory=useRef([{page:'home',query:''}]), playbackHistory=useRef([]), repeatRef=useRef(false), refreshCount=useRef(0);
+  const toastTimer=useRef(null), refreshBusy=useRef(false), refreshPromise=useRef(null), moodWarmCount=useRef(0), refreshPending=useRef(false), refreshSignature=useRef(null), saveChain=useRef(Promise.resolve()), navHistory=useRef([{page:'home',query:''}]), playbackHistory=useRef([]), repeatRef=useRef(false), refreshCount=useRef(0);
   const notify = message => { setToast(message);clearTimeout(toastTimer.current);toastTimer.current=setTimeout(()=>setToast(''),4500); };
   const change=useCallback(fn=>{const next=fn(stateRef.current);stateRef.current=next;setState(next);return next;},[]);
   function navigate(next) {if(next===page)return;navHistory.current.push({page:next,query:''});setPage(next);setQuery('');}
@@ -166,14 +166,21 @@ export default function App() {
   async function refresh() {
     if(!navigator.onLine||stateRef.current.settings.offlineOnly)return;
     const snapshot=stateRef.current;const signature=JSON.stringify([snapshot.settings.provider,['genres','excludedGenres','genreMode','mood','energy','vocals','preferredArtists','blockedArtists','playlistSource','seedPlaylistIds','languagePreference','explorationStyle'].map(k=>snapshot.settings[k]),snapshot.likes,snapshot.playlists.map(p=>p.trackIds),snapshot.events.findLast(e=>e.type==='listen'||e.type==='skip'),catalogContext.current]);
-    if(refreshBusy.current){refreshPending.current=refreshPending.current||signature!==refreshSignature.current;return;}
+    if(refreshBusy.current){refreshPending.current=refreshPending.current||signature!==refreshSignature.current;return refreshPromise.current;}
     refreshSignature.current=signature;refreshBusy.current=true;setLoading(true);setNetworkError('');
-    try {const s=stateRef.current;const candidates=await collectYouTubeCandidates(s,(route,params)=>bridge.catalogRequest(route,params,'youtube'),{context:catalogContext.current,round:refreshCount.current,onBatch:batch=>change(s=>mergeTracks(s,batch))});change(s=>mergeTracks(s,candidates));refreshCount.current++;}
+    const work=(async()=>{try {const s=stateRef.current;const candidates=await collectYouTubeCandidates(s,(route,params)=>bridge.catalogRequest(route,params,'youtube'),{context:catalogContext.current,round:refreshCount.current,onBatch:batch=>change(s=>mergeTracks(s,batch))});change(s=>mergeTracks(s,candidates));refreshCount.current++;}
     catch(e){setNetworkError(e.message);}
-    finally{setLoading(false);refreshBusy.current=false;if(refreshPending.current){refreshPending.current=false;refresh();}}
+    finally{setLoading(false);refreshBusy.current=false;if(refreshPending.current){refreshPending.current=false;refresh();}}})();
+    refreshPromise.current=work;return work;
   }
   const allTracks=useMemo(()=>Object.values(state.tracks),[state.tracks]);
   const candidates=useMemo(()=>state.settings.offlineOnly||!online?allTracks.filter(t=>downloads[t.id]):allTracks.filter(t=>t.source==='local'||t.source==='youtube'),[allTracks,state.settings.offlineOnly,online,downloads,provider]);
+  const sparseMoods=analysis.mixes.some(m=>m.items.length<25);
+  useEffect(()=>{
+    if(!ready||!state.onboarded||!online||state.settings.offlineOnly||page!=='home'||loading||!sparseMoods||moodWarmCount.current>=8)return;
+    const timer=setTimeout(()=>{moodWarmCount.current++;refresh();},8000);
+    return()=>clearTimeout(timer);
+  },[ready,state.onboarded,online,state.settings.offlineOnly,page,loading,sparseMoods]);
   const waveKey=JSON.stringify(waveSettings(state.settings));
   const recommendationState=useMemo(()=>({...state,settings:waveSettings(state.settings)}),[state.tracks,state.likes,state.playlists,state.events,state.hidden,state.dislikes,waveKey]);
   const {recommendations,mixes,taste}=analysis;
@@ -284,12 +291,12 @@ export default function App() {
       const ranked=await recommendationClient.current.request({kind:'rank',lane:'playback',candidates:playablePool(),state:stateRef.current,options:{limit:30,context:ctx,currentTrackId:currentRef.current?.id,exclude:currentRef.current?[currentRef.current.id]:[]}});
       if(token!==selectionToken.current||!ranked)return;
       if(!ranked.length){
-        if(mayRefresh&&ctx?.playlistId&&navigator.onLine&&!stateRef.current.settings.offlineOnly){catalogContext.current=ctx;await refresh();if(token===selectionToken.current)return startWave(ctx,false);}
+        if(mayRefresh&&(ctx?.playlistId||ctx?.mood)&&navigator.onLine&&!stateRef.current.settings.offlineOnly){catalogContext.current=ctx;await refresh();if(token===selectionToken.current)return startWave(ctx,false);}
         else notify(loading?'Подожди, загружаем музыкальный каталог.':'Пока нет новых треков для Пульса. Обнови каталог или выбери музыку в поиске.');
         return;
       }
       contextRef.current=ctx;catalogContext.current=ctx;setWaveMode(true);setPlaybackQueue(ranked.slice(1).map(r=>r.track));playTrack(ranked[0].track,null,{asWave:true,recommendation:ranked[0]});
-      if(ctx?.playlistId)refresh();
+      if(ctx?.playlistId||ctx?.mood)refresh();
     }catch(e){if(token===selectionToken.current)notify(e.message);}
   }
   function startPlaylistPulse(playlist){const ctx=playlistPulseContext(stateRef.current,playlist.id);if(ctx)startWave(ctx);else notify('Добавь треки в плейлист, чтобы задать направление Пульса.');}
@@ -299,8 +306,16 @@ export default function App() {
     if(waveRef.current){
       const token=++selectionToken.current,ctx=contextRef.current;audio.current.pause();setPlaying(false);setBuffering(true);
       try{
-        const ranked=await recommendationClient.current.request({kind:'rank',lane:'playback',candidates:playablePool(),state:stateRef.current,options:{limit:30,context:ctx,currentTrackId:currentRef.current?.id,exclude:currentRef.current?[currentRef.current.id]:[]}});
+        const rank=()=>recommendationClient.current.request({kind:'rank',lane:'playback',candidates:playablePool(),state:stateRef.current,options:{limit:30,context:ctx,currentTrackId:currentRef.current?.id,exclude:currentRef.current?[currentRef.current.id]:[]}});
+        let ranked=await rank();
         if(token!==selectionToken.current||!ranked)return;
+        // Keep the collection's context through exhaustion. An empty local pool
+        // starts remote discovery, rather than ending an otherwise endless mix.
+        for(let attempt=0;!ranked.length&&attempt<2&&navigator.onLine&&!stateRef.current.settings.offlineOnly;attempt++){
+          catalogContext.current=ctx;await refresh();
+          if(token!==selectionToken.current)return;
+          ranked=await rank();if(token!==selectionToken.current||!ranked)return;
+        }
         if(ranked.length){setPlaybackQueue(ranked.slice(1).map(r=>r.track));playTrack(ranked[0].track,null,{reason:'listen',recommendation:ranked[0]});if(ranked.length<6&&!refreshBusy.current)refresh();return;}
         playingIntent.current=false;audio.current.pause();setPlaying(false);setBuffering(false);setPlaybackQueue([]);notify('Новые треки закончились. Обнови каталог или запусти плейлист.');
       }catch(e){if(token===selectionToken.current){setBuffering(false);notify(e.message);}}

@@ -1,9 +1,10 @@
 import {sameSong} from './track-pulse.mjs';
 import {tasteGenres,discoveryQuery} from './discovery-search.mjs';
 import {normalizeTrack} from './model.mjs';
-import {selectRetrievalAnchors,playlistSeedState,rankTracks} from './recommender.mjs';
+import {selectRetrievalAnchors,playlistSeedState,rankTracks,buildProfile,prepareRanking} from './recommender.mjs';
 import {artistIndex} from './diversity.mjs';
-import {MOOD_MIXES,moodSeedQuery} from './mood-mixes.mjs';
+import {feedbackReward} from './feedback.mjs';
+import {MOOD_MIXES,moodSeedQueries,moodEvidence,MOOD_COLLECTION_SIZE} from './mood-mixes.mjs';
 import {waveSettings,waveQuery,retrievalContext,matchesArtist,genresOf,blockedByPreferences} from './wave-settings.mjs';
 export async function collectYouTubeCandidates(state,request,{context=null,onBatch,round=0}={}){
   if(context?.trackId){
@@ -15,12 +16,17 @@ export async function collectYouTubeCandidates(state,request,{context=null,onBat
     for(const result of extra)if(result.status==='fulfilled')for(const raw of result.value){const t=normalizeTrack(raw);if(!found.has(t.id))found.set(t.id,{...t,relatedTo:[...new Set([...t.relatedTo,seed.id])]});}
     const all=[...found.values()];onBatch?.(all);return all;
   }
-  const source=playlistSeedState(state,context),settings=waveSettings(state.settings),anchors=selectRetrievalAnchors(source,{limit:12});
-  const seeds=anchors.filter(t=>t.source==='youtube').slice(0,6);
+  const source=playlistSeedState(state,context),settings=waveSettings(state.settings);
+  const profile=buildProfile(source),leading=selectRetrievalAnchors(source,{limit:12,profile});
+  const allAnchors=[...new Map([...leading,...[...profile.weights].filter(([id,w])=>w>0&&source.tracks[id]&&!source.hidden.includes(id)&&!blockedByPreferences(source.tracks[id],settings)).map(([id])=>source.tracks[id])].map(t=>[t.id,t])).values()];
+  const offset=(Math.max(0,round)*6)%Math.max(1,allAnchors.length);
+  const anchors=Array.from({length:Math.min(12,allAnchors.length)},(_,i)=>allAnchors[(offset+i)%allAnchors.length]);
+  const recentAnchors=[...new Map([...source.events].reverse().filter(e=>e.at<=Date.now()&&Date.now()-e.at<7*86400000&&(feedbackReward(e)??0)>=.7).map(e=>source.tracks[e.trackId]).filter(t=>t&&(profile.weights.get(t.id)||0)>0&&!source.hidden.includes(t.id)&&!source.dislikes?.includes(t.id)&&!blockedByPreferences(t,settings)).map(t=>[t.id,t])).values()].slice(0,2);
+  const seeds=[...new Map([...recentAnchors,...anchors].filter(t=>t.source==='youtube').map(t=>[t.id,t])).values()].slice(0,6);
   const language=settings.languagePreference;
   const languageContext=language==='any'?{}:{discoveryLanguages:[language]};
   const jobs=seeds.map(t=>({route:`/related/${t.videoId}`,params:{},context:{relatedTo:[t.id],directRelatedTo:[t.id],retrievalSources:['related']}}));
-  const artists=[...new Set([...settings.preferredArtists,...anchors.filter(t=>!source.hidden.includes(t.id)&&!source.dislikes?.includes(t.id)&&!blockedByPreferences(t,settings)).map(t=>t.artist).filter(a=>a&&a!=='Неизвестный исполнитель')])].filter(a=>!settings.blockedArtists.some(b=>matchesArtist({artist:a},b)));
+  const artists=[...new Set([...settings.preferredArtists,...recentAnchors.map(t=>t.artist),...anchors.filter(t=>!source.hidden.includes(t.id)&&!source.dislikes?.includes(t.id)&&!blockedByPreferences(t,settings)).map(t=>t.artist).filter(a=>a&&a!=='Неизвестный исполнитель')])].filter(a=>!settings.blockedArtists.some(b=>matchesArtist({artist:a},b)));
   for(const artist of artists.filter(a=>!settings.blockedArtists.some(b=>matchesArtist({artist:a},b))).slice(0,6))jobs.push({route:'/tracks/search',params:{query:discoveryQuery('',settings,artist)},context:{...retrievalContext(settings),retrievalSources:['artist']}});
   const directions=tasteGenres(anchors,settings);
   const permitted=directions.filter(g=>!settings.excludedGenres.includes(g));
@@ -28,7 +34,8 @@ export async function collectYouTubeCandidates(state,request,{context=null,onBat
     if(language!=='any')jobs.push({route:'/tracks/search',params:{query:discoveryQuery(genre,settings)},context:{...retrievalContext(settings,genre),...languageContext,retrievalSources:['genre-language']}});
     if(language!=='ru'||permitted.indexOf(genre)<2)jobs.push({route:'/tracks/search',params:{query:waveQuery(genre,settings)},context:{...retrievalContext(settings,genre),retrievalSources:['genre']}});
   }
-  for(const mix of context?.playlistId?[]:MOOD_MIXES){
+  const moodMixes=context?.playlistId?[]:context?.mood?MOOD_MIXES.filter(m=>m.id===context.mood):MOOD_MIXES;
+  for(const mix of moodMixes){
     const preferred=permitted.filter(g=>mix.context.genres.includes(g));
     const genre=preferred[0]||permitted[0]||'';
     const moodSettings={...settings,mood:mix.context.mood,energy:mix.context.energy||'any',vocals:mix.context.vocals||'any'};
@@ -37,7 +44,16 @@ export async function collectYouTubeCandidates(state,request,{context=null,onBat
   for(const genre of permitted.slice(0,2))jobs.push({route:'/tracks/search',params:{query:discoveryQuery(genre,settings),offset:40*(1+(Math.max(0,round)%3))},context:{...retrievalContext(settings,genre),...languageContext,retrievalSources:['discovery-page']}});
   if(!jobs.length)jobs.push({route:'/tracks/search',params:{query:waveQuery('',settings)},context:retrievalContext(settings)});
   // Positive library neighbours run first. Generic mood references never outrank retrieval from saved tracks.
-  if(language!=='en'&&!context?.playlistId)jobs.push(...MOOD_MIXES.map(mix=>({route:'/tracks/search',params:{query:moodSeedQuery(mix.id,Math.floor(Date.now()/86400000)+round)},context:{retrievalSources:['mood-reference']}})));
+  const moodPrepared=moodMixes.length?prepareRanking(source,Date.now(),null,Object.values(source.tracks)):null;
+  for(const mix of moodMixes){
+    const matching=Object.values(source.tracks).filter(t=>moodEvidence(t,mix.context)>0);
+    const playable=rankTracks(matching,source,{context:mix.context,limit:MOOD_COLLECTION_SIZE,allowRecent:true,prepared:moodPrepared});
+    if(playable.length>=MOOD_COLLECTION_SIZE&&!context?.mood)continue;
+    const moodAnchors=playable.map(r=>r.track).filter(t=>t.videoId);
+    const chosen=moodAnchors.length?moodAnchors[Math.max(0,round)%moodAnchors.length]:null;
+    if(chosen&&!seeds.some(t=>t.id===chosen.id))jobs.push({route:'/related/'+chosen.videoId,params:{},context:{relatedTo:[chosen.id],directRelatedTo:[chosen.id],retrievalSources:['mood-related']}});
+    for(const query of moodSeedQueries(mix.id,{artists,genres:permitted,offset:Math.max(0,round)*3,limit:3}))jobs.push({route:'/tracks/search',params:{query},context:{retrievalSources:['mood-reference']}});
+  }
   const found=new Map();let successes=0;
   let expanded=false;const primaryCount=jobs.length;
   for(let i=0;i<jobs.length;){

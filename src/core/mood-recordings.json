@@ -6,7 +6,10 @@
       "calm",
       "melancholic"
     ],
-    "instrumental": false
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
   },
   {
     "artist": "Сплин",
@@ -16,7 +19,10 @@
       "melancholic",
       "night"
     ],
-    "instrumental": false
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
   },
   {
     "artist": "Кино",
@@ -25,7 +31,10 @@
       "calm",
       "night"
     ],
-    "instrumental": false
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
   },
   {
     "artist": "Мельница",
@@ -33,7 +42,10 @@
     "moods": [
       "calm"
     ],
-    "instrumental": false
+    "instrumental": false,
+    "genres": [
+      "Folk/Country"
+    ]
   },
   {
     "artist": "HammAli & Navai",
@@ -43,7 +55,10 @@
       "melancholic",
       "night"
     ],
-    "instrumental": false
+    "instrumental": false,
+    "genres": [
+      "Hip-Hop/Rap"
+    ]
   },
   {
     "artist": "Ёлка",
@@ -51,7 +66,10 @@
     "moods": [
       "bright"
     ],
-    "instrumental": false
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
   },
   {
     "artist": "Ёлка",
@@ -59,7 +77,10 @@
     "moods": [
       "bright"
     ],
-    "instrumental": false
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
   },
   {
     "artist": "IOWA",
@@ -68,7 +89,10 @@
       "bright",
       "energetic"
     ],
-    "instrumental": false
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
   },
   {
     "artist": "IOWA",
@@ -76,7 +100,10 @@
     "moods": [
       "bright"
     ],
-    "instrumental": false
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
   },
   {
     "artist": "Моя Мишель",
@@ -85,7 +112,10 @@
       "bright",
       "energetic"
     ],
-    "instrumental": false
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
   },
   {
     "artist": "Сплин",
@@ -93,7 +123,10 @@
     "moods": [
       "melancholic"
     ],
-    "instrumental": false
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
   },
   {
     "artist": "Noize MC",
@@ -101,7 +134,10 @@
     "moods": [
       "melancholic"
     ],
-    "instrumental": false
+    "instrumental": false,
+    "genres": [
+      "Hip-Hop/Rap"
+    ]
   },
   {
     "artist": "Три дня дождя",
@@ -110,7 +146,10 @@
       "melancholic",
       "energetic"
     ],
-    "instrumental": false
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
   },
   {
     "artist": "Моя Мишель",
@@ -119,7 +158,10 @@
       "melancholic",
       "night"
     ],
-    "instrumental": false
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
   },
   {
     "artist": "МакSим",
@@ -127,7 +169,10 @@
     "moods": [
       "melancholic"
     ],
-    "instrumental": false
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
   },
   {
     "artist": "Ленинград",
@@ -135,7 +180,10 @@
     "moods": [
       "energetic"
     ],
-    "instrumental": false
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
   },
   {
     "artist": "Король и Шут",
@@ -143,7 +191,10 @@
     "moods": [
       "energetic"
     ],
-    "instrumental": false
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
   },
   {
     "artist": "Кино",
@@ -151,7 +202,10 @@
     "moods": [
       "energetic"
     ],
-    "instrumental": false
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
   },
   {
     "artist": "Мумий Тролль",
@@ -159,7 +213,10 @@
     "moods": [
       "energetic"
     ],
-    "instrumental": false
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
   },
   {
     "artist": "кис-кис",
@@ -168,7 +225,10 @@
       "melancholic",
       "energetic"
     ],
-    "instrumental": false
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
   },
   {
     "artist": "Дмитрий Маликов",
@@ -177,7 +237,10 @@
       "calm",
       "focus"
     ],
-    "instrumental": true
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
   },
   {
     "artist": "Ludovico Einaudi",
@@ -187,7 +250,10 @@
       "focus",
       "night"
     ],
-    "instrumental": true
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
   },
   {
     "artist": "Yiruma",
@@ -196,7 +262,10 @@
       "calm",
       "focus"
     ],
-    "instrumental": true
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
   },
   {
     "artist": "Ólafur Arnalds",
@@ -206,7 +275,10 @@
       "focus",
       "night"
     ],
-    "instrumental": true
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
   },
   {
     "artist": "Nils Frahm",
@@ -216,7 +288,10 @@
       "focus",
       "night"
     ],
-    "instrumental": true
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
   },
   {
     "artist": "Max Richter",
@@ -226,7 +301,10 @@
       "focus",
       "night"
     ],
-    "instrumental": true
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
   },
   {
     "artist": "polnalyubvi",
@@ -234,7 +312,10 @@
     "moods": [
       "night"
     ],
-    "instrumental": false
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
   },
   {
     "artist": "Скриптонит",
@@ -242,6 +323,2073 @@
     "moods": [
       "night"
     ],
-    "instrumental": false
+    "instrumental": false,
+    "genres": [
+      "Hip-Hop/Rap"
+    ]
+  },
+  {
+    "artist": "МакSим",
+    "title": "Нежность",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "МакSим",
+    "title": "Знаешь ли ты",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Полина Гагарина",
+    "title": "Колыбельная",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Полина Гагарина",
+    "title": "Драмы больше нет",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Ёлка",
+    "title": "Нарисуй мне небо",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Ёлка",
+    "title": "Грею счастье",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Zivert",
+    "title": "Океан",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Моя Мишель",
+    "title": "Снегири",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Дима Билан",
+    "title": "На берегу неба",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Дима Билан",
+    "title": "Невозможное возможно",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Валерий Меладзе",
+    "title": "Красиво",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Валерий Меладзе",
+    "title": "Сэра",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Мот",
+    "title": "Капкан",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Hip-Hop/Rap"
+    ]
+  },
+  {
+    "artist": "Мот",
+    "title": "Август — это ты",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Hip-Hop/Rap"
+    ]
+  },
+  {
+    "artist": "Мари Краймбрери",
+    "title": "Океан",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "JONY",
+    "title": "Комета",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "JONY",
+    "title": "Титры",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Rauf & Faik",
+    "title": "Детство",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "HammAli & Navai",
+    "title": "А если это любовь?",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Hip-Hop/Rap"
+    ]
+  },
+  {
+    "artist": "Баста",
+    "title": "Сансара",
+    "moods": [
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Hip-Hop/Rap"
+    ]
+  },
+  {
+    "artist": "Баста",
+    "title": "Ты была права",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Hip-Hop/Rap"
+    ]
+  },
+  {
+    "artist": "Баста",
+    "title": "Выпускной",
+    "moods": [
+      "melancholic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Hip-Hop/Rap"
+    ]
+  },
+  {
+    "artist": "Градусы",
+    "title": "Заметает",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Градусы",
+    "title": "Я всегда помню о главном",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Леонид Агутин",
+    "title": "На сиреневой луне",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Леонид Агутин",
+    "title": "Остров",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Анжелика Варум",
+    "title": "Городок",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Кристина Орбакайте",
+    "title": "Свет твоей любви",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Татьяна Буланова",
+    "title": "Ясный мой свет",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Земфира",
+    "title": "Жить в твоей голове",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
+  },
+  {
+    "artist": "Земфира",
+    "title": "Бесконечность",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
+  },
+  {
+    "artist": "Земфира",
+    "title": "Искала",
+    "moods": [
+      "melancholic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
+  },
+  {
+    "artist": "Земфира",
+    "title": "Прости меня моя любовь",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
+  },
+  {
+    "artist": "Сплин",
+    "title": "Моё сердце",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
+  },
+  {
+    "artist": "Сплин",
+    "title": "Орбит без сахара",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
+  },
+  {
+    "artist": "Сплин",
+    "title": "Линия жизни",
+    "moods": [
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
+  },
+  {
+    "artist": "Би-2",
+    "title": "Молитва",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
+  },
+  {
+    "artist": "Би-2",
+    "title": "Серебро",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
+  },
+  {
+    "artist": "Би-2",
+    "title": "Мой рок-н-ролл",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
+  },
+  {
+    "artist": "Мумий Тролль",
+    "title": "Медведица",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Мумий Тролль",
+    "title": "Дельфины",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Кино",
+    "title": "Печаль",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Кино",
+    "title": "Кукушка",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Кино",
+    "title": "Нам с тобой",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Кино",
+    "title": "Следи за собой",
+    "moods": [
+      "melancholic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Наутилус Помпилиус",
+    "title": "Дыхание",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
+  },
+  {
+    "artist": "Наутилус Помпилиус",
+    "title": "Я хочу быть с тобой",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
+  },
+  {
+    "artist": "ДДТ",
+    "title": "Это всё",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
+  },
+  {
+    "artist": "ДДТ",
+    "title": "Просвистела",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
+  },
+  {
+    "artist": "ДДТ",
+    "title": "В последнюю осень",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
+  },
+  {
+    "artist": "Смысловые Галлюцинации",
+    "title": "Вечно молодой",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
+  },
+  {
+    "artist": "Ночные Снайперы",
+    "title": "31-я весна",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
+  },
+  {
+    "artist": "Ночные Снайперы",
+    "title": "Катастрофически",
+    "moods": [
+      "melancholic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
+  },
+  {
+    "artist": "Мельница",
+    "title": "Невеста Полоза",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Folk/Country"
+    ]
+  },
+  {
+    "artist": "Мельница",
+    "title": "Дракон",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Folk/Country"
+    ]
+  },
+  {
+    "artist": "Animal ДжаZ",
+    "title": "Три полоски",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
+  },
+  {
+    "artist": "Мураками",
+    "title": "Нулевой километр",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
+  },
+  {
+    "artist": "Дайте танк (!)",
+    "title": "Мы",
+    "moods": [
+      "calm",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Alternative"
+    ]
+  },
+  {
+    "artist": "Моя Мишель",
+    "title": "Дура",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Моя Мишель",
+    "title": "Пташка",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Моя Мишель",
+    "title": "Ветер меняет направление",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Моя Мишель",
+    "title": "Курточка",
+    "moods": [
+      "energetic",
+      "melancholic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "IOWA",
+    "title": "Бьёт бит",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "IOWA",
+    "title": "Мои стихи, твоя гитара",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Ёлка",
+    "title": "Около тебя",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Ёлка",
+    "title": "Всё зависит от нас",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Дискотека Авария",
+    "title": "Если хочешь остаться",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Дискотека Авария",
+    "title": "Небо",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Дискотека Авария",
+    "title": "Новогодняя",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Винтаж",
+    "title": "Роман",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Винтаж",
+    "title": "Ева",
+    "moods": [
+      "energetic",
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Винтаж",
+    "title": "Знак Водолея",
+    "moods": [
+      "energetic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Гости из будущего",
+    "title": "Беги от меня",
+    "moods": [
+      "energetic",
+      "melancholic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Гости из будущего",
+    "title": "Он чужой",
+    "moods": [
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Градусы",
+    "title": "Режиссёр",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Градусы",
+    "title": "Голая",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Градусы",
+    "title": "Научиться бы не париться",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Градусы",
+    "title": "Кто ты",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Dabro",
+    "title": "На часах ноль-ноль",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Dabro",
+    "title": "Юность",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Dabro",
+    "title": "На крыше",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Леонид Агутин",
+    "title": "Хоп хей ла-ла-лей",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Леонид Агутин",
+    "title": "Босоногий мальчик",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Иван Дорн",
+    "title": "Стыцамэн",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Иван Дорн",
+    "title": "Бигуди",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Иван Дорн",
+    "title": "Невоспитанный",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Zivert",
+    "title": "Life",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Zivert",
+    "title": "Beverly Hills",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Zivert",
+    "title": "Зелёные волны",
+    "moods": [
+      "energetic",
+      "melancholic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Мари Краймбрери",
+    "title": "Нравится жить",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Мари Краймбрери",
+    "title": "Мне так хорошо",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Мот",
+    "title": "Мурашками",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Hip-Hop/Rap"
+    ]
+  },
+  {
+    "artist": "NILETTO",
+    "title": "Любимка",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "NILETTO",
+    "title": "Счастливым",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Клава Кока",
+    "title": "Покинула чат",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Клава Кока",
+    "title": "Ла Ла Ла",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Дима Билан",
+    "title": "Держи",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Дима Билан",
+    "title": "Про белые розы",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Сергей Лазарев",
+    "title": "Это всё она",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Валерий Меладзе",
+    "title": "Салют, Вера",
+    "moods": [
+      "energetic",
+      "melancholic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Валерий Меладзе",
+    "title": "Текила-любовь",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Руки Вверх!",
+    "title": "Крошка моя",
+    "moods": [
+      "energetic",
+      "melancholic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Руки Вверх!",
+    "title": "Алёшка",
+    "moods": [
+      "energetic",
+      "melancholic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Руки Вверх!",
+    "title": "18 мне уже",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "t.A.T.u.",
+    "title": "Нас не догонят",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "t.A.T.u.",
+    "title": "Я сошла с ума",
+    "moods": [
+      "energetic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Время и Стекло",
+    "title": "Имя 505",
+    "moods": [
+      "bright",
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Pop"
+    ]
+  },
+  {
+    "artist": "Король и Шут",
+    "title": "Кукла колдуна",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Король и Шут",
+    "title": "Прыгну со скалы",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Король и Шут",
+    "title": "Проклятый старый дом",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Король и Шут",
+    "title": "Дурак и молния",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Кино",
+    "title": "Перемен",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Кино",
+    "title": "Закрой за мной дверь, я ухожу",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Кино",
+    "title": "Мама, мы все сошли с ума",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Кино",
+    "title": "Место для шага вперёд",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Би-2",
+    "title": "Полковнику никто не пишет",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Би-2",
+    "title": "Скользкие улицы",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Агата Кристи",
+    "title": "Как на войне",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Агата Кристи",
+    "title": "Сказочная тайга",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Алиса",
+    "title": "Трасса Е-95",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Алиса",
+    "title": "Небо славян",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Ария",
+    "title": "Беспечный ангел",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Ария",
+    "title": "Потерянный рай",
+    "moods": [
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Lumen",
+    "title": "Гореть",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Lumen",
+    "title": "Сид и Нэнси",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Звери",
+    "title": "Районы-кварталы",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Звери",
+    "title": "До скорой встречи",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Звери",
+    "title": "Всё, что касается",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Звери",
+    "title": "Танцуй",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Слот",
+    "title": "Две войны",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Порнофильмы",
+    "title": "Я так соскучился",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Порнофильмы",
+    "title": "Всё пройдёт",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Порнофильмы",
+    "title": "Наши имена",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Нервы",
+    "title": "Батареи",
+    "moods": [
+      "energetic"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Нервы",
+    "title": "Кофе — мой друг",
+    "moods": [
+      "melancholic",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Нервы",
+    "title": "Самый дорогой человек",
+    "moods": [
+      "calm",
+      "night"
+    ],
+    "instrumental": false,
+    "genres": [
+      "Rock"
+    ]
+  },
+  {
+    "artist": "Ludovico Einaudi",
+    "title": "Nuvole Bianche",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Ludovico Einaudi",
+    "title": "I Giorni",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Ludovico Einaudi",
+    "title": "Le Onde",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Ludovico Einaudi",
+    "title": "Divenire",
+    "moods": [
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Ludovico Einaudi",
+    "title": "Experience",
+    "moods": [
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Ludovico Einaudi",
+    "title": "Primavera",
+    "moods": [
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Ludovico Einaudi",
+    "title": "Fly",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Yiruma",
+    "title": "Kiss The Rain",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Yiruma",
+    "title": "Love Me",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Yiruma",
+    "title": "Maybe",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Yiruma",
+    "title": "When The Love Falls",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Yiruma",
+    "title": "Spring Time",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Yiruma",
+    "title": "Passing By",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Ólafur Arnalds",
+    "title": "Near Light",
+    "moods": [
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Ólafur Arnalds",
+    "title": "Only the Winds",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Ólafur Arnalds",
+    "title": "Tomorrow's Song",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Nils Frahm",
+    "title": "Says",
+    "moods": [
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Nils Frahm",
+    "title": "Some",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Nils Frahm",
+    "title": "Over There, It's Raining",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Max Richter",
+    "title": "Written on the Sky",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Max Richter",
+    "title": "On the Nature of Daylight",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Max Richter",
+    "title": "Dream 3 (in the midst of my life)",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Dustin O'Halloran",
+    "title": "Opus 23",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Dustin O'Halloran",
+    "title": "Opus 55",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Dustin O'Halloran",
+    "title": "We Move Lightly",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Dustin O'Halloran",
+    "title": "Opus 37",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Joep Beving",
+    "title": "Ab Ovo",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Joep Beving",
+    "title": "Sleeping Lotus",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Joep Beving",
+    "title": "Hanging D",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Alexis Ffrench",
+    "title": "Bluebird",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Alexis Ffrench",
+    "title": "Wishing",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Дмитрий Маликов",
+    "title": "Лунная ночь",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
+  },
+  {
+    "artist": "Дмитрий Маликов",
+    "title": "ПианоманиЯ",
+    "moods": [
+      "calm",
+      "focus",
+      "night"
+    ],
+    "instrumental": true,
+    "genres": [
+      "Classical"
+    ]
   }
 ]

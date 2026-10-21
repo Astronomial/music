@@ -5,6 +5,7 @@ public enum DiscoveryPolicy {
         public var exposureCount: Int = 0
         public var classifiedCount: Int = 0
         public var newTracks: Int = 0
+        public var newArtists: Int = 0
         public var surprises: Int = 0
         public var preferredLanguage: Int = 0
         public var surpriseRate: Double = 0.12
@@ -34,6 +35,7 @@ public enum DiscoveryPolicy {
         for event in plays {
             if let snapshot = event.recommendation, snapshot.isValid {
                 result.classifiedCount += 1
+                if event.newArtist == true || snapshot.features[5] == 1 { result.newArtists += 1 }
                 if snapshot.lane != "familiar" { result.newTracks += 1 }
                 if snapshot.lane == "stretch" { result.surprises += 1 }
             }
@@ -48,7 +50,8 @@ enum ConsumptionFeedback {
     struct Arm: Sendable { var positive = 0.0; var negative = 0.0 }
     struct Model: Sendable { var global: [String: Arm] = [:]; var moods: [String: Arm] = [:] }
     static func arms(_ track: Track) -> [(String, Double)] {
-        [("artist:" + PulseEngine.fold(track.artist), 1.5)] + GenreClassifier.genres(track).map { ("genre:" + PulseEngine.fold($0), 0.6) } + track.relatedTo.prefix(5).map { ("seed:" + $0, 0.8) }
+        let moods = MoodFitness.scores(track).filter { $0.value >= 0.6 }.map { ("mood:" + $0.key, 0.5) }
+        return [("artist:" + PulseEngine.fold(track.artist), 1.5)] + GenreClassifier.genres(track).map { ("genre:" + PulseEngine.fold($0), 0.6) } + moods + track.relatedTo.prefix(5).map { ("seed:" + $0, 0.8) }
     }
     static func model(_ library: Library, now: Date) -> Model {
         var result = Model(), seen = Set<String>()

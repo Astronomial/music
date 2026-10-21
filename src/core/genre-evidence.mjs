@@ -1,4 +1,5 @@
 // Retrieval labels are deliberately absent: a query is not a recording's genre.
+import recordings from './mood-recordings.json' with {type:'json'};
 export const GENRE_ALIASES={
   Electronic:['electronic','electronica','dance','электроника'],House:['house','deep house','progressive house','хаус'],Techno:['techno','техно'],
   'Hip-Hop/Rap':['hip hop','hip hop rap','rap','alternative rap','хип хоп','рэп'],Alternative:['alternative','indie','alternative rock','альтернатива'],
@@ -7,6 +8,8 @@ export const GENRE_ALIASES={
   Classical:['classical','классическая'],Metal:['metal','heavy metal','метал'],Reggae:['reggae','регги'],'Folk/Country':['folk','country','singer songwriter','фолк']
 };
 export const genreFold=value=>String(value||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/ё/g,'е').replace(/[^\p{L}\p{N}]+/gu,' ').trim().replace(/\s+/g,' ');
+const curatedRecordings=new Map(recordings.map(r=>[artistIdentity(r.artist)+'|'+recordingIdentity(r.title),r]));
+
 export function canonicalGenres(value){
   const parts=Array.isArray(value)?value:[value];
   return [...new Set(parts.flatMap(part=>{
@@ -25,13 +28,18 @@ export function validateGenreEvidence(e){
 }
 const genreCache=new WeakMap();
 export function genresOf(track){
-  const cached=genreCache.get(track);if(cached&&cached.genre===track.genre&&cached.evidence===track.genreEvidence)return cached.result;
-  const result=readGenres(track);genreCache.set(track,{genre:track.genre,evidence:track.genreEvidence,result});return result;
+  const cached=genreCache.get(track);if(cached&&cached.genre===track.genre&&cached.evidence===track.genreEvidence&&cached.artist===track.artist&&cached.title===track.title)return cached.result;
+  const result=readGenres(track);genreCache.set(track,{genre:track.genre,evidence:track.genreEvidence,artist:track.artist,title:track.title,result});return result;
 }
 function readGenres(track){
   const evidence=validateGenreEvidence(track.genreEvidence);
   if(evidence?.values.length&&evidence.confidence>=.8)return {values:evidence.values,confidence:evidence.confidence,source:evidence.source};
   const values=canonicalGenres(track.genre);
+  if(!values.length){
+    const reference=curatedRecordings.get(artistIdentity(track.artist)+'|'+recordingIdentity(track.title));
+    const curated=canonicalGenres(reference?.genres||[]);
+    if(curated.length)return {values:curated,confidence:.85,source:'curated-recording'};
+  }
   return {values,confidence:values.length?1:0,source:values.length?'metadata':'unknown'};
 }
 const neighbours=[['Electronic','House','Techno','Drum & Bass'],['Ambient','Lo-Fi'],['Pop','R&B/Soul'],['Rock','Alternative','Metal'],['Hip-Hop/Rap','R&B/Soul'],['Jazz','Lo-Fi']];

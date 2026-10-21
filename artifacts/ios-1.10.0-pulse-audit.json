@@ -1,0 +1,46 @@
+{
+  "kind" : "synthetic-familiar-rotation-replay",
+  "liveYouTubeUsed" : false,
+  "refreshEveryChoices" : 20,
+  "runs" : [
+    {
+      "allFavouritesReachedAt" : 584,
+      "candidateCount" : 1560,
+      "confirmedSavedGenres" : 340,
+      "discoveries" : 762,
+      "disliked" : 0,
+      "distinctFavourites" : 180,
+      "elapsedSeconds" : 139.20148968696594,
+      "eligibleFavourites" : 180,
+      "favouriteDrawRange" : [
+        1,
+        2
+      ],
+      "genericUtility" : 0,
+      "initialGenres" : {
+        "Pop" : 1699.9999999999966
+      },
+      "initialSavedCount" : 340,
+      "knownGenreContradictions" : 0,
+      "label" : "full-favourite-rotation-and-multisignal-relevance",
+      "linkedToInitialLibrary" : 762,
+      "maxArtistIn12" : 1,
+      "newArtists" : 592,
+      "newRecordingsByFamiliarArtists" : 170,
+      "repeats" : 170,
+      "requested" : 1100,
+      "russian" : 1100,
+      "sameGenreOnly" : 0,
+      "selected" : 1100,
+      "selectedGenres" : {
+        "Pop" : 1100
+      },
+      "soundProfilesAvailable" : 0,
+      "syntheticNegativeSelections" : 0,
+      "uniqueArtists" : 772,
+      "uniqueRecordings" : 930
+    }
+  ],
+  "subjectiveTasteMeasured" : false,
+  "warning" : "Actual iOS cache and selector; synthetic metadata and reactions, not this user's library or subjective taste."
+}

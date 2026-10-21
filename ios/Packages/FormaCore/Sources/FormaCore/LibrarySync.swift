@@ -43,6 +43,7 @@ public enum LibrarySync {
         let newEvents = Dictionary(incoming.events.map { (key($0), $0) }, uniquingKeysWith: { a, _ in a })
         for id in Set(oldEvents.keys).union(newEvents.keys) where !equal(oldEvents[id], newEvents[id]) { history[id] = newEvents[id] }
         result.events = Array(history.values.sorted { $0.at < $1.at }.suffix(3000))
+        for (id, at) in incoming.familiarPlays where at.isFinite && at > 0 { result.familiarPlays[id] = max(result.familiarPlays[id] ?? 0, at) }
         if base.settings.genres != incoming.settings.genres { result.settings.genres = mergeIDs(current: current.settings.genres, base: base.settings.genres, incoming: incoming.settings.genres) }
         if base.settings.excludedArtists != incoming.settings.excludedArtists { result.settings.excludedArtists = mergeIDs(current: current.settings.excludedArtists, base: base.settings.excludedArtists, incoming: incoming.settings.excludedArtists) }
         if base.settings.discovery != incoming.settings.discovery { result.settings.discovery = incoming.settings.discovery }
@@ -70,6 +71,7 @@ public enum LibrarySync {
     /// merging a round trip, while respecting explicit shared-history deletion.
     public static func preservingLearning(in remote: Library, from local: Library) -> Library {
         var result = remote
+        for (id, at) in local.familiarPlays where at.isFinite && at > 0 { result.familiarPlays[id] = max(result.familiarPlays[id] ?? 0, at) }
         if remote.settings.recommendationVersion < 2 {
             result.settings.explorationStyle = local.settings.explorationStyle
             result.settings.languagePreference = local.settings.languagePreference

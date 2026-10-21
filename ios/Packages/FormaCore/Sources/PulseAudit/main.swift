@@ -11,6 +11,11 @@ struct Replay: Codable {
     var selected = 0
     var uniqueRecordings = 0
     var uniqueArtists = 0
+    var eligibleFavourites = 0
+    var distinctFavourites = 0
+    var favouriteDrawRange: [Int] = []
+    var allFavouritesReachedAt: Int?
+    var newRecordingsByFamiliarArtists = 0
     var discoveries = 0
     var newArtists = 0
     var russian = 0
@@ -29,7 +34,7 @@ struct Replay: Codable {
     var confirmedSavedGenres = 0
     var elapsedSeconds = 0.0
 }
-func replay(label: String, original: Library, count: Int, negatives: Set<String>? = nil, refreshEvery: Int = 20) -> Replay {
+func replay(label: String, original: Library, count: Int, negatives: Set<String>? = nil, refreshEvery: Int = 20, allowRepeats: Bool = false) -> Replay {
     var library = original
     let time = max(Date(), (library.events.map(\.at).max() ?? .distantPast).addingTimeInterval(1))
     let profile = TasteProfile(library: library, now: time)
@@ -39,22 +44,29 @@ func replay(label: String, original: Library, count: Int, negatives: Set<String>
     result.syntheticNegativeSelections = negatives == nil ? nil : 0
     result.initialGenres = profile.genres; result.initialSavedCount = profile.explicitIDs.count
     result.confirmedSavedGenres = profile.confirmedGenreCount
+    let favourites = FamiliarRotation.ids(library)
+    result.eligibleFavourites = favourites.count
+    var favouriteDraws: [String: Int] = [:]
     var heard = Set<String>(), recordings = Set<String>(), artists = Set<String>(), rolling: [Set<String>] = []
     var cache: [Recommendation] = [], current: String?
     let start = Date()
     for step in 0..<count {
         let now = time.addingTimeInterval(Double(step) * 210)
+        let excluded: Set<String> = allowRepeats ? [] : heard
         if cache.isEmpty || step % max(1, refreshEvery) == 0 {
-            cache = PulseEngine.rank(candidates, library: library, limit: 60, exclude: heard, now: now, currentID: current, index: index)
+            cache = PulseEngine.rank(candidates, library: library, limit: 60, exclude: excluded, now: now, currentID: current, index: index, retainFamiliarPool: true)
         }
-        var next = PulseEngine.selectCached(cache, library: library, exclude: heard, currentID: current, now: now, index: index)
+        var next = PulseEngine.selectCached(cache, library: library, exclude: excluded, currentID: current, now: now, index: index)
         if next == nil {
-            cache = PulseEngine.rank(candidates, library: library, limit: 60, exclude: heard, now: now, currentID: current, index: index)
-            next = PulseEngine.selectCached(cache, library: library, exclude: heard, currentID: current, now: now, index: index)
+            cache = PulseEngine.rank(candidates, library: library, limit: 60, exclude: excluded, now: now, currentID: current, index: index, retainFamiliarPool: true)
+            next = PulseEngine.selectCached(cache, library: library, exclude: excluded, currentID: current, now: now, index: index)
         }
         guard let choice = next else { break }
         let track = choice.track, names = PulseDiversity.artists(track)
         result.selected += 1
+        if favourites.contains(track.id) { favouriteDraws[track.id, default: 0] += 1 }
+        if favouriteDraws.count == favourites.count && result.allFavouritesReachedAt == nil { result.allFavouritesReachedAt = step + 1 }
+        if !choice.known && !names.isDisjoint(with: profile.artists.keys) { result.newRecordingsByFamiliarArtists += 1 }
         if !heard.insert(track.id).inserted { result.repeats += 1 }
         recordings.insert(PulseDiversity.recording(track)); artists.formUnion(names)
         if !choice.known { result.discoveries += 1 }; if choice.newArtist { result.newArtists += 1 }
@@ -82,6 +94,7 @@ func replay(label: String, original: Library, count: Int, negatives: Set<String>
         current = track.id
         if step % 100 == 99 { FileHandle.standardError.write(Data("\(label): \(step + 1)/\(count)\n".utf8)) }
     }
+    result.distinctFavourites = favouriteDraws.count; result.favouriteDrawRange = [favouriteDraws.values.min() ?? 0, favouriteDraws.values.max() ?? 0]
     result.uniqueRecordings = recordings.count; result.uniqueArtists = artists.count
     result.elapsedSeconds = Date().timeIntervalSince(start)
     return result
@@ -119,6 +132,23 @@ func sourcePriority() -> Replay {
     library.merge(fresh); library.settings.includeLibrary = false
     return replay(label: "source-priority-100-likes-one-artist-vs-500-playlist-artists", original: library, count: 200)
 }
+func rotationFixture() -> (Library, Set<String>) {
+    let likes = (0..<180).map { song($0, genre: "Pop") }
+    let imported = (200..<360).map { song($0, genre: "Pop") }
+    var library = Library(); library.merge(likes + imported); library.likedIDs = likes.map(\.id)
+    library.playlists = [.init(name: "Synthetic import", trackIDs: imported.map(\.id))]
+    for i in 0..<1100 {
+        var track = song(1000 + i, artist: i % 7 == 0 ? likes[i % 180].artist : nil, genre: "Pop")
+        track.relatedTo = [likes[i % 180].id]; track.directRelatedTo = track.relatedTo; library.merge([track])
+    }
+    var junk = Set<String>()
+    for i in 0..<120 {
+        var track = song(4000 + i, genre: i < 60 ? "Jazz" : "Pop", title: i < 60 ? "Другая запись \(i)" : "Energetic Music \(i)")
+        track.relatedTo = [likes[0].id]; track.directRelatedTo = track.relatedTo; track.genres = ["Pop"]; library.merge([track]); junk.insert(track.id)
+    }
+    library.settings.repeatHours = 2
+    return (library, junk)
+}
 let args = Array(CommandLine.arguments.dropFirst())
 func option(_ name: String) -> String? { guard let i = args.firstIndex(of: name), i + 1 < args.count else { return nil }; return args[i + 1] }
 let count = min(10000, max(1, Int(option("--count") ?? "1100") ?? 1100))
@@ -137,6 +167,9 @@ if let path = option("--library") {
     let library = LibraryValidation.normalized(try JSONDecoder().decode(Library.self, from: data))
     guard library.version == 1, !library.tracks.isEmpty else { throw AuditError(errorDescription: "Expected a Forma iOS library export") }
     report = Report(kind: "actual-library-offline-replay", subjectiveTasteMeasured: false, liveYouTubeUsed: false, refreshEveryChoices: 20, warning: "Metadata/feedback replay only. No invented reactions, no listening-based judgement. Finite cached candidates may be exhausted before the requested count.", runs: [replay(label: "provided-library", original: library, count: count)])
+} else if args.contains("--rotation") {
+    let fixture = rotationFixture()
+    report = Report(kind: "synthetic-familiar-rotation-replay", subjectiveTasteMeasured: false, liveYouTubeUsed: false, refreshEveryChoices: 20, warning: "Actual iOS cache and selector; synthetic metadata and reactions, not this user's library or subjective taste.", runs: [replay(label: "full-favourite-rotation-and-multisignal-relevance", original: fixture.0, count: max(1100, count), negatives: fixture.1, allowRepeats: true)])
 } else if args.contains("--synthetic") {
     let clean = fixture(utilityLeak: false), polluted = fixture(utilityLeak: true)
     report = Report(kind: "synthetic-adversarial-replay", subjectiveTasteMeasured: false, liveYouTubeUsed: false, refreshEveryChoices: 20, warning: "Synthetic labels fixed before ranking. These measurements test logic and are not an estimate of this user's taste or live YouTube recommendations.", runs: [replay(label: "unrelated-genre-and-misleading-links", original: clean.0, count: count, negatives: clean.1), replay(label: "one-background-save-must-not-open-all-generic-uploads", original: polluted.0, count: count, negatives: polluted.1), sourcePriority()])

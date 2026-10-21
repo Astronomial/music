@@ -1,7 +1,7 @@
 import {validateGenreEvidence} from './genre-evidence.mjs';
 import {WAVE_GENRES,DEFAULT_WAVE_SETTINGS} from './wave-settings.mjs';
 export const GENRES = WAVE_GENRES;
-export const initialState = () => ({ version: 1, tracks: {}, likes: [], playlists: [], events: [], hidden: [], dislikes: [], imports: [], settings: { ...structuredClone(DEFAULT_WAVE_SETTINGS), offlineOnly: false, volume: 0.7, palette: 'iris', textScale: 1, provider:'youtube' }, onboarded: false });
+export const initialState = () => ({ version: 1, tracks: {}, likes: [], playlists: [], events: [], familiarPlays: {}, hidden: [], dislikes: [], imports: [], settings: { ...structuredClone(DEFAULT_WAVE_SETTINGS), offlineOnly: false, volume: 0.7, palette: 'iris', textScale: 1, provider:'youtube' }, onboarded: false });
 export function normalizeTrack(t) {
   const artwork = t.artwork || {};
   const download = t.download || {};
@@ -34,5 +34,7 @@ export function mergeTracks(state, tracks, now=Date.now()) {
   return { ...state, tracks: next };
 }
 export function recordEvent(state, trackId, type, extra = {}, now = Date.now()) {
-  return { ...state, events: [...state.events, { trackId, type, at: now, ...extra }].slice(-3000) };
+  const familiarPlays={...state.familiarPlays};
+  if(type==='play'&&[...state.likes,...state.playlists.flatMap(p=>p.trackIds)].includes(trackId))familiarPlays[trackId]=now;
+  return { ...state, familiarPlays, events: [...state.events, { trackId, type, at: now, ...extra }].slice(-3000) };
 }

@@ -7,9 +7,10 @@ public struct DiscoveryRequest: Codable, Sendable, Equatable {
     public var query: String
     public var continuation: String?
     public var roots: [String]
+    public var mood: String?
     public var key: String { kind.rawValue + ":" + (kind == .search ? query : seed.id) }
-    public init(kind: Kind, seed: Track, query: String = "", continuation: String? = nil, roots: [String] = []) {
-        self.kind = kind; self.seed = seed; self.query = query; self.continuation = continuation; self.roots = roots
+    public init(kind: Kind, seed: Track, query: String = "", continuation: String? = nil, roots: [String] = [], mood: String? = nil) {
+        self.kind = kind; self.seed = seed; self.query = query; self.continuation = continuation; self.roots = roots; self.mood = mood
     }
 }
 public struct DiscoveryPage: Sendable {
@@ -29,7 +30,7 @@ public struct DiscoveryPlanner: Codable, Sendable {
     public private(set) var successfulPages = 0
     public private(set) var receivedRecordings = 0
     public init() {}
-    public mutating func plan(library: Library, discoveries: [Track] = [], limit: Int = 8, now: Date = Date()) -> [DiscoveryRequest] {
+    public mutating func plan(library: Library, discoveries: [Track] = [], limit: Int = 8, now: Date = Date(), mood: String? = nil, underfilledMoods: [String] = []) -> [DiscoveryRequest] {
         let profile = TasteProfile(library: library, now: now)
         var jobs: [DiscoveryRequest] = profile.seeds.map { DiscoveryRequest(kind: .related, seed: $0, roots: [$0.id]) }
         var artists = Set<String>()
@@ -46,6 +47,21 @@ public struct DiscoveryPlanner: Codable, Sendable {
         for seed in profile.seeds.prefix(80) where !seed.artist.isEmpty && seed.artist != "Исполнитель не указан" {
             jobs.append(DiscoveryRequest(kind: .search, seed: seed, query: seed.artist, roots: [seed.id]))
         }
+        var moodJobs: [DiscoveryRequest] = []
+        let moodIDs = mood.map({ [$0] }) ?? underfilledMoods
+        let scores = moodIDs.isEmpty ? [:] : library.tracks.mapValues(MoodFitness.scores)
+        for id in moodIDs {
+            let matching = library.tracks.values.filter { (scores[$0.id]?[id] ?? 0) > 0 && !PulseDiversity.blocked($0, settings: library.settings) && !library.dislikedIDs.contains($0.id) && !library.hiddenIDs.contains($0.id) && (!RecordingQuality.utility($0) || profile.explicitIDs.contains($0.id)) }.sorted { $0.id < $1.id }
+            for seed in matching { moodJobs.append(DiscoveryRequest(kind: .related, seed: seed, roots: [seed.id], mood: id)) }
+            let names = Set(profile.seeds.map { PulseEngine.fold($0.artist) })
+            // These exact-recording queries recover sparse shelves without
+            // turning a phrase such as "happy music" into training evidence.
+            for query in MoodFitness.seedQueries(id, artists: names, genres: Array(profile.genres.keys), offset: 0, limit: 200) {
+                if let seed = profile.seeds.first ?? matching.first { moodJobs.append(DiscoveryRequest(kind: .search, seed: seed, query: query, mood: id)) }
+            }
+        }
+        let validMoods = Set(moodJobs.map(\.key))
+        jobs += moodJobs
         jobs = jobs.filter { (progress[$0.key]?.retryAt ?? .distantPast) <= now }
         jobs.sort { a, b in
             let x = progress[a.key] ?? Progress(), y = progress[b.key] ?? Progress()
@@ -63,7 +79,16 @@ public struct DiscoveryPlanner: Codable, Sendable {
             // otherwise 500 unvisited seeds could starve every continuation.
             let continuing = Array(jobs.filter { progress[$0.key]?.cursor != nil }.prefix(max(1, limit / 5)))
             let alternate = Array(jobs.filter { $0.kind == .artist }.prefix(1))
-            jobs = continuing + alternate + jobs
+            let recent = Set(library.events.reversed().filter { $0.at <= now && now.timeIntervalSince($0.at) < 7 * 86400 && ($0.reward ?? 0) >= 0.7 }.prefix(4).map(\.trackID))
+            let heard = Array(jobs.filter { $0.kind == .artist && recent.contains($0.seed.id) }.prefix(2))
+            let moodCount = mood == nil ? min(limit - 2, max(3, limit * 2 / 3)) : max(2, limit / 2)
+            var shelves: [DiscoveryRequest] = [], seenMoods = Set<String>()
+            for job in jobs where validMoods.contains(job.key) {
+                if let id = job.mood, seenMoods.insert(id).inserted { shelves.append(job) }
+                if shelves.count >= moodCount { break }
+            }
+            if shelves.count < moodCount { let keys = Set(shelves.map(\.key)); shelves += jobs.filter { validMoods.contains($0.key) && !keys.contains($0.key) }.prefix(moodCount - shelves.count) }
+            jobs = shelves + heard + continuing + alternate + jobs
         }
         var chosen: [DiscoveryRequest] = [], pickedArtists: [String: Int] = [:], pickedKeys = Set<String>()
         func fromLikes(_ job: DiscoveryRequest) -> Bool { profile.likedIDs.contains(job.seed.id) || !Set(job.roots).isDisjoint(with: profile.likedIDs) }

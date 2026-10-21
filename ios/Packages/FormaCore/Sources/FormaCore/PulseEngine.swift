@@ -2,7 +2,7 @@ import Foundation
 
 public struct Recommendation: Identifiable, Sendable {
     public var id: String { track.id }
-    public let track: Track
+    public var track: Track
     public var score: Double
     public let reason: String
     public var newArtist = false
@@ -56,9 +56,12 @@ public enum PulseEngine {
         var fit: Double; var genre: Double; var direct: Int; var sameArtist: Bool; var audio: Double?; var match: Track?; var known: Bool; var eligible: Bool
         var nearby: Bool { known || sameArtist || direct > 0 || (audio ?? 0) >= 0.9 || genre == 1 }
     }
-    private static func evidence(_ track: Track, profile: TasteProfile, index: RankingIndex, library: Library, liveMetadata: Bool = false) -> Evidence {
+    private static func focusMatch(_ track: Track, context: String?) -> Bool {
+        context == "focus" && MoodFitness.scores(track)["focus", default: 0] >= 0.75 && !Set(GenreClassifier.genres(track)).isDisjoint(with: ["Ambient", "Lo-Fi", "Jazz", "Classical"])
+    }
+    private static func evidence(_ track: Track, profile: TasteProfile, index: RankingIndex, library: Library, familiarIDs: Set<String>, liveMetadata: Bool = false) -> Evidence {
         let names = liveMetadata ? PulseDiversity.artists(track) : (index.artists[track.id] ?? PulseDiversity.artists(track)), genres = liveMetadata ? GenreClassifier.genres(track) : (index.genres[track.id] ?? GenreClassifier.genres(track))
-        let sameArtist = !names.isDisjoint(with: profile.artists.keys), known = (profile.weights[track.id] ?? 0) > 0
+        let sameArtist = !names.isDisjoint(with: profile.artists.keys), known = familiarIDs.contains(track.id)
         let directIDs = Set(track.directRelatedTo).intersection(profile.positiveIDs).filter { id in
             guard let seed = library.tracks[id] else { return false }
             let sourceGenres = liveMetadata ? GenreClassifier.genres(seed) : (index.genres[id] ?? GenreClassifier.genres(seed))
@@ -90,9 +93,10 @@ public enum PulseEngine {
         let match = directIDs.sorted().compactMap { library.tracks[$0] }.first
         return Evidence(fit: fit, genre: genreFit, direct: compatibleDirect ? direct : 0, sameArtist: sameArtist, audio: audio, match: match, known: known, eligible: eligible)
     }
-    public static func rank(_ candidates: [Track], library: Library, limit: Int = 30, mood: String? = nil, exclude: Set<String> = [], allowRecent: Bool = false, now: Date = Date(), currentID: String? = nil, index: RankingIndex? = nil, playlistID: String? = nil, trackID: String? = nil) -> [Recommendation] {
+    public static func rank(_ candidates: [Track], library: Library, limit: Int = 30, mood: String? = nil, exclude: Set<String> = [], allowRecent: Bool = false, now: Date = Date(), currentID: String? = nil, index: RankingIndex? = nil, playlistID: String? = nil, trackID: String? = nil, retainFamiliarPool: Bool = false) -> [Recommendation] {
         guard limit > 0, let source = profileSource(library, playlistID: playlistID, trackID: trackID) else { return [] }
-        let prepared = index ?? makeIndex(candidates, library: library), profile = TasteProfile(library: source, now: now)
+        let prepared = index ?? makeIndex(candidates, library: library), profile = TasteProfile(library: source, now: now), familiarPool = FamiliarRotation.ids(source)
+        let knownRecordings = profile.explicitIDs
         let context = mood ?? (library.settings.mood == "any" ? nil : library.settings.mood)
         let recent = recentIDs(library, now: now), saved = Set(library.likedIDs + library.playlists.flatMap(\.trackIDs))
         let feedback = ConsumptionFeedback.model(library, now: now), learner = ContextualLearning.model(library, now: now)
@@ -101,6 +105,8 @@ public enum PulseEngine {
         var familiar = Set<String>()
         for id in familiarIDs { familiar.formUnion(prepared.artists[id] ?? []) }
         let session = library.events.suffix(24).filter { $0.at <= now && now.timeIntervalSince($0.at) < 5400 && $0.reward != nil }
+        var moodTaste: [String: Double] = [:]
+        for id in profile.positiveIDs { for (mood, value) in prepared.moods[id] ?? [:] { moodTaste[mood] = max(moodTaste[mood] ?? 0, value) } }
         var seen = Set<String>(), ranked: [Recommendation] = []
         for track in candidates {
             if Task.isCancelled { return [] }
@@ -108,8 +114,9 @@ public enum PulseEngine {
             if let seed = trackID.flatMap({ library.tracks[$0] }), TrackPulse.sameSong(track, seed) || TrackPulse.fit(track, seed: seed) <= 0.1 { continue }
             let moodFit = context.flatMap { prepared.moods[track.id]?[$0] } ?? 0
             if context != nil, moodFit <= 0 { continue }
-            let e = evidence(track, profile: profile, index: prepared, library: source)
-            guard e.eligible else { continue }
+            let e = evidence(track, profile: profile, index: prepared, library: source, familiarIDs: knownRecordings)
+            let focus = focusMatch(track, context: context) && !(prepared.utility[track.id] ?? false) && !library.dislikedIDs.contains(track.id)
+            guard e.eligible || focus else { continue }
             let names = prepared.artists[track.id] ?? [], genres = prepared.genres[track.id] ?? []
             let language = DiscoveryPolicy.languageFit(track, preference: library.settings.languagePreference), newArtist = names.isDisjoint(with: familiar) && !names.contains { $0.hasPrefix("unknown:") }
             let artistNegative = names.compactMap { profile.negativeArtists[$0] }.max() ?? 0
@@ -123,42 +130,62 @@ public enum PulseEngine {
                 sessionFit += (reward >= 0.7 ? 0.12 : -0.24) * max(artist ? 1 : 0, genre * 0.5) * weight
             }
             sessionFit = max(-0.8, min(0.6, sessionFit)) * library.settings.sessionInfluence / 0.65
-            let snapshot = ContextualLearning.features(taste: e.fit, nearby: e.direct > 0 ? 0.8 : e.sameArtist ? 0.7 : e.genre * 0.3, session: sessionFit, newArtist: newArtist, known: e.known, language: language, context: moodFit, metadata: !genres.isEmpty)
+            let moodAffinity = context != nil ? moodFit : (prepared.moods[track.id] ?? [:]).map { min($0.value, moodTaste[$0.key] ?? 0) }.max() ?? 0
+            let snapshot = ContextualLearning.features(taste: e.fit, nearby: e.direct > 0 ? 0.8 : e.sameArtist ? 0.7 : e.genre * 0.3, session: sessionFit, newArtist: newArtist, known: e.known, language: language, context: moodFit, metadata: !genres.isEmpty, genre: e.genre, artist: e.sameArtist ? 1 : 0, mood: moodAffinity, sound: e.audio ?? 0)
             let consumption = ConsumptionFeedback.predict(track, model: feedback, mood: context)
             let learned = ContextualLearning.predict(learner, features: snapshot)
             let preferred = library.settings.preferredArtists.contains { names.contains(fold($0)) } ? 1.0 : 0
             var score: Double = e.fit * 3 + e.genre * 0.45
             score += Double(min(3, e.direct)) * 0.65
             score += (e.audio ?? 0) * 0.3 + preferred + sessionFit
-            score += moodFit * 0.6 + PulseDirections.score(track, settings: library.settings)
+            score += moodFit * 0.6 + moodAffinity * 0.2 + PulseDirections.score(track, settings: library.settings)
             score += GenreClassifier.relation(genres, library.settings.genres.flatMap(GenreClassifier.canonical)) * 0.7
             score += (consumption.mean - 0.5) * 0.6 + learned.correction * 0.45 + language * 0.12
             score -= min(2, artistNegative * 0.16) + min(0.5, genreNegative * 0.035)
             score -= min(3, max(0, -(profile.weights[track.id] ?? 0)) * 0.5)
             if let seed = trackID.flatMap({ library.tracks[$0] }) { score += 3 * TrackPulse.fit(track, seed: seed) }
-            let lane = e.known ? "familiar" : e.nearby ? "nearby" : "stretch"
+            let lane = e.known ? "familiar" : e.nearby || focus ? "nearby" : "stretch"
             var reason = e.known ? "Из твоей библиотеки" : e.sameArtist ? "Исполнитель из твоей библиотеки" : e.match.map { "Похоже на «\($0.title)» · \($0.artist)" } ?? (!genres.isEmpty ? "Близкий жанр · \(genres.joined(separator: ", "))" : "Рядом с твоим вкусом")
+            if focus && !e.eligible { reason = "Инструментальная музыка для концентрации" }
             if context != nil { reason = "Под настроение · " + reason.lowercased() }
-            ranked.append(Recommendation(track: track, score: score, reason: reason, newArtist: newArtist, known: e.known, nearby: e.nearby, languageFit: language, taste: e.fit, exposure: RecommendationContext(features: snapshot, lane: lane), scoredAt: now))
+            ranked.append(Recommendation(track: track, score: score, reason: reason, newArtist: newArtist, known: e.known, nearby: e.nearby || focus, languageFit: language, taste: e.fit, exposure: RecommendationContext(features: snapshot, lane: lane), scoredAt: now))
         }
         ranked.sort { $0.score == $1.score ? $0.id < $1.id : $0.score > $1.score }
         var recordings = Set<String>()
         let recentRecordings = Set(recent.compactMap { prepared.recordings[$0] })
         ranked = ranked.filter { (allowRecent || !recentRecordings.contains(prepared.recordings[$0.id] ?? $0.id)) && recordings.insert(prepared.recordings[$0.id] ?? $0.id).inserted }
-        return sequence(ranked, library: library, limit: limit, now: now, currentID: currentID, index: prepared)
+        let ordered = sequence(ranked, library: library, limit: limit, now: now, currentID: currentID, index: prepared)
+        if retainFamiliarPool {
+            let selected = Set(ordered.map(\.id))
+            return ordered + ranked.filter { familiarPool.contains($0.id) && !selected.contains($0.id) }
+        }
+        return ordered
     }
     private static func recentIDs(_ library: Library, now: Date, exposureOnly: Bool = false) -> Set<String> { Set(library.events.filter { ($0.kind == .play || (!exposureOnly && [.listen, .skip].contains($0.kind))) && $0.at <= now && now.timeIntervalSince($0.at) < library.settings.repeatHours * 3600 }.map(\.trackID)) }
     public static func selectCached(_ cached: [Recommendation], library: Library, exclude: Set<String>, currentID: String? = nil, now: Date = Date(), index: RankingIndex? = nil, mood: String? = nil) -> Recommendation? {
-        let prepared = index ?? makeIndex(cached.map(\.track), library: library), profile = TasteProfile(library: library, now: now)
+        let prepared = index ?? makeIndex(cached.map { library.tracks[$0.id] ?? $0.track }, library: library), profile = TasteProfile(library: library, now: now)
         let recent = recentIDs(library, now: now, exposureOnly: true), recentRecordings = Set(recent.compactMap { prepared.recordings[$0] })
         let saved = Set(library.likedIDs + library.playlists.flatMap(\.trackIDs)), context = mood ?? (library.settings.mood == "any" ? nil : library.settings.mood)
+        let heard = library.events.filter { $0.at <= now && now.timeIntervalSince($0.at) < 30 * 86400 }.map(\.trackID)
+        let familiarArtists = Set(saved.union(heard).flatMap { prepared.artists[$0] ?? [] })
         var live: [Recommendation] = []
         for item in cached {
             let track = library.tracks[item.id] ?? item.track
             guard !exclude.contains(item.id), !recent.contains(item.id), !recentRecordings.contains(prepared.recordings[item.id] ?? item.id), !library.hiddenIDs.contains(item.id), !PulseDiversity.blocked(track, settings: library.settings), library.settings.includeLibrary || !saved.contains(item.id), context.map({ MoodFitness.scores(track)[$0, default: 0] > 0 }) ?? true else { continue }
             // Refresh changed recording metadata, not a stale genre index.
-            guard evidence(track, profile: profile, index: prepared, library: library, liveMetadata: true).eligible else { continue }
+            let updatedEvidence = evidence(track, profile: profile, index: prepared, library: library, familiarIDs: profile.explicitIDs, liveMetadata: true)
+            let focus = focusMatch(track, context: context) && !RecordingQuality.utility(track) && !library.dislikedIDs.contains(track.id)
+            guard updatedEvidence.eligible || focus else { continue }
             var choice = item
+            choice.track = track
+            choice.known = updatedEvidence.known
+            choice.nearby = updatedEvidence.nearby || focus
+            let names = PulseDiversity.artists(track)
+            choice.newArtist = names.isDisjoint(with: familiarArtists) && !names.contains { $0.hasPrefix("unknown:") }
+            if var snapshot = choice.exposure, snapshot.isValid {
+                snapshot.features[5] = choice.newArtist ? 1 : 0; snapshot.features[6] = choice.known ? 1 : 0
+                snapshot.lane = choice.known ? "familiar" : choice.nearby ? "nearby" : "stretch"; choice.exposure = snapshot
+            } else { choice.exposure = nil }
             for event in library.events.suffix(12) where event.kind == .skip && event.at > item.scoredAt && event.at <= now && event.reward != nil {
                 guard let skipped = library.tracks[event.trackID] else { continue }
                 let artist = !(prepared.artists[item.id] ?? []).isDisjoint(with: prepared.artists[skipped.id] ?? [])
@@ -172,25 +199,36 @@ public enum PulseEngine {
     private static func sequence(_ initial: [Recommendation], library: Library, limit: Int, now: Date, currentID: String?, index: RankingIndex) -> [Recommendation] {
         var pool = initial, result: [Recommendation] = []
         let history = DiscoveryPolicy.history(library, now: now), spacing = PulseDiversity.limits(library.settings.artistDiversity)
+        let rotation = FamiliarRotation.times(library, now: now), rotationSeed = Int(now.timeIntervalSince1970 / 3600)
+        let familiarPool = FamiliarRotation.ids(library)
         var rolling = PulseDiversity.history(library, now: now, currentID: currentID).map { index.artists[$0.id] ?? PulseDiversity.artists($0) }
         var newCount = history.newTracks, languageCount = history.preferredLanguage, surpriseCount = history.surprises
+        var freshArtists = history.newArtists
         while !pool.isEmpty, result.count < limit {
             if Task.isCancelled { return [] }
             let recentArtists = Set(rolling.suffix(spacing.gap).flatMap { $0 })
             let counts = rolling.reduce(into: [String: Int]()) { counts, names in for name in names { counts[name, default: 0] += 1 } }
             var indices = Array(pool.indices)
+            let deficit = library.settings.discovery * Double(history.classifiedCount + result.count + 1) - Double(newCount)
+            if deficit < 0.5 {
+                let saved = indices.filter { pool[$0].known }, favourites = saved.filter { familiarPool.contains(pool[$0].id) }
+                let own = favourites.isEmpty ? saved : favourites
+                let spaced = own.filter { (index.artists[pool[$0].id] ?? []).isDisjoint(with: recentArtists) && (index.artists[pool[$0].id] ?? []).allSatisfy { (counts[$0] ?? 0) < spacing.count } }
+                let othersSpaced = indices.contains { (index.artists[pool[$0].id] ?? []).isDisjoint(with: recentArtists) && (index.artists[pool[$0].id] ?? []).allSatisfy { (counts[$0] ?? 0) < spacing.count } }
+                let allowed = !spaced.isEmpty ? spaced : library.settings.artistDiversity > 0 && othersSpaced ? [] : own
+                if let oldest = allowed.map({ rotation[pool[$0].id] ?? 0 }).min() { indices = allowed.filter { (rotation[pool[$0].id] ?? 0) == oldest } }
+            }
             if library.settings.artistDiversity > 0 {
                 let spaced = indices.filter { (index.artists[pool[$0].id] ?? []).isDisjoint(with: recentArtists) }
                 let capped = spaced.filter { (index.artists[pool[$0].id] ?? []).allSatisfy { (counts[$0] ?? 0) < spacing.count } }
                 if !capped.isEmpty { indices = capped } else if !spaced.isEmpty { indices = spaced }
             }
-            let deficit = library.settings.discovery * Double(history.classifiedCount + result.count + 1) - Double(newCount)
             if library.settings.explorationStyle != "adventurous", deficit >= 0.5 {
                 let close = indices.filter { !pool[$0].known && pool[$0].taste >= 0.58 }
                 if !close.isEmpty { indices = close }
             }
             let languageDeficit = 0.75 * Double(history.exposureCount + result.count + 1) - Double(languageCount)
-            if library.settings.languagePreference != "any", languageDeficit >= 0.5 {
+            if deficit >= 0.5, library.settings.languagePreference != "any", languageDeficit >= 0.5 {
                 let preferred = indices.filter { pool[$0].languageFit >= 0.6 }; if !preferred.isEmpty { indices = preferred }
             }
             let surpriseDeficit = history.surpriseRate * Double(history.classifiedCount + result.count + 1) - Double(surpriseCount)
@@ -199,7 +237,8 @@ public enum PulseEngine {
                 if !safer.isEmpty { indices = safer }
             }
             let balanced = indices.filter { pool[$0].known != (deficit >= 0.5) }; if !balanced.isEmpty { indices = balanced }
-            if deficit >= 0.5, library.settings.artistDiversity > 0 {
+            let artistDeficit = library.settings.discovery * (0.6 + library.settings.artistDiversity * 0.25) * Double(history.classifiedCount + result.count + 1) - Double(freshArtists)
+            if deficit >= 0.5, artistDeficit >= 0.5, library.settings.artistDiversity > 0 {
                 let fresh = indices.filter { pool[$0].newArtist }; if !fresh.isEmpty { indices = fresh }
             }
             func selectionScore(_ position: Int) -> Double {
@@ -209,12 +248,17 @@ public enum PulseEngine {
             }
             var best = indices[0]
             for candidate in indices.dropFirst() {
+                if deficit < 0.5, pool[best].known, pool[candidate].known {
+                    if FamiliarRotation.precedes(pool[candidate].id, pool[best].id, times: rotation, seed: rotationSeed) { best = candidate }
+                    continue
+                }
                 let a = selectionScore(best), b = selectionScore(candidate)
                 if b > a || (b == a && pool[candidate].id < pool[best].id) { best = candidate }
             }
             let item = pool.remove(at: best); result.append(item)
             if !item.nearby { surpriseCount += 1 }
             if !item.known { newCount += 1 }; if item.languageFit >= 0.6 { languageCount += 1 }
+            if item.newArtist { freshArtists += 1 }
             rolling.append(index.artists[item.id] ?? []); rolling = Array(rolling.suffix(12))
         }
         return result

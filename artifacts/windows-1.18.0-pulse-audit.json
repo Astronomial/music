@@ -1,0 +1,25 @@
+{
+  "kind": "synthetic-sequential-regression",
+  "platform": "Windows actual ranker",
+  "subjectiveTasteMeasured": false,
+  "liveYouTubeUsed": false,
+  "requested": 1100,
+  "candidates": 1560,
+  "eligibleFavourites": 180,
+  "played": 1100,
+  "familiar": 338,
+  "discoveries": 762,
+  "newRecordingsByFamiliarArtists": 85,
+  "unrelatedOrUtility": 0,
+  "modelFeatures": 14,
+  "distinctFavourites": 180,
+  "allFavouritesReachedAt": 584,
+  "maxArtistIn12": 1,
+  "favouriteDrawRange": [
+    1,
+    2
+  ],
+  "uniqueTracks": 882,
+  "elapsedSeconds": 116.951707673,
+  "passed": true
+}

@@ -24,7 +24,7 @@ public enum MoodFitness {
             rule.titleSignals = source.titleSignals.map(PulseEngine.fold); return rule
         }
     }()
-    private struct Recording: Decodable, Sendable { let artist: String; let title: String; let moods: [String]; let instrumental: Bool }
+    private struct Recording: Decodable, Sendable { let artist: String; let title: String; let moods: [String]; let instrumental: Bool; let genres: [String]? }
     private static let recordings: [Recording] = {
         let url = Bundle.module.url(forResource: "mood-recordings", withExtension: "json")!
         return try! JSONDecoder().decode([Recording].self, from: Data(contentsOf: url))
@@ -33,6 +33,18 @@ public enum MoodFitness {
         PulseEngine.fold(text).replacingOccurrences(of: "(?: official (?:music )?(?:video|audio)| lyrics| lyric video| topic| audio| video)$", with: "", options: .regularExpression).trimmingCharacters(in: .whitespaces)
     }
     private static let recordingIndex = Dictionary(uniqueKeysWithValues: recordings.map { (canonical($0.artist) + "|" + canonical($0.title), $0) })
+    public static func recordingGenres(_ track: Track) -> [String] { recordingIndex[canonical(track.artist) + "|" + canonical(track.title)]?.genres ?? [] }
+    public static func seedQueries(_ mood: String, artists: Set<String>, genres: [String], offset: Int, limit: Int = 3) -> [String] {
+        let pool = recordings.filter { $0.moods.contains(mood) }.sorted {
+            let a = artists.contains(PulseEngine.fold($0.artist)), b = artists.contains(PulseEngine.fold($1.artist))
+            if a != b { return a }
+            let x = GenreClassifier.relation($0.genres ?? [], genres), y = GenreClassifier.relation($1.genres ?? [], genres)
+            return x == y ? $0.artist + $0.title < $1.artist + $1.title : x > y
+        }
+        let group = pool
+        guard !group.isEmpty else { return [] }
+        return (0..<min(limit, group.count)).map { let r = group[(max(0, offset) + $0) % group.count]; return r.artist + " " + r.title }
+    }
     public static func seedQuery(_ mood: String, offset: Int = Int(Date().timeIntervalSince1970 / 86400)) -> String? {
         let pool = recordings.filter { $0.moods.contains(mood) }
         guard !pool.isEmpty else { return nil }

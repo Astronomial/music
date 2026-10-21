@@ -144,9 +144,10 @@ public struct Library: Codable, Sendable {
     public var dislikedIDs: [String] = []
     public var playlists: [Playlist] = []
     public var events: [ListeningEvent] = []
+    public var familiarPlays: [String: Double] = [:]
     public var settings = PulseSettings()
     public init() {}
-    private enum CodingKeys: String, CodingKey { case version, tracks, likedIDs, hiddenIDs, dislikedIDs, playlists, events, settings }
+    private enum CodingKeys: String, CodingKey { case version, tracks, likedIDs, hiddenIDs, dislikedIDs, playlists, events, settings, familiarPlays }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         version = try c.decode(Int.self, forKey: .version)
@@ -156,6 +157,7 @@ public struct Library: Codable, Sendable {
         dislikedIDs = try c.decodeIfPresent([String].self, forKey: .dislikedIDs) ?? []
         playlists = try c.decode([Playlist].self, forKey: .playlists)
         events = try c.decode([ListeningEvent].self, forKey: .events)
+        familiarPlays = try c.decodeIfPresent([String: Double].self, forKey: .familiarPlays) ?? [:]
         settings = try c.decode(PulseSettings.self, forKey: .settings)
     }
     public mutating func merge(_ incoming: [Track]) {
@@ -180,6 +182,9 @@ public struct Library: Codable, Sendable {
         }
     }
     public mutating func record(_ event: ListeningEvent) {
+        if event.kind == .play, likedIDs.contains(event.trackID) || playlists.contains(where: { $0.trackIDs.contains(event.trackID) }) {
+            familiarPlays[event.trackID] = event.at.timeIntervalSince1970 * 1000
+        }
         events.append(event)
         events = Array(events.suffix(3000))
     }

@@ -14,14 +14,14 @@ test('early skips reduce related tracks and late skips do not penalize taste',()
   let s=setup();s.settings.genres=['House','Rock'];s=recordEvent(s,'a','skip',{seconds:8,ratio:0.04},now);
   assert.equal(rankTracks([s.tracks.b,s.tracks.c],s,{now})[0].track.id,'c');
   assert.equal(eventWeight({type:'skip',seconds:180,ratio:0.9}),0);
-  assert.equal(eventWeight({type:'listen',ratio:0.95}),1.5);
+  assert.equal(eventWeight({type:'listen',seconds:190,ratio:0.95}),1.5);
   assert.equal(eventWeight({type:'error'}),0);
 });
 test('taste history decays, explicit likes remain and repeated signals saturate',()=>{
   let s=setup();s.likes=['a'];
   for(let i=0;i<100;i++)s=recordEvent(s,'c','skip',{seconds:5,ratio:0.025},now);
   assert.equal(buildProfile(s,now).weights.get('c'),-7);
-  const recent=recordEvent(setup(),'a','listen',{ratio:1},now);
+  const recent=recordEvent(setup(),'a','listen',{ratio:1,seconds:190},now);
   assert.ok(buildProfile(recent,now+90*86400000).weights.get('a')<buildProfile(recent,now).weights.get('a')/4);
   assert.equal(buildProfile(s,now+90*86400000).weights.get('a'),5);
 });

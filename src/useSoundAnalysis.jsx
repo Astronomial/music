@@ -7,7 +7,8 @@ export default function useSoundAnalysis({bridge,ready,stateRef,current,bufferin
     let cancelled=false,worker,working=false;const token=++generation.current;
     async function run(){
       if(cancelled||working)return;const state=stateRef.current,now=Date.now();budget.current=budget.current.filter(t=>now-t<3600000);if(budget.current.length>=12)return;
-      const pool=[current,...queue.slice(0,2),...state.likes.slice(-2).map(id=>state.tracks[id])].filter(Boolean);
+      const saved=[...new Set([...state.likes,...state.playlists.flatMap(p=>p.trackIds)])].map(id=>state.tracks[id]).filter(Boolean).sort((a,b)=>(attempts.current.get(a.id)||0)-(attempts.current.get(b.id)||0));
+      const pool=[current,...queue.slice(0,2),...saved].filter(Boolean);
       const track=pool.find(t=>t.source==='youtube'&&!validateSoundProfile(state.tracks[t.id]?.soundProfile)&&now-(attempts.current.get(t.id)||0)>300000);
       if(!track)return;attempts.current.set(track.id,now);budget.current.push(now);working=true;
       try{
