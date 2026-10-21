@@ -1,4 +1,5 @@
 import {feedbackReward} from './feedback.mjs';
+import {releaseFreshness} from './release-discovery.mjs';
 
 // Language of a recording is rarely supplied by YouTube. Text and search intent
 // are evidence of differing strength, never a claim that audio was analysed.
@@ -21,7 +22,7 @@ export function discoveryPolicy(state,settings,now=Date.now()){
   const base={nearby:0.12,balanced:0.25,adventurous:0.45}[settings.explorationStyle]??0.12;
   const exposure=recent.filter(e=>e.type==='play').slice(-12);
   const classified=exposure.filter(e=>['familiar','nearby','stretch'].includes(e.recommendation?.lane));
-  return {discoveryExposureCount:classified.length,newTrackCount:classified.filter(e=>e.recommendation.lane!=='familiar').length,surpriseRate:base/(1+earlySkips),earlySkips,exposureCount:exposure.length,surprises:exposure.filter(e=>e.recommendation?.lane==='stretch').length,preferredLanguageCount:exposure.filter(e=>state.tracks[e.trackId]&&languageEvidence(state.tracks[e.trackId],settings.languagePreference).fit>=.6).length};
+  return {freshTrackCount:classified.filter(e=>e.recommendation.lane!=='familiar'&&state.tracks[e.trackId]&&releaseFreshness(state.tracks[e.trackId],now).recent).length,discoveryExposureCount:classified.length,newTrackCount:classified.filter(e=>e.recommendation.lane!=='familiar').length,surpriseRate:base/(1+earlySkips),earlySkips,exposureCount:exposure.length,surprises:exposure.filter(e=>e.recommendation?.lane==='stretch').length,preferredLanguageCount:exposure.filter(e=>state.tracks[e.trackId]&&languageEvidence(state.tracks[e.trackId],settings.languagePreference).fit>=.6).length};
 }
 
 export function neighbourhood(track,anchors,contentSimilarity,weights,maxSemantic=1,semantic=null){

@@ -16,6 +16,7 @@ extension MusicCatalogProviding {
         case .related: return DiscoveryPage(tracks: try await related(to: request.seed))
         case .artist: return DiscoveryPage(tracks: try await artistTracks(request.seed))
         case .search: return DiscoveryPage(tracks: try await search(request.query))
+        case .releases: return DiscoveryPage(tracks: try await orderedSearch(request.seed.artist, recent: true))
         }
     }
     func orderedSearch(_ query: String, recent: Bool) async throws -> [Track] { try await search(query) }
@@ -27,6 +28,7 @@ extension MusicCatalogProviding {
 /// Anonymous public YouTube Music metadata. No official API key/subscription.
 /// Unofficial renderer formats can change; the parser is isolated in FormaCore.
 actor YouTubeCatalog: MusicCatalogProviding {
+    private let releaseCatalog = GenreCatalog()
     private let session: URLSession
     private var versions: [Bool: (String, Date)] = [:]
     private var versionTasks: [Bool: Task<String, Error>] = [:]
@@ -83,6 +85,26 @@ actor YouTubeCatalog: MusicCatalogProviding {
         }
     }
     func discoveryPage(_ intent: DiscoveryRequest) async throws -> DiscoveryPage {
+        if intent.kind == .releases {
+            let rows = await releaseCatalog.releases(intent.seed.artist)
+            let tracks = await withTaskGroup(of: [Track].self) { group in
+                for row in rows.prefix(2) {
+                    guard let artist = row.artistName, let title = row.trackName else { continue }
+                    group.addTask {
+                        guard let results = try? await self.search(artist + " " + title) else { return [] }
+                        for var track in results {
+                            let evidence = GenreClassifier.match(track, recordings: rows)
+                            if evidence.releasedAt != nil, !evidence.recordingId.isEmpty { track.genreEvidence = evidence; track.retrievalSources = intent.roots.contains(intent.seed.id) ? ["release-catalog"] : ["release-catalog", "artist-neighbour"]; track.relatedTo = intent.roots; return [track] }
+                        }
+                        return []
+                    }
+                }
+                var result: [Track] = []; for await batch in group { result += batch }; return result
+            }
+            if !tracks.isEmpty { return DiscoveryPage(tracks: tracks) }
+            let fallback = try await orderedSearch(intent.seed.artist, recent: true)
+            return DiscoveryPage(tracks: fallback.filter { GenreClassifier.artistIdentity($0.artist) == GenreClassifier.artistIdentity(intent.seed.artist) }.map { var track = $0; track.retrievalSources = ["recent-upload"]; return track })
+        }
         var body: [String: Any] = [:]
         let route: String
         let web: Bool
@@ -101,6 +123,7 @@ actor YouTubeCatalog: MusicCatalogProviding {
             case .search:
                 route = "search"; web = false
                 body = ["query": String(intent.query.prefix(200)), "params": "EgWKAQIIAQ%3D%3D"]
+            case .releases: throw CatalogError.configuration
             }
         }
         let data = try await request(route, body: body, web: web)
@@ -108,6 +131,7 @@ actor YouTubeCatalog: MusicCatalogProviding {
         return DiscoveryPage(tracks: page.tracks.filter { $0.id != intent.seed.id }.map { old in
             var track = old
             if intent.kind == .related { track.relatedTo = Array(Set(track.relatedTo + intent.roots + [intent.seed.id])); track.directRelatedTo = Array(Set(track.directRelatedTo + [intent.seed.id])) }
+            track.retrievalSources = intent.kind == .related ? ["related"] : intent.mood != nil && intent.roots.isEmpty ? ["mood-reference"] : ["artist"]
             return track
         }, continuation: page.continuation)
     }

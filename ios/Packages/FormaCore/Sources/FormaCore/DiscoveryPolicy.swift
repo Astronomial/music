@@ -5,6 +5,7 @@ public enum DiscoveryPolicy {
         public var exposureCount: Int = 0
         public var classifiedCount: Int = 0
         public var newTracks: Int = 0
+        public var freshTracks: Int = 0
         public var newArtists: Int = 0
         public var surprises: Int = 0
         public var preferredLanguage: Int = 0
@@ -36,7 +37,7 @@ public enum DiscoveryPolicy {
             if let snapshot = event.recommendation, snapshot.isValid {
                 result.classifiedCount += 1
                 if event.newArtist == true || snapshot.features[5] == 1 { result.newArtists += 1 }
-                if snapshot.lane != "familiar" { result.newTracks += 1 }
+                if snapshot.lane != "familiar" { result.newTracks += 1; if let track = library.tracks[event.trackID], ReleaseDiscovery.freshness(track, now: now).recent { result.freshTracks += 1 } }
                 if snapshot.lane == "stretch" { result.surprises += 1 }
             }
             if let track = library.tracks[event.trackID], languageFit(track, preference: library.settings.languagePreference) >= 0.6 { result.preferredLanguage += 1 }

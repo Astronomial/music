@@ -10,6 +10,7 @@ import {moodEvidence,MOOD_MIXES} from './mood-mixes.mjs';
 import {languageEvidence,discoveryPolicy,neighbourhood} from './discovery-policy.mjs';
 import {buildContextualModel,contextFeatures,predictContext,CONTEXT_VERSION} from './contextual-learning.mjs';
 import {familiarIDs,familiarRotation,compareFamiliar} from './familiar-rotation.mjs';
+import {releaseFreshness,freshReleaseTarget} from './release-discovery.mjs';
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 // Tracks are replaced, never mutated, when catalogue metadata changes.
 const featureCache=new WeakMap(),vectorCache=new WeakMap(),semanticCache=new WeakMap();
@@ -75,6 +76,9 @@ export function buildProfile(state, now = Date.now(), sharedArtistKeys=null) {
   const explicit=new Set([...state.likes,...activeSeedPlaylists(state,settings).flatMap(p=>p.trackIds)]);
   for(const [id,weight] of weights)if(weight>0&&state.tracks[id]&&utilityRecording(state.tracks[id])&&!explicit.has(id))weights.delete(id);
   for(const id of state.dislikes||[])weights.set(id,-4);
+  const likeIDs=new Set(state.likes),playlistIDs=new Set(activeSeedPlaylists(state,settings).flatMap(p=>p.trackIds));
+  const likeShare=playlistIDs.size?(likeIDs.size>=100?.7:.5):1;
+  const sourceVectors=[{},{},{}],sourceMass=[0,0,0],portions=new Map();
   const positive = {}, negative = {};
   const artistKeys=sharedArtistKeys||artistIndex(Object.values(state.tracks)),totals=new Map(),counts=new Map(),balancedWeights=new Map();
   for(const [id,weight] of weights)if(weight>0&&state.tracks[id])for(const key of artistKeys(state.tracks[id])){totals.set(key,(totals.get(key)||0)+weight);counts.set(key,(counts.get(key)||0)+1);}
@@ -85,8 +89,19 @@ export function buildProfile(state, now = Date.now(), sharedArtistKeys=null) {
     const scale=weight>0?Math.min(1,...artistKeys(track).map(key=>(10+3*Math.log1p(counts.get(key)||0))/(totals.get(key)||1))):1;
     balancedWeights.set(id,weight*scale);
     const target = weight >= 0 ? positive : negative;
-    for (const [key, value] of Object.entries(features(track))) target[key] = (target[key] || 0) + Math.abs(weight*scale) * value;
+    if(weight>0){
+      const liked=likeIDs.has(id)?likeShare/Math.max(1,likeIDs.size):0,imported=playlistIDs.has(id)?(likeIDs.size?1-likeShare:1)/Math.max(1,playlistIDs.size):0,total=liked+imported;
+      const shares=total?[liked/total,imported/total,0]:[0,0,1];portions.set(id,shares);
+      for(let i=0;i<3;i++)if(shares[i]){const mass=weight*scale*shares[i];sourceMass[i]+=mass;for(const [key,value] of Object.entries(features(track)))sourceVectors[i][key]=(sourceVectors[i][key]||0)+mass*value;}
+    }else for (const [key, value] of Object.entries(features(track))) target[key] = (target[key] || 0) + Math.abs(weight*scale) * value;
   }
+  // Balance artists within each source, then restore source budgets. A large
+  // imported archive must not drown a smaller collection of current likes.
+  const explicitMass=sourceMass[0]+sourceMass[1],share=sourceMass[0]?(sourceMass[1]?likeShare:1):0;
+  const budgets=[explicitMass*share,explicitMass*(1-share),explicitMass?Math.min(sourceMass[2],explicitMass*.15):sourceMass[2]];
+  const factors=budgets.map((budget,i)=>sourceMass[i]?budget/sourceMass[i]:0);
+  for(let i=0;i<3;i++)for(const [key,value] of Object.entries(sourceVectors[i]))positive[key]=(positive[key]||0)+value*factors[i];
+  for(const [id,shares] of portions)balancedWeights.set(id,balancedWeights.get(id)*shares.reduce((sum,share,i)=>sum+share*factors[i],0));
   for (const g of settings.genres) positive[`genre:${g}`] = (positive[`genre:${g}`] || 0) + 3;
   rememberVector(positive);rememberVector(negative);
   return { positive, negative, weights, balancedWeights, negativeEvidence };
@@ -209,8 +224,10 @@ export function rankTracks(candidates, state, options = {}) {
   const unique = new Map(candidates.map(t => [t.id, t]));
   const qualitySource=playlistSeedState(state,context);
   const knownRecordings=new Set([...qualitySource.likes,...qualitySource.playlists.flatMap(p=>p.trackIds)]);
+  const personalDiscoveryAvailable=[...unique.values()].some(t=>t.streamable&&!knownRecordings.has(t.id)&&!banned.has(t.id)&&!exclude.includes(t.id)&&(allowRecent||!recent.has(t.id))&&(!context?.mood||moodEvidence(t,context)>0)&&!utilityRecording(t)&&!blockedByPreferences(t,settings)&&(artistKeys(t).some(k=>anchorArtists.has(k))||(t.directRelatedTo||[]).some(id=>(profile.weights.get(id)||0)>0&&state.tracks[id]&&(!genresOf(t).values.length||!genresOf(state.tracks[id]).values.length||genreRelation(t,state.tracks[id])>0))));
   const utilitySeeds=new Set([...qualitySource.likes,...activeSeedPlaylists(qualitySource,settings).flatMap(p=>p.trackIds)].filter(id=>qualitySource.tracks[id]&&utilityRecording(qualitySource.tracks[id])));
   const seedTrack=context?.trackId?state.tracks[context.trackId]:null;
+  const newReleaseTarget=freshReleaseTarget(state,now);
   let ranked = [...unique.values()].filter(t => (!context?.trackId||seedTrack&&!sameSong(t,seedTrack)&&trackPulseFit(t,seedTrack)>.1) && t.streamable && !banned.has(t.id) && (allowRecent || !recentRecordings.has(recordingKey(t,artistKeys))) && !blockedByPreferences(t,settings) && (settings.includeLibrary||!library.has(t.id)) && (allowRecent || !recent.has(t.id)) && (!context?.mood||moodEvidence(t,context)>0)).map(track => {
     const vector = features(track);
     if(!affinities.has(track)){
@@ -229,7 +246,6 @@ export function rankTracks(candidates, state, options = {}) {
     const avoidance = cosine(vector, profile.negative)*Math.min(1,profile.negativeEvidence/8);
     const known = knownRecordings.has(track.id);
     const keys=artistKeys(track),newArtist=keys.every(key=>!familiar.has(key));
-    const popular = Math.min(1, Math.log1p(track.favoriteCount || 0) / 12);
     const noise = stableNoise(track.id, seed);
     let contextScore = context?.genres?.includes(track.genre) ? 0.6 : 0;
 
@@ -256,8 +272,12 @@ export function rankTracks(candidates, state, options = {}) {
     // Confirmed piano/ambient recordings can serve that context even if the
     // ordinary Pulse is vocal pop; they never become global taste by exposure.
     const focusMatch=context?.mood==='focus'&&moodEvidence(track,context)>=.75&&genresOf(track).values.some(g=>['Ambient','Lo-Fi','Jazz','Classical'].includes(g));
-    const eligible=(!utilityRecording(track)||utilityMatch)&&!disliked.has(track.id)&&(!anchors.length||known||sameArtist||genreFit>0||(!comparable&&direct)||audible||focusMatch);
-    const nearby=focusMatch||audible||known||sameArtist||genreFit===1||(!comparable&&direct)||(genreFit>0&&audioAffinity!==null&&audioAffinity>=.85);
+    const artistNeighbour=track.retrievalSources?.includes('artist-neighbour')&&(track.relatedTo||[]).some(id=>(profile.weights.get(id)||0)>0&&state.tracks[id]&&(!comparable||genreRelation(track,state.tracks[id])>0));
+    const personal=sameArtist||direct||audible||artistNeighbour;
+    const referenceAllowed=!anchors.length||!track.retrievalSources?.includes('mood-reference')||known||personal||focusMatch;
+    const eligible=referenceAllowed&&(!utilityRecording(track)||utilityMatch)&&!disliked.has(track.id)&&(!anchors.length||known||sameArtist||genreFit>0||(!comparable&&direct)||audible||artistNeighbour||focusMatch);
+    const nearby=focusMatch||audible||known||sameArtist||direct||artistNeighbour||genreFit===1||(genreFit>0&&audioAffinity!==null&&audioAffinity>=.85);
+    const freshness=releaseFreshness(track,now);
     // Novel candidates still need a taste match: exploration is not random genre drift.
     const novelty = !known ? discovery * (0.2 + affinity * 0.45) : (1 - discovery) * 0.12;
     const preference=preferenceAffinity(track,settings);
@@ -267,7 +287,9 @@ export function rankTracks(candidates, state, options = {}) {
     const snapshotFeatures=contextFeatures({taste:affinity,nearby:neighbourhoodFit.fit,session,newArtist,known,language:language.fit,context:Math.max(0,contextScore),metadata,genre:genreFit,artist:sameArtist?1:0,mood:moodFit,sound:audioAffinity??0});
     const learned=predictContext(contextual,snapshotFeatures);
     const exploration=discovery*((predicted.uncertainty+learned.uncertainty)/2)*(.08+neighbourhoodFit.fit*.35);
-    let score = 2.2 * affinity - 1.65 * avoidance + novelty + session + learning+exploration+popular*.04+noise*.03+contextScore+preference.score+neighbourhoodFit.fit*.65+learned.correction*1.4+language.fit*.15;
+    let score = 2.2 * affinity - 1.65 * avoidance + novelty + session + learning+exploration+noise*.03+contextScore+preference.score+neighbourhoodFit.fit*.65+learned.correction*1.4+language.fit*.15;
+    if(!known&&personal)score+=freshness.score*(newReleaseTarget-.4)*3;
+    if(!known&&!personal&&personalDiscoveryAvailable&&!focusMatch)score-=.8;
     // A broad Pop/Rock label must not outrank a genuine saved-track neighbour
     // merely because the neighbour has sparse recording metadata.
     if(direct)score+=1.5+Math.min(.3,Math.max(0,neighbourhoodFit.corroboration-1)*.15);
@@ -296,7 +318,8 @@ export function rankTracks(candidates, state, options = {}) {
     const lane=known?'familiar':nearby?'nearby':'stretch';
     if(lane==='stretch'&&anchors.length&&!context?.mood&&!context?.playlistId)reason='Небольшой шаг в новое направление';
     if(seedTrack)reason='Похоже на «'+seedTrack.title+'»';
-    return {eligible,track,score,reason,vector,known,newArtist,nearby,languageFit:language.fit,artistKeys:keys,recording:recordingKey(track,artistKeys),genres:genresOf(track).values,signals:{taste:affinity,neighbourhood:neighbourhoodFit.fit,corroboration:neighbourhoodFit.corroboration,session,predictedEnjoyment:predicted.mean,learnedContext:learned.mean,learningConfidence:learned.confidence,uncertainty:predicted.uncertainty,context:contextScore,language:language.source},lane,exposure:{version:CONTEXT_VERSION,features:snapshotFeatures,lane}};
+    if(!known&&personal&&freshness.recent&&!context?.mood&&!seedTrack)reason=freshness.verified?'Свежий релиз · рядом с твоим вкусом':'Свежая публикация · близкий исполнитель';
+    return {eligible,track,score,reason,vector,known,newArtist,nearby,freshness,languageFit:language.fit,artistKeys:keys,recording:recordingKey(track,artistKeys),genres:genresOf(track).values,signals:{taste:affinity,neighbourhood:neighbourhoodFit.fit,corroboration:neighbourhoodFit.corroboration,session,predictedEnjoyment:predicted.mean,learnedContext:learned.mean,learningConfidence:learned.confidence,uncertainty:predicted.uncertainty,context:contextScore,language:language.source},lane,exposure:{version:CONTEXT_VERSION,features:snapshotFeatures,lane}};
   });
   ranked=ranked.filter(item=>item.eligible);
   // Deduplicate recordings across uploads before MMR; keep the best playable match.
@@ -317,7 +340,7 @@ export function rankTracks(candidates, state, options = {}) {
   const rolling=history.slice(),sessionCounts=new Map();
   for(const item of rolling)for(const key of item.keys)sessionCounts.set(key,(sessionCounts.get(key)||0)+1);
   const freshTarget=settings.artistDiversity?discovery*(.65+settings.artistDiversity*.3):0;
-  let newCount=policy.newTrackCount,newArtistCount=history.filter(h=>h.newArtist).length,surprises=policy.surprises,languageCount=policy.preferredLanguageCount;
+  let newCount=policy.newTrackCount,freshCount=policy.freshTrackCount,newArtistCount=history.filter(h=>h.newArtist).length,surprises=policy.surprises,languageCount=policy.preferredLanguageCount;
   const sessionSize=history.length;
   while (ranked.length && result.length < limit) {
     const recentVectors=result.slice(-4).map(r=>r.vector);
@@ -363,13 +386,14 @@ export function rankTracks(candidates, state, options = {}) {
       const spaced=pool.filter(i=>relevant(ranked[i])&&withinGap(ranked[i]));
       const belowCap=pool.filter(i=>relevant(ranked[i])&&withinCap(ranked[i]));
     pool=diverse.length?diverse:spaced.length?spaced:belowCap.length?belowCap:pool;
-      if(freshDeficit>=.5&&discoveryDeficit>=.5){const fresh=pool.filter(i=>ranked[i].newArtist&&relevant(ranked[i]));if(fresh.length)pool=fresh;}
     }
     // Calibrate novelty after relevance, language and spacing: never fill a quota
     // with an excluded or unrelated song. Keep the selection-time classification.
     const novelSlot=discoveryDeficit>=.5;
     const balanced=pool.filter(i=>ranked[i].known!==novelSlot&&ranked[i].nearby&&relevant(ranked[i]));
     if(balanced.length)pool=balanced;
+    if(novelSlot&&newReleaseTarget*(newCount+1)-freshCount>=.5){const recent=pool.filter(i=>!ranked[i].known&&ranked[i].nearby&&ranked[i].freshness.recent);if(recent.length)pool=recent;}
+    if(settings.artistDiversity&&freshDeficit>=.5&&novelSlot){const fresh=pool.filter(i=>ranked[i].newArtist&&relevant(ranked[i]));if(fresh.length)pool=fresh;}
     const rotateFamiliar=pool.every(i=>ranked[i].known);
     let best = -1, bestScore = -Infinity;
     for (const i of pool) {
@@ -390,7 +414,7 @@ export function rankTracks(candidates, state, options = {}) {
       if (adjusted > bestScore) { bestScore = adjusted; best = i; }
     }
     const [item] = ranked.splice(best, 1);
-    result.push(item);if(!item.known)newCount++;if(item.newArtist)newArtistCount++;if(item.lane==='stretch')surprises++;if(item.languageFit>=.6)languageCount++;
+    result.push(item);if(!item.known){newCount++;if(item.freshness.recent)freshCount++;}if(item.newArtist)newArtistCount++;if(item.lane==='stretch')surprises++;if(item.languageFit>=.6)languageCount++;
     for(const key of item.artistKeys){artistCounts.set(key,(artistCounts.get(key)||0)+1);sessionCounts.set(key,(sessionCounts.get(key)||0)+1);}
     rolling.push({keys:item.artistKeys});
     if(rolling.length>spacing.window){const removed=rolling.shift();for(const key of removed.keys)sessionCounts.set(key,sessionCounts.get(key)-1);}

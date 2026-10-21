@@ -21,6 +21,8 @@ struct Replay: Codable {
     var allFavouritesReachedAt: Int?
     var newRecordingsByFamiliarArtists = 0
     var discoveries = 0
+    var recentDiscoveries = 0
+    var verifiedFreshDiscoveries = 0
     var newArtists = 0
     var russian = 0
     var genericUtility = 0
@@ -38,7 +40,7 @@ struct Replay: Codable {
     var confirmedSavedGenres = 0
     var elapsedSeconds = 0.0
 }
-func replay(label: String, original: Library, count: Int, negatives: Set<String>? = nil, refreshEvery: Int = 20, allowRepeats: Bool = false) -> Replay {
+func replay(label: String, original: Library, count: Int, negatives: Set<String>? = nil, refreshEvery: Int = 20, allowRepeats: Bool = false, repeatSavedOnly: Bool = false, simulateFeedback: Bool = true) -> Replay {
     var library = original
     let time = max(Date(), (library.events.map(\.at).max() ?? .distantPast).addingTimeInterval(1))
     let profile = TasteProfile(library: library, now: time)
@@ -58,7 +60,7 @@ func replay(label: String, original: Library, count: Int, negatives: Set<String>
     let start = Date()
     for step in 0..<count {
         let now = time.addingTimeInterval(Double(step) * 210)
-        let excluded: Set<String> = allowRepeats ? [] : heard
+        let excluded: Set<String> = allowRepeats ? (repeatSavedOnly ? heard.subtracting(saved) : []) : heard
         if cache.isEmpty || step % max(1, refreshEvery) == 0 {
             cache = PulseEngine.rank(candidates, library: library, limit: 60, exclude: excluded, now: now, currentID: current, index: index, retainFamiliarPool: true)
         }
@@ -77,7 +79,7 @@ func replay(label: String, original: Library, count: Int, negatives: Set<String>
         if !choice.known && !names.isDisjoint(with: profile.artists.keys) { result.newRecordingsByFamiliarArtists += 1 }
         if !heard.insert(track.id).inserted { result.repeats += 1 }
         recordings.insert(PulseDiversity.recording(track)); artists.formUnion(names)
-        if !choice.known { result.discoveries += 1 }; if choice.newArtist { result.newArtists += 1 }
+        if !choice.known { result.discoveries += 1; let fresh = ReleaseDiscovery.freshness(track, now: now); if fresh.recent { result.recentDiscoveries += 1 }; if fresh.recent && fresh.verified { result.verifiedFreshDiscoveries += 1 } }; if choice.newArtist { result.newArtists += 1 }
         if DiscoveryPolicy.languageFit(track, preference: "ru") >= 0.6 { result.russian += 1 }
         if library.dislikedIDs.contains(track.id) { result.disliked += 1 }
         if RecordingQuality.utility(track) { result.genericUtility += 1 }
@@ -96,7 +98,7 @@ func replay(label: String, original: Library, count: Int, negatives: Set<String>
         library.record(.init(trackID: track.id, kind: .play, at: now, seconds: 0, ratio: 0, newArtist: choice.newArtist, recommendation: choice.exposure, surface: "pulse"))
         // Only synthetic runs have an independent, predeclared reaction label.
         // Real exports are replayed without inventing user reactions.
-        if negatives != nil {
+        if negatives != nil && simulateFeedback {
             library.record(.init(trackID: track.id, kind: bad ? .skip : .listen, at: now.addingTimeInterval(bad ? 8 : 190), seconds: bad ? 8 : 190, ratio: bad ? 0.04 : 0.95, recommendation: choice.exposure, surface: "pulse"))
         }
         current = track.id
@@ -158,6 +160,30 @@ func rotationFixture() -> (Library, Set<String>) {
     library.settings.repeatHours = 2
     return (library, junk)
 }
+func freshFixture(_ group: Int) -> (Library, Set<String>) {
+    let now = Date(), milliseconds = now.timeIntervalSince1970 * 1000
+    let saved = (0..<2).map { g in (0..<160).map { song(g * 10000 + $0, genre: "Pop") } }
+    var library = Library(), negative = Set<String>()
+    for g in 0..<2 {
+        library.merge(saved[g]); if g != group { negative.formUnion(saved[g].map(\.id)) }
+        for i in 0..<1600 {
+            let id = 100000 + g * 10000 + i
+            var track = song(id, artist: i % 7 == 0 ? saved[g][i % 160].artist : nil, genre: "Pop")
+            track.relatedTo = [saved[g][i % 160].id]; track.directRelatedTo = track.relatedTo
+            track.genreEvidence = .init(values: ["Pop"], confidence: 0.95, checkedAt: milliseconds, recordingId: String(id), releasedAt: milliseconds - Double(i < 800 ? 10 : 900) * 86400000)
+            library.merge([track]); if g != group { negative.insert(track.id) }
+        }
+    }
+    for i in 0..<180 {
+        var track = song(500000 + i, genre: "Pop")
+        track.genreEvidence = .init(values: ["Pop"], confidence: 0.95, checkedAt: milliseconds, recordingId: String(i), releasedAt: milliseconds - 900 * 86400000)
+        if i < 60 { track.retrievalSources = ["mood-reference"] }
+        library.merge([track]); negative.insert(track.id)
+    }
+    library.likedIDs = Array(saved[group].prefix(80)).map(\.id)
+    library.playlists = [.init(name: "Synthetic import", trackIDs: Array(saved[group].suffix(80)).map(\.id))]
+    return (library, negative)
+}
 let args = Array(CommandLine.arguments.dropFirst())
 func option(_ name: String) -> String? { guard let i = args.firstIndex(of: name), i + 1 < args.count else { return nil }; return args[i + 1] }
 let count = min(10000, max(1, Int(option("--count") ?? "1100") ?? 1100))
@@ -176,6 +202,9 @@ if let path = option("--library") {
     let library = LibraryValidation.normalized(try JSONDecoder().decode(Library.self, from: data))
     guard library.version == 1, !library.tracks.isEmpty else { throw AuditError(errorDescription: "Expected a Forma iOS library export") }
     report = Report(kind: "actual-library-offline-replay", subjectiveTasteMeasured: false, liveYouTubeUsed: false, refreshEveryChoices: 20, warning: "Metadata/feedback replay only. No invented reactions, no listening-based judgement. Finite cached candidates may be exhausted before the requested count.", runs: [replay(label: "provided-library", original: library, count: count)])
+} else if args.contains("--freshness") {
+    let a = freshFixture(0), b = freshFixture(1)
+    report = Report(kind: "synthetic-counterfactual-freshness", subjectiveTasteMeasured: false, liveYouTubeUsed: false, refreshEveryChoices: 20, warning: "Same broad genre and candidate pool; independent synthetic profile labels. No simulated rewards. Not a user taste or live-service evaluation.", runs: [replay(label: "profile-A", original: a.0, count: max(1100, count), negatives: a.1, allowRepeats: true, repeatSavedOnly: true, simulateFeedback: false), replay(label: "counterfactual-profile-B", original: b.0, count: 100, negatives: b.1, allowRepeats: true, repeatSavedOnly: true, simulateFeedback: false)])
 } else if args.contains("--rotation") {
     let fixture = rotationFixture()
     report = Report(kind: "synthetic-familiar-rotation-replay", subjectiveTasteMeasured: false, liveYouTubeUsed: false, refreshEveryChoices: 20, warning: "Actual iOS cache and selector; synthetic metadata and reactions, not this user's library or subjective taste.", runs: [replay(label: "full-favourite-rotation-and-multisignal-relevance", original: fixture.0, count: max(1100, count), negatives: fixture.1, allowRepeats: true)])

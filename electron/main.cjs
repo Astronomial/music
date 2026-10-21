@@ -55,6 +55,7 @@ app.whenReady().then(async () => {
     await saveState(state);await coordinator.queue;await store.queue;clearTimeout(closeTimer);closing=true;window.close();
   });
   const { YouTubeCatalog } = await import('../src/core/youtube.mjs');
+  const genreCatalog=new (require('./genre-catalog.cjs').GenreCatalog)((url,options)=>net.fetch(url,options));
   const catalog=new YouTubeCatalog(async()=>{
     const {Innertube}=await import('youtubei.js');
     return Innertube.create({lang:'en',location:'US',retrieve_player:false,generate_session_locally:true,fetch:(input,options={})=>{
@@ -62,10 +63,9 @@ app.whenReady().then(async () => {
       if(url.protocol!=='https:'||!(/(^|\.)youtube\.com$/.test(url.hostname)||url.hostname==='youtubei.googleapis.com'))throw new Error('Недопустимый адрес каталога.');
       const timeout=AbortSignal.timeout(18000);return net.fetch(input,{...options,signal:options.signal?AbortSignal.any([options.signal,timeout]):timeout});
     }});
-  });
+  },{releaseLookup:artist=>genreCatalog.releases(artist)});
   handle('youtube:request',(route,params)=>catalog.request(route,params));
   const soundAudio=new (require('./sound-audio.cjs').SoundAudio)(net.fetch);
-  const genreCatalog=new (require('./genre-catalog.cjs').GenreCatalog)((url,options)=>net.fetch(url,options));
   handle('genre:metadata',track=>genreCatalog.lookup(track));
   handle('sound:audio',id=>soundAudio.load(id));
   handle('sound:cancel',()=>soundAudio.cancel());

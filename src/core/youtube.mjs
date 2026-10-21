@@ -1,5 +1,6 @@
 import {publicationAgeDays} from './search.mjs';
 import {normalizeTrack} from './model.mjs';
+import {artistIdentity,matchRecordingGenre} from './genre-evidence.mjs';
 
 export const validVideoID=id=>typeof id==='string'&&/^[\w-]{11}$/.test(id);
 export function youtubeTrack(item,relatedTo=[]) {
@@ -9,7 +10,8 @@ export function youtubeTrack(item,relatedTo=[]) {
   const artist=artists.map(a=>a.name).filter(Boolean).join(', ')||item.author?.name||item.author||'Неизвестный исполнитель';
   const pictures=item.thumbnails||item.thumbnail||[];
   const artwork=Array.isArray(pictures)?pictures.at(-1)?.url||'':pictures.contents?.at(-1)?.url||'';
-  return normalizeTrack({id:`yt_${videoId}`,videoId,source:'youtube',title:String(item.title),artist:String(artist),artistId:(artists[0]?.channel_id||item.author?.id)?`yt_${artists[0]?.channel_id||item.author.id}`:`name_${String(artist).toLowerCase()}`,duration:item.duration?.seconds||0,playCount:Number(String(item.view_count?.text||'').replace(/[^0-9]/g,''))||0,artwork,album:item.album?.name||'',relatedTo,permalink:`https://www.youtube.com/watch?v=${videoId}`,downloadable:false});
+  const age=publicationAgeDays(item.published?.text);
+  return normalizeTrack({id:`yt_${videoId}`,videoId,source:'youtube',title:String(item.title),artist:String(artist),artistId:(artists[0]?.channel_id||item.author?.id)?`yt_${artists[0]?.channel_id||item.author.id}`:`name_${String(artist).toLowerCase()}`,duration:item.duration?.seconds||0,publishedAt:Number.isFinite(age)?Date.now()-age*86400000:null,playCount:Number(String(item.view_count?.text||'').replace(/[^0-9]/g,''))||0,artwork,album:item.album?.name||'',relatedTo,permalink:`https://www.youtube.com/watch?v=${videoId}`,downloadable:false});
 }
 export function youtubeArtist(item) {
   const id=item.id||item.endpoint?.payload?.browseId;
@@ -20,7 +22,15 @@ function nodes(page){return [...(page.contents||[])].flatMap(s=>s.contents||[]);
 
 // Public catalogue metadata. Native audio playback is handled in the main process.
 export class YouTubeCatalog {
-  constructor(createClient){this.createClient=createClient;this.client=null;this.searches=new Map();this.artists=new Map();this.relatedCache=new Map();}
+  constructor(createClient,{releaseLookup=async()=>[]}={}){this.createClient=createClient;this.releaseLookup=releaseLookup;this.client=null;this.searches=new Map();this.artists=new Map();this.relatedCache=new Map();}
+  async releases(artist,offset=0){
+    const rows=await this.releaseLookup(artist),found=[];
+    const pages=await Promise.allSettled(rows.slice(0,2).map(row=>this.search(row.artistName+' '+row.trackName,'song')));
+    for(const result of pages)if(result.status==='fulfilled')for(const track of result.value.items){const evidence=matchRecordingGenre(track,rows);if(evidence.releasedAt&&evidence.recordingId){found.push({...track,genreEvidence:evidence,retrievalSources:['release-catalog']});break;}}
+    if(found.length)return {items:found,hasMore:false};
+    const fallback=await this.orderedSearch(artist,'recent',offset);
+    return {...fallback,items:fallback.items.filter(t=>artistIdentity(t.artist)===artistIdentity(artist)).map(t=>({...t,retrievalSources:['recent-upload']}))};
+  }
   async music(){if(!this.client)this.client=Promise.resolve(this.createClient()).catch(e=>{this.client=null;throw e;});return (await this.client).music;}
   async search(query,type,offset=0){
     const key=`${type}:${query}`;let entry=this.searches.get(key);
@@ -75,6 +85,7 @@ export class YouTubeCatalog {
   async request(route,params={}){
     const query=String(params.query||params.genre||'').trim().slice(0,160),offset=Math.max(0,Math.min(800,Number(params.offset)||0));
     try{
+      if(route==='/tracks/releases'&&query)return await this.releases(query,offset);
       if(route==='/tracks/search'&&query&&['recent','popular'].includes(params.sort_method))return await this.orderedSearch(query,params.sort_method,offset);
       if(route==='/tracks/search'&&query)return await this.search(query,'song',offset);
       if(route==='/users/search'&&query)return await this.search(query,'artist',0);

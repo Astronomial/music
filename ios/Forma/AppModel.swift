@@ -538,7 +538,9 @@ final class AppModel: ObservableObject {
                 guard !Task.isCancelled else { return }
                 genreAttempts[track.id] = Date()
                 if let evidence = await genreCatalog.lookup(track), !Task.isCancelled, let latest = library.tracks[track.id], GenreClassifier.recordingIdentity(latest.title) == GenreClassifier.recordingIdentity(track.title), GenreClassifier.artistIdentity(latest.artist) == GenreClassifier.artistIdentity(track.artist) {
-                    library.tracks[track.id]?.genreEvidence = evidence
+                    var updated = evidence
+                    if let old = latest.genreEvidence?.releasedAt { updated.releasedAt = min(old, evidence.releasedAt ?? old) }
+                    library.tracks[track.id]?.genreEvidence = updated
                     persist(); updateRecommendations()
                 }
             }

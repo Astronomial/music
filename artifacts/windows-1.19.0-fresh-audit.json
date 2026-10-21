@@ -1,0 +1,39 @@
+{
+  "kind": "synthetic-counterfactual-freshness",
+  "subjectiveTasteMeasured": false,
+  "liveYouTubeUsed": false,
+  "simulatedRewards": false,
+  "warning": "Same broad genre and same candidate pool; profile roots define independent synthetic relevance labels. Not a user-library or listening-based evaluation.",
+  "runs": [
+    {
+      "profile": 0,
+      "requested": 1100,
+      "selected": 1100,
+      "candidateCount": 3700,
+      "familiar": 338,
+      "discoveries": 762,
+      "recentDiscoveries": 762,
+      "verifiedFreshDiscoveries": 762,
+      "offProfile": 0,
+      "globalHits": 0,
+      "distinctSaved": 160,
+      "elapsedSeconds": 140.08335243499997,
+      "passed": true
+    },
+    {
+      "profile": 1,
+      "requested": 100,
+      "selected": 100,
+      "candidateCount": 3700,
+      "familiar": 31,
+      "discoveries": 69,
+      "recentDiscoveries": 69,
+      "verifiedFreshDiscoveries": 69,
+      "offProfile": 0,
+      "globalHits": 0,
+      "distinctSaved": 31,
+      "elapsedSeconds": 12.445922388000007,
+      "passed": true
+    }
+  ]
+}

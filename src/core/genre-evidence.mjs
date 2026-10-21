@@ -24,7 +24,7 @@ export function validateGenreEvidence(e){
   if(!e||e.version!==1||e.source!=='itunes'||!Array.isArray(e.values)||!Number.isFinite(e.checkedAt)||e.checkedAt<0||!Number.isFinite(e.confidence))return null;
   const values=canonicalGenres(e.values);
   if(e.values.length>4||e.confidence<0||e.confidence>1||(!values.length&&e.confidence!==0))return null;
-  return {version:1,source:'itunes',values,confidence:values.length?Math.min(.95,e.confidence):0,checkedAt:e.checkedAt,recordingId:String(e.recordingId||'').slice(0,60)};
+  return {version:1,source:'itunes',values,confidence:values.length?Math.min(.95,e.confidence):0,checkedAt:e.checkedAt,recordingId:String(e.recordingId||'').slice(0,60),...(Number.isFinite(e.releasedAt)&&e.releasedAt>0?{releasedAt:e.releasedAt}:{})};
 }
 const genreCache=new WeakMap();
 export function genresOf(track){
@@ -58,5 +58,6 @@ export function matchRecordingGenre(track,rows,now=Date.now()){
   const labels=[...new Set(matches.flatMap(row=>canonicalGenres(row.primaryGenreName)))];
   // Disagreement between releases is uncertainty, not permission to attach every label.
   const values=labels.length===1?labels:[];
-  return {version:1,source:'itunes',values,confidence:values.length?.95:0,checkedAt:now,recordingId:values.length?String(matches[0]?.trackId||''):''};
+  const dates=matches.map(r=>Date.parse(r.releaseDate)).filter(at=>Number.isFinite(at)&&at>0&&at<=now+86400000);
+  return {version:1,source:'itunes',values,confidence:values.length?.95:0,checkedAt:now,recordingId:values.length?String(matches[0]?.trackId||''):'',...(dates.length?{releasedAt:Math.min(...dates)}:{})};
 }

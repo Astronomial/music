@@ -19,6 +19,8 @@ public struct Track: Codable, Hashable, Identifiable, Sendable {
     public var language: String = ""
     public var genreEvidence: GenreEvidence?
     public var soundProfile: SoundProfile?
+    public var publishedAt: Double?
+    public var retrievalSources: [String] = []
 
     public init(videoID: String, title: String, artist: String, duration: Double = 0,
                 artworkURL: URL? = nil, artistID: String? = nil, genres: [String] = [], moodHints: [String] = [], relatedTo: [String] = [], directRelatedTo: [String] = [], discoveryLanguages: [String] = [], genre: String = "", mood: String = "", tags: [String] = [], language: String = "") {
@@ -28,7 +30,7 @@ public struct Track: Codable, Hashable, Identifiable, Sendable {
         self.directRelatedTo = directRelatedTo; self.discoveryLanguages = discoveryLanguages
         self.genre = genre; self.mood = mood; self.tags = tags; self.language = language
     }
-    private enum CodingKeys: String, CodingKey { case videoID, title, artist, artistID, duration, artworkURL, genres, moodHints, relatedTo, directRelatedTo, discoveryLanguages, genre, mood, tags, language, soundProfile, genreEvidence }
+    private enum CodingKeys: String, CodingKey { case videoID, title, artist, artistID, duration, artworkURL, genres, moodHints, relatedTo, directRelatedTo, discoveryLanguages, genre, mood, tags, language, soundProfile, genreEvidence, publishedAt, retrievalSources }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         videoID = try c.decode(String.self, forKey: .videoID)
@@ -47,6 +49,8 @@ public struct Track: Codable, Hashable, Identifiable, Sendable {
         language = try c.decodeIfPresent(String.self, forKey: .language) ?? ""
         genreEvidence = (try? c.decodeIfPresent(GenreEvidence.self, forKey: .genreEvidence)).flatMap { $0.isValid ? $0 : nil }
         soundProfile = (try? c.decodeIfPresent(SoundProfile.self, forKey: .soundProfile)).flatMap { $0.isValid ? $0 : nil }
+        publishedAt = (try? c.decodeIfPresent(Double.self, forKey: .publishedAt)).flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+        retrievalSources = Array((try c.decodeIfPresent([String].self, forKey: .retrievalSources) ?? []).prefix(15))
     }
     private static func safeDuration(_ value: Double) -> Double { value.isFinite ? min(86400, max(0, value)) : 0 }
 }
@@ -166,6 +170,9 @@ public struct Library: Codable, Sendable {
                 if track.artistID == nil { track.artistID = old.artistID }
                 if track.genreEvidence == nil { track.genreEvidence = old.genreEvidence }
                 if track.soundProfile == nil { track.soundProfile = old.soundProfile }
+                if track.publishedAt == nil { track.publishedAt = old.publishedAt }
+                track.retrievalSources = Array(Set(old.retrievalSources + track.retrievalSources)).sorted().suffix(15).map { $0 }
+                if let at = old.genreEvidence?.releasedAt { let earliest = min(at, track.genreEvidence?.releasedAt ?? at); track.genreEvidence?.releasedAt = earliest }
                 if track.duration <= 0 { track.duration = old.duration }
                 if track.artworkURL == nil { track.artworkURL = old.artworkURL }
                 if track.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { track.title = old.title }

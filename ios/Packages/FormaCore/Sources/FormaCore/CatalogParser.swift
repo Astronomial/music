@@ -2,7 +2,7 @@ import Foundation
 
 public enum CatalogParser {
     /// Tolerates new wrappers, but accepts only known song/panel renderer shapes.
-    public static func tracks(from data: Data, recentFirst: Bool = false) throws -> [Track] {
+    public static func tracks(from data: Data, recentFirst: Bool = false, now: Date = Date()) throws -> [Track] {
         guard data.count <= 8 * 1024 * 1024 else { throw ParseError.tooLarge }
         let json = try JSONSerialization.jsonObject(with: data)
         var found: [Track] = [], seen = Set<String>(), ages: [String: Double] = [:]
@@ -10,7 +10,7 @@ public enum CatalogParser {
             guard depth < 80, found.count < 200 else { return }
             if let object = value as? [String: Any] {
                 if let renderer = object["musicResponsiveListItemRenderer"] as? [String: Any], let track = song(renderer), seen.insert(track.id).inserted { found.append(track) }
-                if let renderer = object["videoRenderer"] as? [String: Any], let track = video(renderer), seen.insert(track.id).inserted { found.append(track); ages[track.id] = publicationAgeDays(text(renderer["publishedTimeText"])) }
+                if let renderer = object["videoRenderer"] as? [String: Any], var track = video(renderer), seen.insert(track.id).inserted { let age = publicationAgeDays(text(renderer["publishedTimeText"])); if age.isFinite { track.publishedAt = (now.timeIntervalSince1970 - age * 86400) * 1000 }; found.append(track); ages[track.id] = age }
                 if let renderer = object["playlistPanelVideoRenderer"] as? [String: Any], let track = panel(renderer), seen.insert(track.id).inserted { found.append(track) }
                 for key in object.keys.sorted() { visit(object[key]!, depth: depth + 1) }
             } else if let array = value as? [Any] { for item in array { visit(item, depth: depth + 1) } }

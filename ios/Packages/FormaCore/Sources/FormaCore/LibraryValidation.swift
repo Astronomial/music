@@ -16,6 +16,8 @@ public enum LibraryValidation {
             track.title = String(old.title.prefix(200)); track.artist = String(old.artist.prefix(200))
             if old.genreEvidence?.isValid == false { track.genreEvidence = nil }
             if old.soundProfile?.isValid == false { track.soundProfile = nil }
+            if let at = old.publishedAt, !at.isFinite || at <= 0 { track.publishedAt = nil }
+            track.retrievalSources = strings(old.retrievalSources, limit: 15)
             track.duration = old.duration.isFinite ? min(86400, max(0, old.duration)) : 0
             track.genres = strings(old.genres); track.moodHints = strings(old.moodHints, limit: 40)
             track.relatedTo = Array(ids(old.relatedTo).prefix(100)); track.directRelatedTo = Array(ids(old.directRelatedTo).prefix(100))

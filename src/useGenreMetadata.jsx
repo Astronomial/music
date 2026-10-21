@@ -1,6 +1,6 @@
 import {useEffect,useRef} from 'react';
 import {selectGenreMetadataAnchors} from './core/recommender.mjs';
-import {validateGenreEvidence} from './core/genre-evidence.mjs';
+import {validateGenreEvidence,recordingIdentity,artistIdentity} from './core/genre-evidence.mjs';
 export default function useGenreMetadata({bridge,ready,stateRef,change,current,queue,online}){
   const attempts=useRef(new Map()),latest=useRef({current,queue});latest.current={current,queue};
   useEffect(()=>{
@@ -14,7 +14,7 @@ export default function useGenreMetadata({bridge,ready,stateRef,change,current,q
       if(!track)return;
       busy=true;attempts.current.set(track.id,now);
       try{const evidence=validateGenreEvidence(await bridge.genreMetadata({title:track.title,artist:track.artist,duration:track.duration}));
-        if(!cancelled&&evidence)change(s=>s.tracks[track.id]?({...s,tracks:{...s.tracks,[track.id]:{...s.tracks[track.id],genreEvidence:evidence}}}):s);
+        if(!cancelled&&evidence)change(s=>{const current=s.tracks[track.id];if(!current||recordingIdentity(current.title)!==recordingIdentity(track.title)||artistIdentity(current.artist)!==artistIdentity(track.artist))return s;const previous=current.genreEvidence?.releasedAt;return {...s,tracks:{...s.tracks,[track.id]:{...current,genreEvidence:{...evidence,...(previous?{releasedAt:Math.min(previous,evidence.releasedAt||Infinity)}:{})}}}};});
       }catch{/* Optional enrichment cannot interrupt playback. */}finally{busy=false;}
     }
     const first=setTimeout(run,2000),timer=setInterval(run,8000);

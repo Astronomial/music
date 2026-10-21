@@ -8,6 +8,10 @@ public struct GenreEvidence: Codable, Sendable, Hashable {
     /// Unix milliseconds, shared with the PC library format.
     public var checkedAt: Double
     public var recordingId: String
+    public var releasedAt: Double? = nil
+    public init(values: [String], confidence: Double, checkedAt: Double, recordingId: String, releasedAt: Double? = nil) {
+        self.values = values; self.confidence = confidence; self.checkedAt = checkedAt; self.recordingId = recordingId; self.releasedAt = releasedAt
+    }
     public var isValid: Bool { version == 1 && source == "itunes" && values.count <= 4 && confidence.isFinite && (0...0.95).contains(confidence) && checkedAt.isFinite && checkedAt >= 0 && recordingId.count <= 60 && (values.isEmpty ? confidence == 0 : Set(values).isSubset(of: Set(GenreClassifier.aliases.keys))) }
 }
 
@@ -53,6 +57,7 @@ public enum GenreClassifier {
         public let primaryGenreName: String?
         public let trackTimeMillis: Double?
         public let trackId: Int?
+        public let releaseDate: String?
     }
     public static func match(_ track: Track, recordings: [Recording], now: Date = Date()) -> GenreEvidence {
         let matches = recordings.filter { row in
@@ -60,6 +65,7 @@ public enum GenreClassifier {
         }
         let labels = Set(matches.flatMap { canonical($0.primaryGenreName ?? "") })
         let values = labels.count == 1 ? Array(labels).sorted() : []
-        return GenreEvidence(values: values, confidence: values.isEmpty ? 0 : 0.95, checkedAt: now.timeIntervalSince1970 * 1000, recordingId: values.isEmpty ? "" : matches.first?.trackId.map(String.init) ?? "")
+        let dates = matches.compactMap { ReleaseDiscovery.timestamp($0.releaseDate) }.filter { $0 <= (now.timeIntervalSince1970 + 86400) * 1000 }
+        return GenreEvidence(values: values, confidence: values.isEmpty ? 0 : 0.95, checkedAt: now.timeIntervalSince1970 * 1000, recordingId: values.isEmpty ? "" : matches.first?.trackId.map(String.init) ?? "", releasedAt: dates.min())
     }
 }

@@ -13,7 +13,7 @@ export function normalizeTrack(t) {
     duration: Number(t.duration) || 0, bpm: Number(t.bpm) || 0, musicalKey: t.musical_key || '',
     artwork: typeof artwork === 'string' ? artwork : artwork['480x480'] || artwork._480x480 || artwork['150x150'] || '',
     playCount: Number(t.play_count ?? t.playCount) || 0, favoriteCount: Number(t.favorite_count ?? t.favoriteCount) || 0,
-    releaseDate: t.release_date || t.releaseDate || '',
+    releaseDate: t.release_date || t.releaseDate || '',publishedAt:Number.isFinite(t.publishedAt)&&t.publishedAt>0?t.publishedAt:null,
     streamable: t.streamable !== false && t.is_streamable !== false && t.is_streamable !== 'false' && t.is_stream_gated !== true && !t.stream_conditions && !t.is_delete && !t.is_unlisted,
     downloadable: Boolean(t.is_downloadable ?? t.downloadable ?? download.is_downloadable) && !download.requires_follow && !download.requiresFollow && !t.is_download_gated && !t.download_conditions,
     permalink: t.permalink || ''
@@ -22,7 +22,8 @@ export function normalizeTrack(t) {
 export function mergeTracks(state, tracks, now=Date.now()) {
   const next = { ...state.tracks };
   for (const t of tracks) if (t?.id) {
-    const merged={...t,artistId:t.artistId||next[t.id]?.artistId||'',releaseDate:t.releaseDate||next[t.id]?.releaseDate||'',playCount:t.playCount||next[t.id]?.playCount||0,favoriteCount:t.favoriteCount||next[t.id]?.favoriteCount||0,genre:t.genre||next[t.id]?.genre||'',genreEvidence:validateGenreEvidence(t.genreEvidence)||next[t.id]?.genreEvidence||null,soundProfile:t.soundProfile||next[t.id]?.soundProfile||null,discoveredAt:next[t.id]?.discoveredAt||t.discoveredAt||now};
+    const merged={...t,publishedAt:next[t.id]?.publishedAt||t.publishedAt||null,artistId:t.artistId||next[t.id]?.artistId||'',releaseDate:t.releaseDate||next[t.id]?.releaseDate||'',playCount:t.playCount||next[t.id]?.playCount||0,favoriteCount:t.favoriteCount||next[t.id]?.favoriteCount||0,genre:t.genre||next[t.id]?.genre||'',genreEvidence:validateGenreEvidence(t.genreEvidence)||next[t.id]?.genreEvidence||null,soundProfile:t.soundProfile||next[t.id]?.soundProfile||null,discoveredAt:next[t.id]?.discoveredAt||t.discoveredAt||now};
+    if(merged.genreEvidence&&next[t.id]?.genreEvidence?.releasedAt)merged.genreEvidence={...merged.genreEvidence,releasedAt:Math.min(next[t.id].genreEvidence.releasedAt,merged.genreEvidence.releasedAt||Infinity)};
     for(const key of ['relatedTo','directRelatedTo','discoveryGenres','discoveryMoods','discoveryEnergy','discoveryVocals','discoveryLanguages','retrievalSources'])merged[key]=[...new Set([...(next[t.id]?.[key]||[]),...(t[key]||[])])].slice(-15);
     next[t.id]=merged;
   }

@@ -1,0 +1,99 @@
+{
+  "kind" : "synthetic-counterfactual-freshness",
+  "liveYouTubeUsed" : false,
+  "refreshEveryChoices" : 20,
+  "runs" : [
+    {
+      "allFavouritesReachedAt" : 519,
+      "allSavedReachedAt" : 519,
+      "candidateCount" : 3700,
+      "confirmedSavedGenres" : 160,
+      "discoveries" : 762,
+      "disliked" : 0,
+      "distinctFavourites" : 80,
+      "distinctSavedRecordings" : 160,
+      "elapsedSeconds" : 76.77824032306671,
+      "eligibleFavourites" : 80,
+      "eligibleSavedRecordings" : 160,
+      "favouriteDrawRange" : [
+        2,
+        3
+      ],
+      "genericUtility" : 0,
+      "initialGenres" : {
+        "Pop" : 800
+      },
+      "initialSavedCount" : 160,
+      "knownGenreContradictions" : 0,
+      "label" : "profile-A",
+      "linkedToInitialLibrary" : 762,
+      "maxArtistIn12" : 2,
+      "newArtists" : 592,
+      "newRecordingsByFamiliarArtists" : 170,
+      "recentDiscoveries" : 707,
+      "repeats" : 178,
+      "requested" : 1100,
+      "russian" : 1100,
+      "sameGenreOnly" : 0,
+      "savedDrawRange" : [
+        2,
+        3
+      ],
+      "selected" : 1100,
+      "selectedGenres" : {
+        "Pop" : 1100
+      },
+      "soundProfilesAvailable" : 0,
+      "syntheticNegativeSelections" : 0,
+      "uniqueArtists" : 752,
+      "uniqueRecordings" : 922,
+      "verifiedFreshDiscoveries" : 707
+    },
+    {
+      "candidateCount" : 3700,
+      "confirmedSavedGenres" : 160,
+      "discoveries" : 69,
+      "disliked" : 0,
+      "distinctFavourites" : 9,
+      "distinctSavedRecordings" : 31,
+      "elapsedSeconds" : 7.784986972808838,
+      "eligibleFavourites" : 80,
+      "eligibleSavedRecordings" : 160,
+      "favouriteDrawRange" : [
+        1,
+        1
+      ],
+      "genericUtility" : 0,
+      "initialGenres" : {
+        "Pop" : 800
+      },
+      "initialSavedCount" : 160,
+      "knownGenreContradictions" : 0,
+      "label" : "counterfactual-profile-B",
+      "linkedToInitialLibrary" : 69,
+      "maxArtistIn12" : 1,
+      "newArtists" : 53,
+      "newRecordingsByFamiliarArtists" : 16,
+      "recentDiscoveries" : 69,
+      "repeats" : 0,
+      "requested" : 100,
+      "russian" : 100,
+      "sameGenreOnly" : 0,
+      "savedDrawRange" : [
+        1,
+        1
+      ],
+      "selected" : 100,
+      "selectedGenres" : {
+        "Pop" : 100
+      },
+      "soundProfilesAvailable" : 0,
+      "syntheticNegativeSelections" : 0,
+      "uniqueArtists" : 98,
+      "uniqueRecordings" : 100,
+      "verifiedFreshDiscoveries" : 69
+    }
+  ],
+  "subjectiveTasteMeasured" : false,
+  "warning" : "Same broad genre and candidate pool; independent synthetic profile labels. No simulated rewards. Not a user taste or live-service evaluation."
+}

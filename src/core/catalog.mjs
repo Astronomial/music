@@ -27,6 +27,7 @@ export async function collectYouTubeCandidates(state,request,{context=null,onBat
   const languageContext=language==='any'?{}:{discoveryLanguages:[language]};
   const jobs=seeds.map(t=>({route:`/related/${t.videoId}`,params:{},context:{relatedTo:[t.id],directRelatedTo:[t.id],retrievalSources:['related']}}));
   const artists=[...new Set([...settings.preferredArtists,...recentAnchors.map(t=>t.artist),...anchors.filter(t=>!source.hidden.includes(t.id)&&!source.dislikes?.includes(t.id)&&!blockedByPreferences(t,settings)).map(t=>t.artist).filter(a=>a&&a!=='Неизвестный исполнитель')])].filter(a=>!settings.blockedArtists.some(b=>matchesArtist({artist:a},b)));
+  if(artists.length)jobs.unshift({route:'/tracks/releases',params:{query:artists[Math.max(0,round)%artists.length]},context:{retrievalSources:['personal-releases']}});
   for(const artist of artists.filter(a=>!settings.blockedArtists.some(b=>matchesArtist({artist:a},b))).slice(0,6))jobs.push({route:'/tracks/search',params:{query:discoveryQuery('',settings,artist)},context:{...retrievalContext(settings),retrievalSources:['artist']}});
   const directions=tasteGenres(anchors,settings);
   const permitted=directions.filter(g=>!settings.excludedGenres.includes(g));
@@ -52,6 +53,8 @@ export async function collectYouTubeCandidates(state,request,{context=null,onBat
     const moodAnchors=playable.map(r=>r.track).filter(t=>t.videoId);
     const chosen=moodAnchors.length?moodAnchors[Math.max(0,round)%moodAnchors.length]:null;
     if(chosen&&!seeds.some(t=>t.id===chosen.id))jobs.push({route:'/related/'+chosen.videoId,params:{},context:{relatedTo:[chosen.id],directRelatedTo:[chosen.id],retrievalSources:['mood-related']}});
+    // Exact references bootstrap the shelf, but do not create a positive link
+    // from these globally known songs to the listener's favourites.
     for(const query of moodSeedQueries(mix.id,{artists,genres:permitted,offset:Math.max(0,round)*3,limit:3}))jobs.push({route:'/tracks/search',params:{query},context:{retrievalSources:['mood-reference']}});
   }
   const found=new Map();let successes=0;
@@ -80,6 +83,7 @@ export async function collectYouTubeCandidates(state,request,{context=null,onBat
         const artists=keys(bridge);
         if(requested.has(bridge.videoId)||artists.some(k=>seedArtists.has(k)||seenArtists.has(k)))continue;
         for(const key of artists)seenArtists.add(key);requested.add(bridge.videoId);
+        if(requested.size-seeds.length===1)jobs.push({route:'/tracks/releases',params:{query:bridge.artist},context:{relatedTo:[bridge.id,...bridge.relatedTo],retrievalSources:['artist-neighbour']}});
         jobs.push({route:`/related/${bridge.videoId}`,params:{},context:{relatedTo:[bridge.id,...bridge.relatedTo],directRelatedTo:[bridge.id],discoveryGenres:genresOf(bridge).values,retrievalSources:['discovery-related']}});
         if(requested.size-seeds.length>=3)break;
       }

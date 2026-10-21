@@ -1,7 +1,7 @@
 import Foundation
 
 public struct DiscoveryRequest: Codable, Sendable, Equatable {
-    public enum Kind: String, Codable, Sendable { case related, artist, search }
+    public enum Kind: String, Codable, Sendable { case related, artist, search, releases }
     public var kind: Kind
     public var seed: Track
     public var query: String
@@ -36,11 +36,13 @@ public struct DiscoveryPlanner: Codable, Sendable {
         var artists = Set<String>()
         for seed in profile.seeds where artists.insert(GenreClassifier.artistIdentity(seed.artist)).inserted && !seed.artist.isEmpty && seed.artist != "Исполнитель не указан" {
             jobs.append(DiscoveryRequest(kind: .artist, seed: seed, roots: [seed.id]))
+            jobs.append(DiscoveryRequest(kind: .releases, seed: seed, roots: [seed.id]))
         }
         let explicit = profile.explicitIDs
         var bridgeArtists = Set<String>()
         for track in discoveries where !explicit.contains(track.id) && bridgeArtists.insert(GenreClassifier.artistIdentity(track.artist)).inserted && !Set(track.directRelatedTo).isDisjoint(with: explicit) && !RecordingQuality.utility(track) {
             jobs.append(DiscoveryRequest(kind: .related, seed: track, roots: Array(Set(track.directRelatedTo).intersection(explicit))))
+            if !artists.contains(GenreClassifier.artistIdentity(track.artist)) { jobs.append(DiscoveryRequest(kind: .releases, seed: track, roots: Array(Set(track.directRelatedTo).intersection(explicit)))) }
         }
         // Searches stay tied to an artist/recording, never "energetic music".
         // This also recovers radios with no usable continuation response.
@@ -70,7 +72,7 @@ public struct DiscoveryPlanner: Codable, Sendable {
             if x.attempted != y.attempted { return x.attempted < y.attempted }
             let ap = explicit.contains(a.seed.id) ? 0 : 1, bp = explicit.contains(b.seed.id) ? 0 : 1
             if ap != bp { return ap < bp }
-            if a.kind != b.kind { return a.kind == .related || (a.kind == .artist && b.kind == .search) }
+            if a.kind != b.kind { let order: [DiscoveryRequest.Kind: Int] = [.related: 0, .releases: 1, .artist: 2, .search: 3]; return order[a.kind, default: 4] < order[b.kind, default: 4] }
             let aw = profile.weights[a.seed.id] ?? 0, bw = profile.weights[b.seed.id] ?? 0
             return aw == bw ? a.key < b.key : aw > bw
         }
@@ -79,6 +81,8 @@ public struct DiscoveryPlanner: Codable, Sendable {
             // otherwise 500 unvisited seeds could starve every continuation.
             let continuing = Array(jobs.filter { progress[$0.key]?.cursor != nil }.prefix(max(1, limit / 5)))
             let alternate = Array(jobs.filter { $0.kind == .artist }.prefix(1))
+            let continuingArtists = Set(continuing.map { GenreClassifier.artistIdentity($0.seed.artist) })
+            let releases = Array(jobs.filter { $0.kind == .releases && !continuingArtists.contains(GenreClassifier.artistIdentity($0.seed.artist)) }.prefix(1))
             let recent = Set(library.events.reversed().filter { $0.at <= now && now.timeIntervalSince($0.at) < 7 * 86400 && ($0.reward ?? 0) >= 0.7 }.prefix(4).map(\.trackID))
             let heard = Array(jobs.filter { $0.kind == .artist && recent.contains($0.seed.id) }.prefix(2))
             let moodCount = mood == nil ? min(limit - 2, max(3, limit * 2 / 3)) : max(2, limit / 2)
@@ -88,7 +92,7 @@ public struct DiscoveryPlanner: Codable, Sendable {
                 if shelves.count >= moodCount { break }
             }
             if shelves.count < moodCount { let keys = Set(shelves.map(\.key)); shelves += jobs.filter { validMoods.contains($0.key) && !keys.contains($0.key) }.prefix(moodCount - shelves.count) }
-            jobs = shelves + heard + continuing + alternate + jobs
+            jobs = continuing + releases + heard + shelves + alternate + jobs
         }
         var chosen: [DiscoveryRequest] = [], pickedArtists: [String: Int] = [:], pickedKeys = Set<String>()
         func fromLikes(_ job: DiscoveryRequest) -> Bool { profile.likedIDs.contains(job.seed.id) || !Set(job.roots).isDisjoint(with: profile.likedIDs) }

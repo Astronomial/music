@@ -4,7 +4,7 @@ public struct Recommendation: Identifiable, Sendable {
     public var id: String { track.id }
     public var track: Track
     public var score: Double
-    public let reason: String
+    public var reason: String
     public var newArtist = false
     public var known = false
     public var nearby = false
@@ -12,6 +12,9 @@ public struct Recommendation: Identifiable, Sendable {
     public var taste = 0.0
     public var exposure: RecommendationContext? = nil
     public var scoredAt: Date = .distantPast
+    public var freshness = 0.0
+    public var recentRelease = false
+    public var releasePreference = 0.6
 }
 public struct MoodMix: Identifiable, Sendable {
     public let id: String
@@ -53,8 +56,8 @@ public enum PulseEngine {
         let ids = Set(playlist.trackIDs); result.events = library.events.filter { ids.contains($0.trackID) }; return result
     }
     private struct Evidence {
-        var fit: Double; var genre: Double; var direct: Int; var sameArtist: Bool; var audio: Double?; var match: Track?; var known: Bool; var eligible: Bool
-        var nearby: Bool { known || sameArtist || direct > 0 || (audio ?? 0) >= 0.9 || genre == 1 }
+        var fit: Double; var genre: Double; var direct: Int; var sameArtist: Bool; var artistNeighbour: Bool; var audio: Double?; var match: Track?; var known: Bool; var eligible: Bool
+        var nearby: Bool { known || sameArtist || artistNeighbour || direct > 0 || (audio ?? 0) >= 0.9 || genre == 1 }
     }
     private static func focusMatch(_ track: Track, context: String?) -> Bool {
         context == "focus" && MoodFitness.scores(track)["focus", default: 0] >= 0.75 && !Set(GenreClassifier.genres(track)).isDisjoint(with: ["Ambient", "Lo-Fi", "Jazz", "Classical"])
@@ -74,6 +77,7 @@ public enum PulseEngine {
         let topSeedWeight = profile.maxSeedWeight
         let rootAffinity = directIDs.compactMap { profile.weights[$0] }.max().map { $0 / max(1, topSeedWeight) } ?? 0
         let comparable = !genres.isEmpty && !profile.genres.isEmpty
+        let artistNeighbour = track.retrievalSources.contains("artist-neighbour") && track.relatedTo.contains { id in profile.positiveIDs.contains(id) && (genres.isEmpty || (index.genres[id] ?? []).isEmpty || GenreClassifier.relation(genres, index.genres[id] ?? []) > 0) }
         let audio = profile.soundSeeds.compactMap { SoundProfile.similarity(track.soundProfile, $0.soundProfile) }.max()
         // A general-purpose mix is not a song discovery, even when YouTube radio
         // returned it and attached the same broad Pop label as a favourite song.
@@ -81,17 +85,19 @@ public enum PulseEngine {
         // Saving a sleep/ambient mix authorizes that recording and its compatible
         // neighbours, not every generic upload linked to an ordinary favourite.
         let utilityMatch = profile.utilityIDs.contains(track.id) || !Set(directIDs).isDisjoint(with: profile.utilityIDs)
-        let allowed = (!utility || utilityMatch) && !library.dislikedIDs.contains(track.id)
+        let referenceAllowed = profile.positiveIDs.isEmpty || !track.retrievalSources.contains("mood-reference") || known || sameArtist || artistNeighbour || direct > 0 || (audio ?? 0) >= 0.92
+        let allowed = referenceAllowed && (!utility || utilityMatch) && !library.dislikedIDs.contains(track.id)
         let preferred = library.settings.preferredArtists.contains { names.contains(fold($0)) }
         let compatibleDirect = direct > 0 && (!comparable || genreFit > 0)
-        let eligible = allowed && (profile.positiveIDs.isEmpty || known || sameArtist || compatibleDirect || genreFit > 0 || (!comparable && (audio ?? 0) >= 0.92) || preferred)
+        let eligible = allowed && (profile.positiveIDs.isEmpty || known || sameArtist || artistNeighbour || compatibleDirect || genreFit > 0 || (!comparable && (audio ?? 0) >= 0.92) || preferred)
         let fit: Double
         if known { fit = 0.65 + 0.35 * min(1, (profile.weights[track.id] ?? 0) / max(1, topSeedWeight)) }
         else if sameArtist { fit = 0.65 + artistAffinity * 0.2 }
         else if compatibleDirect { fit = min(0.95, 0.58 + rootAffinity * 0.1 + Double(max(0, direct - 1)) * 0.09) }
+        else if artistNeighbour { fit = 0.6 }
         else { fit = max(genreAffinity * 0.42, (audio ?? 0) >= 0.9 ? (audio ?? 0) * 0.7 : 0) }
         let match = directIDs.sorted().compactMap { library.tracks[$0] }.first
-        return Evidence(fit: fit, genre: genreFit, direct: compatibleDirect ? direct : 0, sameArtist: sameArtist, audio: audio, match: match, known: known, eligible: eligible)
+        return Evidence(fit: fit, genre: genreFit, direct: compatibleDirect ? direct : 0, sameArtist: sameArtist, artistNeighbour: artistNeighbour, audio: audio, match: match, known: known, eligible: eligible)
     }
     public static func rank(_ candidates: [Track], library: Library, limit: Int = 30, mood: String? = nil, exclude: Set<String> = [], allowRecent: Bool = false, now: Date = Date(), currentID: String? = nil, index: RankingIndex? = nil, playlistID: String? = nil, trackID: String? = nil, retainFamiliarPool: Bool = false) -> [Recommendation] {
         guard limit > 0, let source = profileSource(library, playlistID: playlistID, trackID: trackID) else { return [] }
@@ -99,7 +105,9 @@ public enum PulseEngine {
         let knownRecordings = Set(source.likedIDs + source.playlists.flatMap(\.trackIDs))
         let context = mood ?? (library.settings.mood == "any" ? nil : library.settings.mood)
         let recent = recentIDs(library, now: now), saved = Set(library.likedIDs + library.playlists.flatMap(\.trackIDs))
+        let personalAvailable = candidates.contains { track in VideoID.isValid(track.id) && !exclude.contains(track.id) && (allowRecent || !recent.contains(track.id)) && (context.map { (prepared.moods[track.id]?[$0] ?? 0) > 0 } ?? true) && !knownRecordings.contains(track.id) && !library.hiddenIDs.contains(track.id) && !library.dislikedIDs.contains(track.id) && !PulseDiversity.blocked(track, settings: library.settings) && !(prepared.utility[track.id] ?? false) && (!(prepared.artists[track.id] ?? []).isDisjoint(with: profile.artists.keys) || track.directRelatedTo.contains { id in profile.positiveIDs.contains(id) && (prepared.genres[track.id]?.isEmpty != false || prepared.genres[id]?.isEmpty != false || GenreClassifier.relation(prepared.genres[track.id] ?? [], prepared.genres[id] ?? []) > 0) }) }
         let feedback = ConsumptionFeedback.model(library, now: now), learner = ContextualLearning.model(library, now: now)
+        let newReleaseTarget = ReleaseDiscovery.target(library, now: now)
         let heardIDs: [String] = library.events.filter { $0.at <= now && now.timeIntervalSince($0.at) < 30 * 86400 }.map(\.trackID)
         let familiarIDs = saved.union(heardIDs)
         var familiar = Set<String>()
@@ -135,20 +143,25 @@ public enum PulseEngine {
             let consumption = ConsumptionFeedback.predict(track, model: feedback, mood: context)
             let learned = ContextualLearning.predict(learner, features: snapshot)
             let preferred = library.settings.preferredArtists.contains { names.contains(fold($0)) } ? 1.0 : 0
+            let fresh = ReleaseDiscovery.freshness(track, now: now), personal = e.sameArtist || e.artistNeighbour || e.direct > 0 || (e.audio ?? 0) >= 0.92
             var score: Double = e.fit * 3 + e.genre * 0.45
             score += Double(min(3, e.direct)) * 0.65
             score += (e.audio ?? 0) * 0.3 + preferred + sessionFit
             score += moodFit * 0.6 + moodAffinity * 0.2 + PulseDirections.score(track, settings: library.settings)
             score += GenreClassifier.relation(genres, library.settings.genres.flatMap(GenreClassifier.canonical)) * 0.7
             score += (consumption.mean - 0.5) * 0.6 + learned.correction * 0.45 + language * 0.12
+            if !e.known && personal { score += fresh.score * (newReleaseTarget - 0.4) * 3 }
+            if !e.known && !personal && personalAvailable && !focus { score -= 0.8 }
             score -= min(2, artistNegative * 0.16) + min(0.5, genreNegative * 0.035)
             score -= min(3, max(0, -(profile.weights[track.id] ?? 0)) * 0.5)
             if let seed = trackID.flatMap({ library.tracks[$0] }) { score += 3 * TrackPulse.fit(track, seed: seed) }
-            let lane = e.known ? "familiar" : e.nearby || focus ? "nearby" : "stretch"
+            let nearby = e.nearby || focus
+            let lane = e.known ? "familiar" : nearby ? "nearby" : "stretch"
             var reason = e.known ? "Из твоей библиотеки" : e.sameArtist ? "Исполнитель из твоей библиотеки" : e.match.map { "Похоже на «\($0.title)» · \($0.artist)" } ?? (!genres.isEmpty ? "Близкий жанр · \(genres.joined(separator: ", "))" : "Рядом с твоим вкусом")
             if focus && !e.eligible { reason = "Инструментальная музыка для концентрации" }
             if context != nil { reason = "Под настроение · " + reason.lowercased() }
-            ranked.append(Recommendation(track: track, score: score, reason: reason, newArtist: newArtist, known: e.known, nearby: e.nearby || focus, languageFit: language, taste: e.fit, exposure: RecommendationContext(features: snapshot, lane: lane), scoredAt: now))
+            if !e.known && personal && fresh.recent && context == nil { reason = fresh.verified ? "Свежий релиз · рядом с твоим вкусом" : "Свежая публикация · близкий исполнитель" }
+            ranked.append(Recommendation(track: track, score: score, reason: reason, newArtist: newArtist, known: e.known, nearby: nearby, languageFit: language, taste: e.fit, exposure: RecommendationContext(features: snapshot, lane: lane), scoredAt: now, freshness: fresh.score, recentRelease: fresh.recent, releasePreference: newReleaseTarget))
         }
         ranked.sort { $0.score == $1.score ? $0.id < $1.id : $0.score > $1.score }
         var recordings = Set<String>()
@@ -169,6 +182,7 @@ public enum PulseEngine {
         let heard = library.events.filter { $0.at <= now && now.timeIntervalSince($0.at) < 30 * 86400 }.map(\.trackID)
         let familiarArtists = Set(saved.union(heard).flatMap { prepared.artists[$0] ?? [] })
         var live: [Recommendation] = []
+        let newReleaseTarget = ReleaseDiscovery.target(library, now: now)
         for item in cached {
             let track = library.tracks[item.id] ?? item.track
             guard !exclude.contains(item.id), !recent.contains(item.id), !recentRecordings.contains(prepared.recordings[item.id] ?? item.id), !library.hiddenIDs.contains(item.id), !PulseDiversity.blocked(track, settings: library.settings), library.settings.includeLibrary || !saved.contains(item.id), context.map({ MoodFitness.scores(track)[$0, default: 0] > 0 }) ?? true else { continue }
@@ -178,8 +192,14 @@ public enum PulseEngine {
             guard updatedEvidence.eligible || focus else { continue }
             var choice = item
             choice.track = track
+            let fresh = ReleaseDiscovery.freshness(track, now: now)
+            let personal = updatedEvidence.sameArtist || updatedEvidence.artistNeighbour || updatedEvidence.direct > 0 || (updatedEvidence.audio ?? 0) >= 0.92
+            if personal && !updatedEvidence.known { choice.score += fresh.score * (newReleaseTarget - 0.4) * 3 - item.freshness * (item.releasePreference - 0.4) * 3 }
+            choice.freshness = fresh.score; choice.recentRelease = fresh.recent
+            choice.releasePreference = newReleaseTarget
+            if !updatedEvidence.known && personal && fresh.recent && context == nil { choice.reason = fresh.verified ? "Свежий релиз · рядом с твоим вкусом" : "Свежая публикация · близкий исполнитель" }
             choice.known = updatedEvidence.known
-            choice.nearby = updatedEvidence.nearby || focus
+            choice.nearby = item.nearby && updatedEvidence.nearby || focus
             let names = PulseDiversity.artists(track)
             choice.newArtist = names.isDisjoint(with: familiarArtists) && !names.contains { $0.hasPrefix("unknown:") }
             if var snapshot = choice.exposure, snapshot.isValid {
@@ -203,7 +223,8 @@ public enum PulseEngine {
         let familiarPool = FamiliarRotation.ids(library)
         var rolling = PulseDiversity.history(library, now: now, currentID: currentID).map { index.artists[$0.id] ?? PulseDiversity.artists($0) }
         var newCount = history.newTracks, languageCount = history.preferredLanguage, surpriseCount = history.surprises
-        var freshArtists = history.newArtists
+        var freshArtists = history.newArtists, freshTracks = history.freshTracks
+        let newReleaseTarget = ReleaseDiscovery.target(library, now: now)
         while !pool.isEmpty, result.count < limit {
             if Task.isCancelled { return [] }
             let recentArtists = Set(rolling.suffix(spacing.gap).flatMap { $0 })
@@ -237,6 +258,9 @@ public enum PulseEngine {
                 if !safer.isEmpty { indices = safer }
             }
             let balanced = indices.filter { pool[$0].known != (deficit >= 0.5) }; if !balanced.isEmpty { indices = balanced }
+            if deficit >= 0.5, newReleaseTarget * Double(newCount + 1) - Double(freshTracks) >= 0.5 {
+                let recent = indices.filter { !pool[$0].known && pool[$0].nearby && pool[$0].recentRelease }; if !recent.isEmpty { indices = recent }
+            }
             let artistDeficit = library.settings.discovery * (0.6 + library.settings.artistDiversity * 0.25) * Double(history.classifiedCount + result.count + 1) - Double(freshArtists)
             if deficit >= 0.5, artistDeficit >= 0.5, library.settings.artistDiversity > 0 {
                 let fresh = indices.filter { pool[$0].newArtist }; if !fresh.isEmpty { indices = fresh }
@@ -258,7 +282,7 @@ public enum PulseEngine {
             }
             let item = pool.remove(at: best); result.append(item)
             if !item.nearby { surpriseCount += 1 }
-            if !item.known { newCount += 1 }; if item.languageFit >= 0.6 { languageCount += 1 }
+            if !item.known { newCount += 1; if item.recentRelease { freshTracks += 1 } }; if item.languageFit >= 0.6 { languageCount += 1 }
             if item.newArtist { freshArtists += 1 }
             rolling.append(index.artists[item.id] ?? []); rolling = Array(rolling.suffix(12))
         }
