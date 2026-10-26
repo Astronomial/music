@@ -11,6 +11,11 @@ import {CONTEXT_VERSION,validContext} from '../src/core/contextual-learning.mjs'
 import {GenreCatalog} from '../electron/genre-catalog.cjs';
 const now=1800000000000;
 const song=(n,genre='',extra={})=>normalizeTrack({id:'yt_'+String(n).padStart(11,'0'),videoId:String(n).padStart(11,'0'),source:'youtube',artist:'Артист '+n,title:'Песня '+n,genre,duration:200,...extra});
+test('hidden and blocked saved recordings cannot seed a positive genre or retrieval graph',()=>{
+ const rock=song(700,'Rock'),jazz=song(701,'Jazz'),s=initialState();s.settings.genres=[];s.tracks={[rock.id]:rock,[jazz.id]:jazz};s.likes=[rock.id,jazz.id];
+ s.hidden=[jazz.id];let p=buildProfile(s,now);assert.equal(p.positive['genre:Jazz']||0,0);assert.ok(p.weights.get(jazz.id)<0);
+ s.hidden=[];s.settings.blockedArtists=[jazz.artist];p=buildProfile(s,now);assert.equal(p.positive['genre:Jazz']||0,0);assert.ok(!(p.weights.get(jazz.id)>0));
+});
 test('query genre accumulation cannot label a recording, train taste or satisfy strict filters',()=>{
  const seed=song(1,'',{discoveryGenres:Object.keys(GENRE_ALIASES)}),s=initialState();s.tracks={[seed.id]:seed};s.likes=[seed.id];s.settings.genres=[];
  assert.deepEqual(genresOf(seed).values,[]);assert.ok(!Object.keys(buildProfile(s,now).positive).some(k=>k.startsWith('genre:')));

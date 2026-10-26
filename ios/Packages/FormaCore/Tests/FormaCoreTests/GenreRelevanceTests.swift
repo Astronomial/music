@@ -3,6 +3,25 @@ import XCTest
 @testable import FormaCore
 
 final class GenreRelevanceTests: XCTestCase {
+    func testCachedArtistNeighbourCannotUseAnOutdatedSeedGenre() throws {
+        var seed = song(800, genre: "Jazz"), candidate = song(801, genre: "Jazz")
+        candidate.relatedTo = [seed.id]; candidate.retrievalSources = ["artist-neighbour"]
+        var library = Library(); library.merge([seed, candidate]); library.likedIDs = [seed.id]
+        let index = PulseEngine.makeIndex([candidate], library: library)
+        let cache = PulseEngine.rank([candidate], library: library, now: now, index: index)
+        XCTAssertEqual(cache.count, 1)
+        seed.genre = "Rock"; library.merge([seed])
+        XCTAssertNil(PulseEngine.selectCached(cache, library: library, exclude: [], now: now, index: index))
+    }
+    func testCachedTrainingSnapshotUsesCurrentGenreEvidence() throws {
+        let seed = song(810, genre: "Pop"); var candidate = song(811, genre: "Jazz"); candidate.artist = seed.artist
+        var library = Library(); library.merge([seed, candidate]); library.likedIDs = [seed.id]
+        let index = PulseEngine.makeIndex([candidate], library: library), cache = PulseEngine.rank([candidate], library: library, now: now, index: index)
+        XCTAssertEqual(cache.first?.exposure?.features[10], 0)
+        candidate.genre = "Pop"; library.merge([candidate])
+        let choice = try XCTUnwrap(PulseEngine.selectCached(cache, library: library, exclude: [], now: now, index: index))
+        XCTAssertEqual(choice.exposure?.features[10], 1)
+    }
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
     private func song(_ n: Int, genre: String = "") -> Track { Track(videoID: String(format: "%011d", n), title: "Песня \(n)", artist: "Артист \(n)", duration: 200, genre: genre) }
     func testQueryLabelsCannotTrainTasteOrPassStrictGenreFilters() {

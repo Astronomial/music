@@ -76,6 +76,8 @@ export function buildProfile(state, now = Date.now(), sharedArtistKeys=null) {
   const explicit=new Set([...state.likes,...activeSeedPlaylists(state,settings).flatMap(p=>p.trackIds)]);
   for(const [id,weight] of weights)if(weight>0&&state.tracks[id]&&utilityRecording(state.tracks[id])&&!explicit.has(id))weights.delete(id);
   for(const id of state.dislikes||[])weights.set(id,-4);
+  for(const id of state.hidden||[])weights.set(id,-7);
+  for(const [id,weight] of weights)if(weight>0&&state.tracks[id]&&blockedByPreferences(state.tracks[id],settings))weights.delete(id);
   const likeIDs=new Set(state.likes),playlistIDs=new Set(activeSeedPlaylists(state,settings).flatMap(p=>p.trackIds));
   const likeShare=playlistIDs.size?(likeIDs.size>=100?.7:.5):1;
   const sourceVectors=[{},{},{}],sourceMass=[0,0,0],portions=new Map();
