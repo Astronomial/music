@@ -66,7 +66,7 @@ try{
   await page.locator('.track-title').first().click();
   await page.waitForFunction(()=>document.querySelector('audio').currentTime>3.2);
   await page.getByRole('button',{name:'Следующий трек',exact:true}).click();
-  await page.waitForTimeout(350);
+  await page.waitForFunction(()=>JSON.parse(localStorage.getItem('forma-library')||'null')?.events?.some(e=>e.type==='skip'&&e.surface==='mood'&&e.mood==='calm'&&e.seconds>=3&&e.recommendation?.version===3&&e.recommendation?.features?.length===14));
   const logged=(await page.evaluate(()=>JSON.parse(localStorage.getItem('forma-library')))).events;
   assert.ok(logged.some(e=>e.type==='skip'&&e.surface==='mood'&&e.mood==='calm'&&e.seconds>=3&&e.recommendation?.version===3&&e.recommendation?.features?.length===14));
   assert.ok(logged.some(e=>e.type==='like'));assert.ok(logged.some(e=>e.type==='playlist-add'));
