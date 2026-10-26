@@ -1,0 +1,24 @@
+{
+  "version": "1.19.2",
+  "sourceCommit": "280fccc05987bc0d7c1ed8fdc525a9d4d3326834",
+  "url": "https://github.com/Astronomial/music/releases/download/win-v1.19.2/Forma-1.19.2-Windows-x64.exe",
+  "bytes": 92587943,
+  "sha256": "c6cf4a87eaffdf6f438983a1e0a0efd970bfd9df3fa1d67316f48099bb2cee0b",
+  "manifestMatches": true,
+  "githubDigestMatches": true,
+  "portableWrapperMachine": "0x14c",
+  "x64PayloadCheck": "Native packaged application verification in Windows CI",
+  "verifiedAtUTC": "2026-10-26T22:00:48.161558+00:00",
+  "ci": {
+    "url": "https://github.com/Astronomial/music/actions/runs/40408009808",
+    "result": "success",
+    "unitTests": 195,
+    "browserScenarios": 8,
+    "nativeElectronPassed": true,
+    "packagedAppPlaybackPassed": true
+  },
+  "limits": {
+    "nativeAudioUsesControlledSources": true,
+    "liveYouTubeAvailabilityMeasured": false
+  }
+}
