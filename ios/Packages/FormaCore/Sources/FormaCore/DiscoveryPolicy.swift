@@ -1,6 +1,11 @@
 import Foundation
 
 public enum DiscoveryPolicy {
+    private static let ukrainian = try! NSRegularExpression(pattern: "[іїєґў]", options: .caseInsensitive)
+    private static let cyrillic = try! NSRegularExpression(pattern: "[а-яё]", options: .caseInsensitive)
+    private static func matches(_ regex: NSRegularExpression, _ value: String) -> Bool {
+        regex.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)) != nil
+    }
     public struct History: Sendable {
         public var exposureCount: Int = 0
         public var classifiedCount: Int = 0
@@ -16,10 +21,10 @@ public enum DiscoveryPolicy {
         if preference == "any" { return 0 }
         let code = track.language.lowercased().components(separatedBy: CharacterSet(charactersIn: "-_")).first ?? ""
         if code.count == 2 || ["rus", "eng"].contains(code) { return code == preference || code == (preference == "ru" ? "rus" : "eng") ? 1 : 0 }
-        if track.title.range(of: "[іїєґў]", options: [.regularExpression, .caseInsensitive]) != nil { return 0 }
-        if track.title.range(of: "[а-яё]", options: [.regularExpression, .caseInsensitive]) != nil { return preference == "ru" ? 0.8 : 0 }
+        if matches(ukrainian, track.title) { return 0 }
+        if matches(cyrillic, track.title) { return preference == "ru" ? 0.8 : 0 }
         if track.discoveryLanguages.contains(preference) || (preference == "ru" && track.moodHints.contains("discovery:ru")) { return 0.3 }
-        if preference == "ru", track.artist.range(of: "[а-яё]", options: [.regularExpression, .caseInsensitive]) != nil { return 0.2 }
+        if preference == "ru", matches(cyrillic, track.artist) { return 0.2 }
         return 0
     }
     public static func history(_ library: Library, now: Date = Date()) -> History {

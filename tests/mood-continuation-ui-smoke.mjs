@@ -25,7 +25,7 @@ try{
  await page.getByRole('button',{name:'Слушать подборку',exact:true}).click();
  const seen=new Set();
  for(let i=0;i<25;i++){
-  await page.waitForFunction(previous=>window.nativeAudio?.state===1&&window.nativeAudio.id!==previous,i?Array.from(seen).at(-1):null);
+  await page.waitForFunction(previous=>window.nativeAudio?.state===1&&document.querySelector('audio')?.currentTime>0&&window.nativeAudio.id!==previous,i?Array.from(seen).at(-1):null);
   const id=await page.evaluate(()=>window.nativeAudio.id);assert.ok(!seen.has(id));seen.add(id);
   if(i<24)await page.getByRole('button',{name:'Следующий трек',exact:true}).click();
  }
