@@ -183,7 +183,8 @@ enum NativeSmoke {
             struct SemanticReference: Decodable { let semantic: SemanticAudioProfile }
             let referenceURL = Bundle.main.url(forResource: "semantic-reference", withExtension: "json")!
             let semanticReference = try JSONDecoder().decode(SemanticReference.self, from: Data(contentsOf: referenceURL))
-            let referencePCM = (0..<(16000 * 9)).map { Float(0.15 * sin(2 * Double.pi * 440 * Double($0) / 16000)) }
+            let referencePhase = 2.0 * Double.pi * 440.0 / 16000.0
+            let referencePCM: [Float] = (0..<144000).map { Float(0.15 * sin(referencePhase * Double($0))) }
             let semanticBegan = ProcessInfo.processInfo.systemUptime
             guard let nativeSemantic = try await SemanticAnalyzer.shared.analyze(referencePCM),
                   (SemanticAudioProfile.similarity(nativeSemantic, semanticReference.semantic) ?? 0) > 0.999 else { throw SyncError.rejected("Windows/iOS ONNX semantic profile mismatch") }
