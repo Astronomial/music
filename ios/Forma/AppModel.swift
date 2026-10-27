@@ -489,10 +489,15 @@ final class AppModel: ObservableObject {
     private func updateRecommendations() {
         // A newly learned veto applies to an existing prepared item immediately,
         // before the asynchronous ranker replaces the rest of its cache.
-        if player.selectionSurface != "manual", player.isPlaying, let current = player.current,
-           PulseDiversity.blocked(library.tracks[current.id] ?? current, settings: library.settings) {
-            player.skipDislikedTrack(current.id)
-        } else { player.refreshPreparedSelection() }
+        // Feedback can arrive inside an AVQueuePlayer handoff. Validate on the
+        // next actor turn so callbacks cannot recursively adopt the same item.
+        Task { [weak self] in
+            guard let self else { return }
+            if player.selectionSurface != "manual", player.isPlaying, let current = player.current,
+               PulseDiversity.blocked(library.tracks[current.id] ?? current, settings: library.settings) {
+                player.skipDislikedTrack(current.id)
+            } else { player.refreshPreparedSelection() }
+        }
         let token = UUID(); recommendationGeneration = token
         let snapshot = library, playlistID = pulsePlaylistID, trackID = pulseTrackID
         recommendationTask?.cancel(); rankingWork?.cancel()

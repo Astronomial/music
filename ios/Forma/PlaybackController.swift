@@ -62,6 +62,7 @@ final class PlaybackController: ObservableObject {
     private var extraPending: [String: BufferedItem] = [:]
     private var warmingFailures: [String: Date] = [:]
     private var currentObservation: NSKeyValueObservation?
+    private var adoptingPreparedItem = false
     private var preparing = false
     private var failedCandidates: Set<String> = []
     private var periodic: Any?
@@ -373,7 +374,9 @@ final class PlaybackController: ObservableObject {
         return queue.first(where: { !failedCandidates.contains($0.id) && !additional.contains($0.id) })
     }
     private func adoptPreparedItem() {
-        guard let ready = prepared, engine.currentItem === ready.item else { return }
+        guard !adoptingPreparedItem, let ready = prepared, engine.currentItem === ready.item else { return }
+        adoptingPreparedItem = true
+        defer { adoptingPreparedItem = false }
         if pulseMode, pulseAllowed?(ready.track) == false {
             let resumeIntent = requestedPlayback
             prepared = nil; failedCandidates.insert(ready.track.id)
@@ -567,6 +570,7 @@ final class PlaybackController: ObservableObject {
         } else { refreshPreparedSelection() }
     }
     func refreshPreparedSelection() {
+        guard !adoptingPreparedItem else { return }
         adoptPreparedItem()
         guard !isWaitingForPulse else { return }
         guard let next = candidate() else {
