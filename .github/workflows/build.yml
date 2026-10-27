@@ -35,7 +35,9 @@ jobs:
         env:
           CHROMIUM_PATH: /usr/bin/google-chrome
         run: |
-          npm run dev > "$RUNNER_TEMP/forma-vite.log" 2>&1 &
+          node node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port 5173 --strictPort > "$RUNNER_TEMP/forma-vite.log" 2>&1 &
+          preview_pid=$!
+          trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
           for attempt in $(seq 1 30); do
             if curl -fsS http://localhost:5173/ >/dev/null; then break; fi
             sleep 1
