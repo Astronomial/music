@@ -1,4 +1,6 @@
-# Forma iOS 1.11.1
+# Forma iOS 1.11.2
+
+В **1.11.2** исправлены устаревшие жанровые связи готовой очереди и данные обучения после уточнения метаданных. Перед выбором трека Пульс проверяет актуальную библиотеку; повторная проверка языка выполняется быстрее.
 
 В **1.11.1** Пульс отдельно ищет свежие релизы любимых и близких артистов, различает дату песни и загрузки на YouTube и учится по реакции на новинки. Личные связи имеют приоритет перед общим жанром; вся сохранённая библиотека участвует в знакомых 30%. [Алгоритм и проверки](../docs/PULSE_1_19_1.md).
 
@@ -6,7 +8,7 @@
 
 Нативная **SwiftUI + AVQueuePlayer** для iPhone и iPad, **iOS 17+**, включая iOS 18. YouTube/YouTube Music, персональный Пульс, плейлисты, подборки по настроению и обмен с Windows. Аккаунт YouTube, музыкальная подписка и обязательный сервер не требуются.
 
-**[Скачать IPA для подписи](https://github.com/Astronomial/music/releases/download/ios-v1.11.1/Forma-iOS-1.11.1-unsigned.ipa)** · **[Установка с Windows](INSTALL_WINDOWS.md)** · [Лицензии](THIRD_PARTY.md)
+**[Скачать IPA для подписи](https://github.com/Astronomial/music/releases/download/ios-v1.11.2/Forma-iOS-1.11.2-unsigned.ipa)** · **[Установка с Windows](INSTALL_WINDOWS.md)** · [Лицензии](THIRD_PARTY.md)
 
 Устанавливай поверх прежней Forma с теми же Apple ID и фактическим Bundle ID Sideloadly. Бесплатная личная подпись обычно действует 7 дней; повторная подпись с прежним идентификатором сохраняет данные.
 
@@ -79,7 +81,7 @@ xcodebuild -project ios/Forma.xcodeproj -scheme Forma \
   -derivedDataPath ios/.derived-data CODE_SIGNING_ALLOWED=NO build
 ```
 
-После добавления Swift-файлов/ресурсов обнови проект командой `python3 ios/Scripts/generate_project.py`. GitHub Actions упаковывает `Release-iphoneos/Forma.app` в Payload и IPA; при публикации main размещает IPA и SHA-256 в релизе `ios-v1.11.1`.
+После добавления Swift-файлов/ресурсов обнови проект командой `python3 ios/Scripts/generate_project.py`. GitHub Actions упаковывает `Release-iphoneos/Forma.app` в Payload и IPA; при публикации main размещает IPA и SHA-256 в релизе `ios-v1.11.2`.
 
 | Модуль | Назначение |
 | --- | --- |
