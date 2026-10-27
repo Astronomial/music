@@ -361,11 +361,13 @@ enum NativeSmoke {
             var transitionTask = UIApplication.shared.beginBackgroundTask(withName: "Forma smoke transition")
             defer { if transitionTask != .invalid { UIApplication.shared.endBackgroundTask(transitionTask) } }
             write(["status": "running", "stage": "awaiting-background"])
-            for _ in 0..<240 {
+            for attempt in 0..<240 {
                 if UIApplication.shared.applicationState == .background { break }
+                if attempt % 10 == 0 { write(["status": "running", "stage": "awaiting-background", "applicationState": UIApplication.shared.applicationState.rawValue]) }
                 try await Task.sleep(nanoseconds: 500_000_000)
             }
             guard UIApplication.shared.applicationState == .background else { throw SyncError.rejected("Simulator did not move app to background") }
+            write(["status": "running", "stage": "background-observed"])
             var starts: [String] = [], feedback: [ListeningEvent] = []
             player.onStarted = { starts.append($0.id); write(["status": "running", "stage": "playing", "realPCMAnalysis": true, "nativeStarts": starts.count]) }; player.onFeedback = { feedback.append($0) }
             player.pulseNext = { exclude, _ in tracks.first { !exclude.contains($0.id) } }
