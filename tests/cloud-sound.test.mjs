@@ -30,3 +30,17 @@ test('background audio acquisition selects AAC, limits size and rejects arbitrar
   const evil=new SoundAudio(async()=>{throw new Error('Must not fetch');},()=>({getBasicInfo:async()=>({streaming_data:{adaptive_formats:[{has_audio:true,mime_type:'audio/mp4',url:'https://evil.invalid/stream',bitrate:1}]}})}));await assert.rejects(evil.load(id),/Недопустимый/);
 });
 
+
+test('background analysis reuses validated playback extraction and media headers without cancelling shared playback',async()=>{
+ const {SoundAudio}=await import('../electron/sound-audio.cjs');
+ const source={url:'https://r1.googlevideo.com/signed?n=deciphered',mime:'audio/mp4',length:3,userAgent:'Playback client'};
+ let resolves=0,media=0,release;
+ const options={resolveSource:async videoID=>{assert.equal(videoID,id);resolves++;return source;},fetchSource:async(value,signal)=>{assert.equal(value,source);assert.equal(signal.aborted,false);media++;return new Response(new Uint8Array([1,2,3]));}};
+ const audio=new SoundAudio(()=>{throw new Error('Raw media fetch loses playback headers');},()=>{throw new Error('Legacy extraction must not replace working playback extraction');},options);
+ assert.deepEqual([...await audio.load(id)],[1,2,3]);assert.equal(resolves,1);assert.equal(media,1);
+ const deferred=new SoundAudio(()=>{throw new Error('Raw fetch');},undefined,{...options,resolveSource:()=>new Promise(resolve=>{release=resolve;})});
+ const pending=deferred.load(id);deferred.cancel();release(source);
+ await assert.rejects(pending,{name:'AbortError'});assert.equal(media,1,'cancelled analysis must not fetch or cancel a shared extraction');
+ const unsafe=new SoundAudio(()=>{throw new Error('Raw fetch');},undefined,{...options,resolveSource:async()=>({...source,url:'https://evil.invalid/audio'})});
+ await assert.rejects(unsafe.load(id),/Недопустимый/);assert.equal(media,1);
+});
