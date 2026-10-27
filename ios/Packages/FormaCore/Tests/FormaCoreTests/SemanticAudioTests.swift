@@ -59,4 +59,16 @@ final class SemanticAudioTests: XCTestCase {
         var library = Library(); library.merge([seed]); library.likedIDs = [seed.id]
         XCTAssertTrue(PulseEngine.rank([candidate], library: library, now: Date(timeIntervalSince1970: 1_800_000_000)).isEmpty)
     }
+    func testLegacySyncRoundTripPreservesCompletedNeuralAnalysisAndPolicyVersion() throws {
+        let pcm = (0..<(16000 * 9)).map { Float(0.15 * sin(2 * Double.pi * 440 * Double($0) / 16000)) }
+        var profile = try XCTUnwrap(SoundProfile.analyze(pcm))
+        profile.semantic = try XCTUnwrap(SemanticAudioProfile.pack((0..<1280).map { sin(Double($0)) }, scores: Array(repeating: 0.01, count: 400), seconds: 9))
+        var track = Track(videoID: "00000000001", title: "Audio", artist: "Artist"); track.soundProfile = profile
+        var local = Library(); local.merge([track]); local.settings.tastePolicyVersion = 1
+        var legacy = local; legacy.tracks[track.id]?.soundProfile?.semantic = nil; legacy.settings.tastePolicyVersion = 0
+        let restored = LibrarySync.preservingLearning(in: legacy, from: local)
+        XCTAssertEqual(restored.tracks[track.id]?.soundProfile?.semantic, profile.semantic)
+        XCTAssertEqual(restored.settings.tastePolicyVersion, 1)
+    }
+
 }

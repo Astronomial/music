@@ -5,6 +5,7 @@ import {effnetPatches} from '../src/core/effnet-mel.mjs';
 import styles from '../src/core/effnet-styles.json' with {type:'json'};
 import {analyzePCM} from '../src/core/sound-profile.mjs';
 import {initialState,normalizeTrack,mergeTracks} from '../src/core/model.mjs';
+import {portableLibrary,mergePortable,applyPortable} from '../src/core/sync.mjs';
 import {rankTracks} from '../src/core/recommender.mjs';
 
 test('semantic vectors are bounded, model-versioned and quantized without losing neighbourhoods',()=>{
@@ -46,4 +47,15 @@ test('a neural contradiction cannot be hidden behind a broad Pop label and a You
  const candidate=normalizeTrack({id:'yt_00000000002',source:'youtube',genre:'Pop',artist:'Unrelated',relatedTo:[seed.id],directRelatedTo:[seed.id],soundProfile:{...base,semantic:other}});
  const state=mergeTracks(initialState(),[seed]);state.likes=[seed.id];
  assert.equal(rankTracks([candidate],state,{now:1800000000000}).length,0);
+});
+
+test('approved legacy sync preserves completed neural audio and migration markers',()=>{
+ const pcm=Float32Array.from({length:16000*9},(_,i)=>.15*Math.sin(2*Math.PI*440*i/16000)),baseAudio=analyzePCM(pcm);
+ const semantic=packSemantic(Array.from({length:1280},(_,i)=>Math.sin(i)),Array(400).fill(.01),9);
+ let state=mergeTracks(initialState(),[{id:'yt_00000000001',videoId:'00000000001',source:'youtube',title:'Audio',artist:'Artist',soundProfile:{...baseAudio,semantic}}]);state.settings.tastePolicyVersion=1;
+ const current=portableLibrary(state),base=structuredClone(current),legacy=structuredClone(current);
+ delete legacy.tracks['00000000001'].soundProfile.semantic;legacy.settings.tastePolicyVersion=0;
+ const merged=mergePortable(current,base,legacy);
+ assert.deepEqual(merged.tracks['00000000001'].soundProfile.semantic,semantic);assert.equal(merged.settings.tastePolicyVersion,1);
+ const applied=applyPortable(state,legacy);assert.deepEqual(applied.tracks['yt_00000000001'].soundProfile.semantic,semantic);assert.equal(applied.settings.tastePolicyVersion,1);
 });
