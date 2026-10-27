@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {packSemantic,validateSemanticProfile,semanticSimilarity,SEMANTIC_MODEL_ID} from '../src/core/semantic-audio.mjs';
+import {packSemantic,validateSemanticProfile,semanticSimilarity,semanticGenres,SEMANTIC_MODEL_ID} from '../src/core/semantic-audio.mjs';
 import {effnetPatches} from '../src/core/effnet-mel.mjs';
+import styles from '../src/core/effnet-styles.json' with {type:'json'};
 
 test('semantic vectors are bounded, model-versioned and quantized without losing neighbourhoods',()=>{
  const a=Array.from({length:1280},(_,i)=>Math.sin(i*.17)),b=a.map((x,i)=>x*.9+Math.cos(i*.43)*.1),c=a.map(x=>-x);
@@ -12,6 +13,14 @@ test('semantic vectors are bounded, model-versioned and quantized without losing
  assert.equal(validateSemanticProfile({...first,vector:'AA=='}),null);
  assert.equal(packSemantic(Array(1280).fill(0),Array(400).fill(0),12),null);
  assert.equal(packSemantic(a,Array(400).fill(NaN),12),null);
+});
+test('semantic style decisions abstain on ambiguity and distinguish children/chanson from rap',()=>{
+ const vector=Array.from({length:1280},(_,i)=>Math.sin(i));
+ const profile=(name,second='')=>{const scores=Array(400).fill(.01);scores[styles.indexOf(name)]=.9;if(second)scores[styles.indexOf(second)]=.85;return packSemantic(vector,scores,12);};
+ assert.deepEqual(semanticGenres(profile("Children's---Nursery Rhymes")),["Children's Music"]);
+ assert.deepEqual(semanticGenres(profile('Pop---Chanson')),['Chanson']);
+ assert.deepEqual(semanticGenres(profile('Hip Hop---Gangsta')),['Hip-Hop/Rap']);
+ assert.deepEqual(semanticGenres(profile('Pop---Chanson','Rock---Alternative Rock')),[]);
 });
 test('EffNet input uses bounded 128-by-96 patches of actual PCM and rejects invalid sampling',()=>{
  const pcm=Float32Array.from({length:16000*9},(_,i)=>.15*Math.sin(2*Math.PI*440*i/16000));
