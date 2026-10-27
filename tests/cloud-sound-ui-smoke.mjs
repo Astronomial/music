@@ -5,7 +5,7 @@ const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];
 const source=await fs.readFile('tests/youtube-ui-smoke.mjs','utf8'),start=source.indexOf('await page.addInitScript(()=>{')+'await page.addInitScript(()=>{'.length,end=source.indexOf('\n});',start);await page.addInitScript(source.slice(start,end));
 const bytes=[...await fs.readFile('tests/fixtures/acoustic-sample.m4a')];
 await page.addInitScript(({bytes})=>{
-  window.syncState={enabled:false,devices:[],pending:[]};window.forma.desktop=true;window.forma.soundAudio=async()=>bytes;window.forma.cancelSound=async()=>{};
+  window.syncState={enabled:false,devices:[],pending:[]};window.forma.desktop=true;window.analysisCalls=0;window.forma.soundAudio=async()=>{window.analysisCalls++;return bytes;};window.forma.cancelSound=async()=>{};
   window.forma.syncStatus=async()=>structuredClone(window.syncState);window.forma.onSync=()=>()=>{};
   window.forma.syncStart=async()=>window.syncState={enabled:true,devices:[{id:'phone',name:'iPhone'}],pending:[],address:'192.168.1.2',port:30377,canConfigureFirewall:true,addresses:[{name:'Ethernet',address:'192.168.1.2',kind:'lan'},{name:'VPN',address:'10.8.0.2',kind:'virtual'}],pairing:'forma://pair?host=192.168.1.2&code=123456'};
   window.forma.syncAddress=async address=>{window.syncState.address=address;window.syncState.pairing='forma://pair?host='+address+'&code=123456';return window.syncState;};
@@ -16,8 +16,10 @@ await page.addInitScript(({bytes})=>{
   const old=window.forma.save;window.forma.save=async state=>{window.savedState=state;await old(state);};
 },{bytes});
 await page.addInitScript(installAudioFixture);
+await page.addInitScript(()=>{const sources=window.forma.sources;let first=true;window.forma.sources=async(...args)=>{if(first){first=false;await new Promise(resolve=>setTimeout(resolve,6500));}return sources(...args);};});
 try{
   await page.goto(process.env.FORMA_TEST_URL||'http://localhost:5173');await page.locator('.track-row').first().waitFor();await page.getByRole('button',{name:'Слушать Пульс',exact:true}).click();await page.waitForFunction(()=>window.nativeAudio?.getCurrentTime()>1);
+  await page.waitForFunction(()=>window.analysisCalls>0,{},{timeout:5000});
   const first=await page.evaluate(()=>({id:'yt_'+window.nativeAudio.id,title:document.querySelector('.now-playing strong').textContent}));
   await page.getByRole('button',{name:'Не нравится',exact:true}).click();
   await page.waitForFunction(id=>window.nativeAudio.id!==id,first.id.slice(3));
