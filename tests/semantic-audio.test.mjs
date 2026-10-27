@@ -5,6 +5,7 @@ import {effnetPatches} from '../src/core/effnet-mel.mjs';
 import styles from '../src/core/effnet-styles.json' with {type:'json'};
 import {analyzePCM} from '../src/core/sound-profile.mjs';
 import {initialState,normalizeTrack,mergeTracks} from '../src/core/model.mjs';
+import {rankTracks} from '../src/core/recommender.mjs';
 
 test('semantic vectors are bounded, model-versioned and quantized without losing neighbourhoods',()=>{
  const a=Array.from({length:1280},(_,i)=>Math.sin(i*.17)),b=a.map((x,i)=>x*.9+Math.cos(i*.43)*.1),c=a.map(x=>-x);
@@ -37,4 +38,12 @@ test('a sparse old track cannot erase a completed semantic analysis',()=>{
  const original=normalizeTrack({id:'yt_00000000001',source:'youtube',videoId:'00000000001',title:'Audio',artist:'Artist',soundProfile:{...base,semantic}});
  let state=mergeTracks(initialState(),[original]);state=mergeTracks(state,[{...original,soundProfile:base}]);
  assert.deepEqual(state.tracks[original.id].soundProfile.semantic,semantic);
+});
+test('a neural contradiction cannot be hidden behind a broad Pop label and a YouTube edge',()=>{
+ const pcm=Float32Array.from({length:16000*9},(_,i)=>.15*Math.sin(2*Math.PI*440*i/16000)),base=analyzePCM(pcm),vector=Array.from({length:1280},(_,i)=>Math.sin(i));
+ const first=packSemantic(vector,Array(400).fill(.01),9),other=packSemantic(vector.map(x=>-x),Array(400).fill(.01),9);
+ const seed=normalizeTrack({id:'yt_00000000001',source:'youtube',genre:'Pop',artist:'Saved',soundProfile:{...base,semantic:first}});
+ const candidate=normalizeTrack({id:'yt_00000000002',source:'youtube',genre:'Pop',artist:'Unrelated',relatedTo:[seed.id],directRelatedTo:[seed.id],soundProfile:{...base,semantic:other}});
+ const state=mergeTracks(initialState(),[seed]);state.likes=[seed.id];
+ assert.equal(rankTracks([candidate],state,{now:1800000000000}).length,0);
 });

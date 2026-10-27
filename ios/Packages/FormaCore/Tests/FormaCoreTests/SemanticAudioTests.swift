@@ -48,4 +48,15 @@ final class SemanticAudioTests: XCTestCase {
         var library = Library(); library.merge([track]); track.soundProfile?.semantic = nil; library.merge([track])
         XCTAssertEqual(library.tracks[track.id]?.soundProfile?.semantic, profile.semantic)
     }
+    func testNeuralContradictionCannotHideBehindPopMetadataAndRelatedVideo() throws {
+        let pcm = (0..<(16000 * 9)).map { Float(0.15 * sin(2 * Double.pi * 440 * Double($0) / 16000)) }
+        var first = try XCTUnwrap(SoundProfile.analyze(pcm)), other = first
+        let vector = (0..<1280).map { sin(Double($0)) }
+        first.semantic = try XCTUnwrap(SemanticAudioProfile.pack(vector, scores: Array(repeating: 0.01, count: 400), seconds: 9))
+        other.semantic = try XCTUnwrap(SemanticAudioProfile.pack(vector.map { -$0 }, scores: Array(repeating: 0.01, count: 400), seconds: 9))
+        var seed = Track(videoID: "00000000001", title: "Saved", artist: "Saved", genre: "Pop"); seed.soundProfile = first
+        var candidate = Track(videoID: "00000000002", title: "Other", artist: "Other", relatedTo: [seed.id], directRelatedTo: [seed.id], genre: "Pop"); candidate.soundProfile = other
+        var library = Library(); library.merge([seed]); library.likedIDs = [seed.id]
+        XCTAssertTrue(PulseEngine.rank([candidate], library: library, now: Date(timeIntervalSince1970: 1_800_000_000)).isEmpty)
+    }
 }
