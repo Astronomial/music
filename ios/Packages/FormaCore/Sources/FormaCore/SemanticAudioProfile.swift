@@ -10,6 +10,35 @@ public struct SemanticAudioProfile: Codable, Hashable, Sendable {
     public var seconds: Double
     public var vector: String
     public var styles: [Style]
+    public static let styleNames: [String] = {
+        let url = Bundle.module.url(forResource: "effnet-styles", withExtension: "json")!
+        return try! JSONDecoder().decode([String].self, from: Data(contentsOf: url))
+    }()
+    public var inferredGenres: [String] {
+        guard isValid else { return [] }
+        let ordered = styles.sorted { $0.score > $1.score }
+        guard let top = ordered.first, top.score >= 0.65 else { return [] }
+        func category(_ index: Int) -> String {
+            let label = Self.styleNames[index], parts = label.components(separatedBy: "---"), family = parts[0], style = parts.count > 1 ? parts[1] : ""
+            if family == "Children's" { return "Children's Music" }
+            if label == "Pop---Chanson" { return "Chanson" }
+            if family == "Hip Hop" { return "Hip-Hop/Rap" }
+            if family == "Electronic" {
+                if style.contains("Drum n Bass") || style.contains("Jungle") { return "Drum & Bass" }
+                if style.contains("House") { return "House" }; if style.contains("Techno") { return "Techno" }; if style.contains("Ambient") { return "Ambient" }
+                return "Electronic"
+            }
+            if family == "Rock" {
+                if ["Metal", "Thrash", "Grindcore"].contains(where: { style.contains($0) }) { return "Metal" }
+                if style.contains("Alternative") || style.contains("Indie") { return "Alternative" }
+                return "Rock"
+            }
+            return ["Pop": "Pop", "Jazz": "Jazz", "Reggae": "Reggae", "Classical": "Classical", "Funk / Soul": "R&B/Soul", "Folk, World, & Country": "Folk/Country"][family] ?? ""
+        }
+        let genre = category(top.index)
+        guard !genre.isEmpty, !ordered.contains(where: { $0.score > top.score - 0.15 && !category($0.index).isEmpty && category($0.index) != genre }) else { return [] }
+        return [genre]
+    }
     public var isValid: Bool {
         guard version == 1, model == Self.modelID, seconds.isFinite, (8...30).contains(seconds), vector.count == 1708, let bytes = Data(base64Encoded: vector), bytes.count == 1280, bytes.contains(where: { $0 != 0 }), styles.count <= 16, Set(styles.map(\.index)).count == styles.count else { return false }
         return styles.allSatisfy { (0..<400).contains($0.index) && $0.score.isFinite && (0...1).contains($0.score) }

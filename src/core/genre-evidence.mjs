@@ -1,5 +1,6 @@
 // Retrieval labels are deliberately absent: a query is not a recording's genre.
 import recordings from './mood-recordings.json' with {type:'json'};
+import {semanticGenres} from './semantic-audio.mjs';
 export const GENRE_ALIASES={
   Electronic:['electronic','electronica','dance','электроника'],House:['house','deep house','progressive house','хаус'],Techno:['techno','техно'],
   'Hip-Hop/Rap':['hip hop','hip hop rap','rap','alternative rap','хип хоп','рэп'],Alternative:['alternative','indie','alternative rock','альтернатива'],
@@ -41,8 +42,8 @@ export function validateGenreEvidence(e){
 }
 const genreCache=new WeakMap();
 export function genresOf(track){
-  const cached=genreCache.get(track);if(cached&&cached.genre===track.genre&&cached.evidence===track.genreEvidence&&cached.artist===track.artist&&cached.title===track.title)return cached.result;
-  const result=readGenres(track);genreCache.set(track,{genre:track.genre,evidence:track.genreEvidence,artist:track.artist,title:track.title,result});return result;
+  const cached=genreCache.get(track);if(cached&&cached.sound===track.soundProfile&&cached.genre===track.genre&&cached.evidence===track.genreEvidence&&cached.artist===track.artist&&cached.title===track.title)return cached.result;
+  const result=readGenres(track);genreCache.set(track,{sound:track.soundProfile,genre:track.genre,evidence:track.genreEvidence,artist:track.artist,title:track.title,result});return result;
 }
 function readGenres(track){
   const evidence=validateGenreEvidence(track.genreEvidence);
@@ -52,6 +53,8 @@ function readGenres(track){
     const reference=curatedRecordings.get(artistIdentity(track.artist)+'|'+recordingIdentity(track.title));
     const curated=canonicalGenres(reference?.genres||[]);
     if(curated.length)return {values:curated,confidence:.85,source:'curated-recording'};
+    const inferred=semanticGenres(track.soundProfile?.semantic);
+    if(inferred.length)return {values:inferred,confidence:.7,source:'audio-model'};
   }
   return {values,confidence:values.length?1:0,source:values.length?'metadata':'unknown'};
 }

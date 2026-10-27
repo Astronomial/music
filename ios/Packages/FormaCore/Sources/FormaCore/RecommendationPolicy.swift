@@ -11,6 +11,7 @@ public enum RecommendationPolicy {
     private static let excluded = rules.excludedArtists.map(PulseEngine.fold)
     public static func veto(_ track: Track) -> Bool {
         if GenreClassifier.hardVeto(track) { return true }
+        if !GenreClassifier.hardExcluded.isDisjoint(with: track.soundProfile?.semantic?.inferredGenres ?? []) { return true }
         let name = " " + PulseEngine.fold(track.artist) + " "
         return excluded.contains { name.contains(" " + $0 + " ") }
     }

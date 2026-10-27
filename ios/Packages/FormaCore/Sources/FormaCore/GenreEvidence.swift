@@ -39,11 +39,15 @@ public enum GenreClassifier {
     public static func genres(_ track: Track) -> [String] {
         if let evidence = track.genreEvidence, evidence.isValid, evidence.confidence >= 0.8, !evidence.values.isEmpty { return evidence.values }
         let metadata = canonical(track.genre)
-        return metadata.isEmpty ? MoodFitness.recordingGenres(track) : metadata
+        if !metadata.isEmpty { return metadata }
+        let curated = MoodFitness.recordingGenres(track)
+        return curated.isEmpty ? (track.soundProfile?.semantic?.inferredGenres ?? []) : curated
     }
     public static func confidence(_ track: Track) -> Double {
         if let evidence = track.genreEvidence, evidence.isValid, evidence.confidence >= 0.8, !evidence.values.isEmpty { return evidence.confidence }
-        return canonical(track.genre).isEmpty ? (MoodFitness.recordingGenres(track).isEmpty ? 0 : 0.85) : 1
+        if !canonical(track.genre).isEmpty { return 1 }
+        if !MoodFitness.recordingGenres(track).isEmpty { return 0.85 }
+        return track.soundProfile?.semantic?.inferredGenres.isEmpty == false ? 0.7 : 0
     }
     private static let neighbours = [["Electronic", "House", "Techno", "Drum & Bass"], ["Ambient", "Lo-Fi"], ["Pop", "R&B/Soul"], ["Rock", "Alternative", "Metal"], ["Hip-Hop/Rap", "R&B/Soul"], ["Jazz", "Lo-Fi"]]
     public static func relation(_ a: Track, _ b: Track) -> Double {

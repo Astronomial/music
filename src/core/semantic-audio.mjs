@@ -1,5 +1,6 @@
 // Frozen Discogs-EffNet backbone. Quantized vectors are model-versioned and
 // syncable; they contain no audio and are not treated as verified genre labels.
+import labels from './effnet-styles.json' with {type:'json'};
 export const SEMANTIC_MODEL_ID='discogs-effnet-bsdynamic-1:a280825b334797cf';
 export const SEMANTIC_DIMENSIONS=1280;
 const cache=new WeakMap();
@@ -30,4 +31,23 @@ export function semanticSimilarity(first,second){
   const x=cache.get(a),y=cache.get(b);let dot=0;
   for(let i=0;i<1280;i++)dot+=x.vector[i]*y.vector[i];
   return Math.max(0,Math.min(1,dot/(x.norm*y.norm)));
+}
+export function semanticGenres(value){
+ const profile=validateSemanticProfile(value);if(!profile)return [];
+ const ordered=profile.styles.slice().sort((a,b)=>b.score-a.score);
+ const top=ordered[0];if(!top||top.score<.65)return [];
+ const category=index=>{
+  const label=labels[index],family=label.split('---')[0],style=label.split('---')[1]||'';
+  if(family==="Children's")return "Children's Music";
+  if(label==='Pop---Chanson')return 'Chanson';
+  if(family==='Hip Hop')return 'Hip-Hop/Rap';
+  if(family==='Electronic')return /Drum n Bass|Jungle/.test(style)?'Drum & Bass':/House/.test(style)?'House':/Techno/.test(style)?'Techno':/Ambient/.test(style)?'Ambient':'Electronic';
+  if(family==='Rock')return /Metal|Thrash|Grindcore/.test(style)?'Metal':/Alternative|Indie/.test(style)?'Alternative':'Rock';
+  return {Pop:'Pop',Jazz:'Jazz',Reggae:'Reggae',Classical:'Classical','Funk / Soul':'R&B/Soul','Folk, World, & Country':'Folk/Country'}[family]||'';
+ };
+ const genre=category(top.index);if(!genre)return [];
+ // Independent sigmoid heads are not calibrated probabilities. A broad or
+ // conflicting prediction must remain unknown rather than become a hard label.
+ if(ordered.some(s=>s.score>top.score-.15&&category(s.index)&&category(s.index)!==genre))return [];
+ return [genre];
 }
