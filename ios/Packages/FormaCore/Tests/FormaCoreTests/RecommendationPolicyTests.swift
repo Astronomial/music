@@ -65,4 +65,9 @@ final class RecommendationPolicyTests: XCTestCase {
             XCTAssertFalse(PulseDiversity.blocked(track, settings: PulseSettings()), name)
         }
     }
+    func testPreferredArtistIsPersonalEvidenceOutsideDominantGenre() {
+        let seed = song(800); var preferred = song(801, genre: "Hip-Hop/Rap"); preferred.artist = "MARKUL"
+        var library = Library(); library.merge([seed]); library.likedIDs = [seed.id]; library.settings.preferredArtists = ["MARKUL"]
+        XCTAssertEqual(PulseEngine.rank([preferred], library: library, now: now).first?.id, preferred.id)
+    }
 }

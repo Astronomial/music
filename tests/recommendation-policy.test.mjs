@@ -51,3 +51,8 @@ test('artist taste guidance migrates once and later user edits are preserved',()
  assert.ok(first.preferredArtists.includes('Existing'));
  const edited=upgradeWaveSettings({...first,preferredArtists:['Other']});assert.deepEqual(edited.preferredArtists,['Other']);
 });
+test('an explicitly preferred artist is personal evidence even outside the current dominant genre',()=>{
+ const seed=song(800),preferred=song(801,{artist:'MARKUL',genre:'Hip-Hop/Rap'}),state=initialState();
+ state.likes=[seed.id];state.tracks={[seed.id]:seed};state.settings.preferredArtists=['MARKUL'];
+ assert.equal(rankTracks([preferred],state,{now})[0]?.track.id,preferred.id);
+});
