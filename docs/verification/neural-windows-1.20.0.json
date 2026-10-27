@@ -1,0 +1,11 @@
+{
+  "platform": "windows",
+  "version": "1.20.0",
+  "sourceCommit": "cb25d2bffd6166add6e1228c9c8d0655f24e2529",
+  "url": "https://github.com/Astronomial/music/releases/download/win-v1.20.0/Forma-1.20.0-Windows-x64.exe",
+  "bytes": 111228746,
+  "sha256": "5a18dda05bf9c5fbcd27ba8ca92bda6bdecdbff3a475ea64790d19bff0e76be8",
+  "manifestMatches": true,
+  "githubDigestMatches": true,
+  "windowsPEExecutable": true
+}

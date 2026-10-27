@@ -1,0 +1,18 @@
+{
+  "platform": "ios",
+  "version": "1.12.0",
+  "sourceCommit": "0d0c0f90fc55ee804cd67360eb932c954713a4cf",
+  "url": "https://github.com/Astronomial/music/releases/download/ios-v1.12.0/Forma-iOS-1.12.0-unsigned.ipa",
+  "bytes": 31018994,
+  "sha256": "249cd9a538ef0b35dd6ca9f0507063a0a143efe9782b0945b59b024b098f9ea9",
+  "manifestMatches": true,
+  "githubDigestMatches": true,
+  "build": 26,
+  "zipIntegrity": true,
+  "iPhoneArm64Executable": true,
+  "minimumIOS": "17.0",
+  "backgroundAudioDeclared": true,
+  "modelBytes": 18027718,
+  "modelSHA256": "a280825b334797cf677939db8cd5762c0392aedd0ca6415dbc1cd083f045e43c",
+  "thirdPartyNotices": true
+}
