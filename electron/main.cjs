@@ -65,7 +65,7 @@ app.whenReady().then(async () => {
     }});
   },{releaseLookup:artist=>genreCatalog.releases(artist)});
   handle('youtube:request',(route,params)=>catalog.request(route,params));
-  const soundAudio=new (require('./sound-audio.cjs').SoundAudio)(net.fetch);
+  const soundAudio=new (require('./sound-audio.cjs').SoundAudio)(net.fetch,undefined,{resolveSource:id=>youtubeAudio.resolve(id),fetchSource:(source,signal)=>youtubeAudio.mediaFetch(source,undefined,signal)});
   handle('genre:metadata',track=>genreCatalog.lookup(track));
   handle('sound:audio',id=>soundAudio.load(id));
   handle('sound:cancel',()=>soundAudio.cancel());

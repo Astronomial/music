@@ -18,7 +18,7 @@ await page.addInitScript(({bytes})=>{
 await page.addInitScript(installAudioFixture);
 await page.addInitScript(()=>{const sources=window.forma.sources;let first=true;window.forma.sources=async(...args)=>{if(first){first=false;await new Promise(resolve=>setTimeout(resolve,6500));}return sources(...args);};});
 try{
-  await page.goto(process.env.FORMA_TEST_URL||'http://localhost:5173');await page.locator('.track-row').first().waitFor();await page.getByRole('button',{name:'Слушать Пульс',exact:true}).click();await page.waitForFunction(()=>window.nativeAudio?.getCurrentTime()>1);
+  await page.goto(process.env.FORMA_TEST_URL||'http://localhost:5173');await page.locator('.track-row').first().waitFor();await page.getByRole('button',{name:'Слушать Пульс',exact:true}).click();await page.waitForFunction(()=>document.querySelector('audio')?.currentTime>1);
   await page.waitForFunction(()=>window.analysisCalls>0,{},{timeout:5000});
   const first=await page.evaluate(()=>({id:'yt_'+window.nativeAudio.id,title:document.querySelector('.now-playing strong').textContent}));
   await page.getByRole('button',{name:'Не нравится',exact:true}).click();

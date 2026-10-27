@@ -75,6 +75,8 @@ try{
   assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().length),1);
 
   const sample=[...await fs.readFile(path.join(project,'tests/fixtures/acoustic-sample.m4a'))];
+  const analysisBytes=await page.evaluate(async()=>[...await window.forma.soundAudio('abcdefghijk')]);
+  assert.deepEqual(analysisBytes,sample,'analysis must reuse the deciphered/probed player source through real media transport');
   const decoded=await page.evaluate(async bytes=>{const c=new OfflineAudioContext(1,1,16000),audio=await c.decodeAudioData(new Uint8Array(bytes).buffer);return {duration:audio.duration,rate:audio.sampleRate};},sample);
   assert.ok(decoded.duration>=12);assert.equal(decoded.rate,16000);
   assert.equal(await page.evaluate(()=>typeof window.require),'undefined');
@@ -199,5 +201,5 @@ try{
   assert.equal(await fs.readFile(path.join(dir,'library.json'),'utf8'),'damaged primary');assert.equal(await fs.readFile(path.join(dir,'library.json.bak'),'utf8'),'damaged backup');
   await fs.writeFile(path.join(dir,'library.json'),JSON.stringify(saved));await page.getByRole('button',{name:'Повторить загрузку'}).click();
   await expect(page.locator('.sidebar')).toBeVisible();assert.ok((await page.evaluate(()=>window.forma.load())).likes.includes('DesktopTest'));
-  console.log('PASS: real Electron sandbox/preload, native AAC + HLS + browser fallback playback through real network redirect/query ranges, HLS seeking and background, actual application bundle='+await app.evaluate(({app})=>app.getAppPath())+',  isolated signature runtime and Wi-Fi settings and approval on PC, draft does not modify library, pinned TLS/token and approved receipt survive restart, minimized playback (real local audio + real native YouTube audio protocol with controlled extractor/HTTP), explicit pause, catalogue and Yandex IPC and automatic requested-playlist import across restart (mock transport), file import, legacy downloaded file preservation, audio seeking, close-save, restart offline, deletion, damaged-profile protection and retry recovery.');
+  console.log('PASS: real Electron sandbox/preload, shared playback extraction for bounded analysis, native AAC + HLS + browser fallback playback through real network redirect/query ranges, HLS seeking and background, actual application bundle='+await app.evaluate(({app})=>app.getAppPath())+',  isolated signature runtime and Wi-Fi settings and approval on PC, draft does not modify library, pinned TLS/token and approved receipt survive restart, minimized playback (real local audio + real native YouTube audio protocol with controlled extractor/HTTP), explicit pause, catalogue and Yandex IPC and automatic requested-playlist import across restart (mock transport), file import, legacy downloaded file preservation, audio seeking, close-save, restart offline, deletion, damaged-profile protection and retry recovery.');
 }finally{if(app)await app.close();await fs.rm(dir,{recursive:true,force:true});}
