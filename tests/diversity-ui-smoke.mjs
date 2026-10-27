@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
 const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
 await page.addInitScript(()=>{
-  const tracks=Array.from({length:72},(_,i)=>{const videoId=String(i).padStart(11,'0');return {id:'yt_'+videoId,videoId,title:'Song '+i,artist:i<30?'Favourite':'New artist '+i,artistId:i<30?'UCfav':'UC'+i,source:'youtube',genre:'House',streamable:true,duration:200,tags:[],relatedTo:[]};});
+  const tracks=Array.from({length:72},(_,i)=>{const videoId=String(i).padStart(11,'0');return {id:'yt_'+videoId,videoId,title:'Song '+i,artist:i<30?'Favourite':'New artist '+i,artistId:i<30?'UCfav':'UC'+i,source:'youtube',genre:'House',streamable:true,duration:200,tags:[],relatedTo:i>=30?['yt_00000000000']:[],directRelatedTo:i>=30?['yt_00000000000']:[]};});
   const state={version:1,tracks:Object.fromEntries(tracks.map(t=>[t.id,t])),likes:tracks.slice(0,30).map(t=>t.id),playlists:[],events:[],hidden:[],settings:{provider:'youtube',genres:['House'],preferredArtists:['Favourite']},onboarded:true};
   window.savedState=state;window.trackFixture=state.tracks;
   window.forma={desktop:false,load:async()=>state,save:async s=>{window.savedState=s;},downloads:async()=>({}),onProgress:()=>()=>{},onBeforeClose:()=>()=>{},catalogRequest:async()=>[],request:async()=>[],sources:async()=>[]};

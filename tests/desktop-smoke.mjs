@@ -28,6 +28,17 @@ async function launch(){
 try{
   let launched=await launch();app=launched.instance;let page=launched.page;
   assert.equal(await app.evaluate(({app})=>app.getVersion()),version);
+  const semanticWorker=(await fs.readdir(path.join(project,'dist/assets'))).find(name=>/^sound-worker-.*\.js$/.test(name));
+  const semantic=await page.evaluate(async asset=>{
+    const worker=new Worker(new URL('assets/'+asset,location.href),{type:'module'});
+    try{
+      const pcm=Float32Array.from({length:16000*9},(_,i)=>.15*Math.sin(2*Math.PI*440*i/16000));
+      return await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Native semantic model timeout')),60000);worker.onmessage=e=>{clearTimeout(timer);resolve(e.data);};worker.onerror=e=>{clearTimeout(timer);reject(new Error(e.message));};worker.postMessage({pcm},[pcm.buffer]);});
+    }finally{worker.terminate();}
+  },semanticWorker);
+  assert.equal(semantic.semanticError,undefined);
+  assert.equal(semantic.profile?.semantic?.model,'discogs-effnet-bsdynamic-1:a280825b334797cf');
+  assert.equal(semantic.profile.semantic.vector.length,1708);
   if(process.env.FORMA_PACKAGED_TEST){assert.equal(await app.evaluate(({app})=>app.isPackaged),true);assert.match(await app.evaluate(({app})=>app.getAppPath()),/app\.asar$/);}
   await app.evaluate(({net},{track,audio,streamAudio,youtubeFixture,webFixture})=>{
     // Replace the main-process transport only in this test; production has no fixtures.

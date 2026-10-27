@@ -33,6 +33,7 @@ final class PlaybackController: ObservableObject {
     private var lastNowPlayingUpdate: TimeInterval = 0
     var onFeedback: ((ListeningEvent) -> Void)?
     var pulseNext: ((Set<String>, String?) -> Track?)?
+    var pulseAllowed: ((Track) -> Bool)?
     var pulseRefill: ((Set<String>, String?) async -> Track?)?
     var onPulseLow: (() -> Void)?
     @Published private(set) var isWaitingForPulse = false
@@ -213,6 +214,7 @@ final class PlaybackController: ObservableObject {
             queue = Array(list.drop { $0.id != track.id }.dropFirst())
             pulseMode = asPulse; mood = context; playedInRun = []; playedOrder = []
         }
+        if pulseMode, pulseAllowed?(track) == false { failedCandidates.insert(track.id); waitForPulse(); return }
         if alreadyAdvanced { refreshPreparedSelection(); resume(); return }
         if bufferedItems[track.id]?.audio.isFresh(margin: 45) == true { start(track); return }
         if let ready = prepared, ready.track.id == track.id, ready.audio.isFresh(margin: 15), ready.item.status != .failed, engine.items().contains(ready.item) {
@@ -285,6 +287,7 @@ final class PlaybackController: ObservableObject {
         updateNowPlaying()
     }
     func resume() {
+        if pulseMode, let current, pulseAllowed?(current) == false { advance(ended: false, recordFeedback: false); return }
         guard let current else { return }
         if isWaitingForPulse { requestedPlayback = true; waitForPulse(); return }
         if queueExhausted { start(current); return }
@@ -363,10 +366,24 @@ final class PlaybackController: ObservableObject {
     }
     private func candidate(excluding additional: Set<String> = []) -> Track? {
         let excluded = additional.union(playedInRun).union(failedCandidates).union(current.map { [$0.id] } ?? [])
-        return pulseMode ? pulseNext?(excluded, mood) : queue.first(where: { !failedCandidates.contains($0.id) && !additional.contains($0.id) })
+        if pulseMode {
+            guard let next = pulseNext?(excluded, mood), pulseAllowed?(next) != false else { return nil }
+            return next
+        }
+        return queue.first(where: { !failedCandidates.contains($0.id) && !additional.contains($0.id) })
     }
     private func adoptPreparedItem() {
         guard let ready = prepared, engine.currentItem === ready.item else { return }
+        if pulseMode, pulseAllowed?(ready.track) == false {
+            let resumeIntent = requestedPlayback
+            prepared = nil; failedCandidates.insert(ready.track.id)
+            preparationToken = UUID(); prefetch?.cancel(); preparing = false
+            engine.pause(); engine.removeAllItems(); clearBufferedItems()
+            finish(.listen); if let current { rememberPlayed(current.id) }
+            isPlaying = false; isLoading = false
+            if resumeIntent { waitForPulse() }
+            return
+        }
         cancelPulseRefill(); isWaitingForPulse = false
         finish(.listen)
         if let current { rememberPlayed(current.id) }
@@ -387,6 +404,7 @@ final class PlaybackController: ObservableObject {
         updateNowPlaying()
     }
 #if DEBUG && targetEnvironment(simulator)
+    func debugAdvancePreparedWithoutRefresh() { engine.advanceToNextItem(); adoptPreparedItem() }
     var debugPreparedTrackID: String? { guard let prepared else { return nil }; return prepared.item.status == .readyToPlay || bufferedItems[prepared.track.id]?.item.status == .readyToPlay ? prepared.track.id : nil }
     var debugBufferedTrackIDs: Set<String> { Set(bufferedItems.filter { $0.value.item.status == .readyToPlay && $0.value.audio.isFresh(margin: 45) }.keys) }
     var debugExtraPlayersMuted: Bool { bufferedItems.values.allSatisfy { $0.player.isMuted && $0.player.rate == 0 } }

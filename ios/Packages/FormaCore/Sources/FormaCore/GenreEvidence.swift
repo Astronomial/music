@@ -24,6 +24,9 @@ public enum GenreClassifier {
     }()
     private static let reverse = Dictionary(aliases.flatMap { key, values in ([key] + values).map { (PulseEngine.fold($0), key) } }, uniquingKeysWith: { a, _ in a })
     public static func canonical(_ value: String) -> [String] {
+        // Most catalogue/library records already contain a canonical name.
+        // Avoid normalizing the same short value thousands of times per pick.
+        if aliases[value] != nil { return [value] }
         let text = PulseEngine.fold(value)
         if let exact = reverse[text] { return [exact] }
         let parts = value.components(separatedBy: CharacterSet(charactersIn: ",;|/"))

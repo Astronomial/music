@@ -141,6 +141,29 @@ enum NativeSmoke {
         noteStartup("fixture-model-created"); return model
     }
     static func startOnce(model: AppModel) { noteStartup("root-appeared"); guard !started else { return }; started = true; Task { await run(model: model) } }
+    private static func verifyLatePulseVeto(_ url: URL) async throws {
+        let player = PlaybackController(resolver: FixtureResolver(url: url))
+        defer { player.pause() }
+        let tracks = (0..<3).map { Track(videoID: "veto000000\($0)", title: "Veto fixture", artist: "Fixture") }
+        var veto = false, selected: [String] = [], started: [String] = []
+        player.setPreparationDepth(1)
+        player.pulseAllowed = { !veto || $0.id != tracks[1].id }
+        player.pulseNext = { excluded, _ in tracks.first { !excluded.contains($0.id) && (!veto || $0.id != tracks[1].id) } }
+        player.onSelected = { selected.append($0.id) }; player.onStarted = { started.append($0.id) }
+        player.play(tracks[0], list: [tracks[0]], asPulse: true)
+        for _ in 0..<200 {
+            if player.isPlaying, player.debugPreparedTrackID == tracks[1].id { break }
+            try await Task.sleep(nanoseconds: 25_000_000)
+        }
+        guard player.debugPreparedTrackID == tracks[1].id else { throw SyncError.rejected("Veto test did not prepare the second recording") }
+        veto = true
+        player.debugAdvancePreparedWithoutRefresh()
+        for _ in 0..<200 {
+            if player.current?.id == tracks[2].id, player.isPlaying { break }
+            try await Task.sleep(nanoseconds: 25_000_000)
+        }
+        guard !selected.contains(tracks[1].id), !started.contains(tracks[1].id), player.current?.id == tracks[2].id, player.isPlaying else { throw SyncError.rejected("Prepared Pulse recording bypassed a live veto") }
+    }
     static func run(model: AppModel) async {
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let report = dir.appendingPathComponent("smoke-result.json")
@@ -156,6 +179,16 @@ enum NativeSmoke {
             for i in 0..<Int(buffer.frameLength) { let time = Double(i) / 22050; buffer.floatChannelData![0][i] = Float(sin(2 * Double.pi * 220 * time) * 0.3 * (0.1 + exp(-time.truncatingRemainder(dividingBy: 0.5) * 15))) }
             do { let file = try AVAudioFile(forWriting: analysisURL, settings: format.settings); try file.write(from: buffer) }
             guard let profile = try await SoundAnalyzer.decode(analysisURL), profile.isValid, profile.tempoConfidence > 0.3, profile.brightness < 0.1 else { throw SyncError.rejected("Native PCM decoder did not produce valid real-audio features") }
+            guard profile.semantic?.isValid == true else { throw SyncError.rejected("Native ONNX model did not produce a semantic profile") }
+            struct SemanticReference: Decodable { let semantic: SemanticAudioProfile }
+            let referenceURL = Bundle.main.url(forResource: "semantic-reference", withExtension: "json")!
+            let semanticReference = try JSONDecoder().decode(SemanticReference.self, from: Data(contentsOf: referenceURL))
+            let referencePCM = (0..<(16000 * 9)).map { Float(0.15 * sin(2 * Double.pi * 440 * Double($0) / 16000)) }
+            let semanticBegan = ProcessInfo.processInfo.systemUptime
+            guard let nativeSemantic = try await SemanticAnalyzer.shared.analyze(referencePCM),
+                  (SemanticAudioProfile.similarity(nativeSemantic, semanticReference.semantic) ?? 0) > 0.999 else { throw SyncError.rejected("Windows/iOS ONNX semantic profile mismatch") }
+            let semanticMilliseconds = (ProcessInfo.processInfo.systemUptime - semanticBegan) * 1000
+            try await verifyLatePulseVeto(analysisURL)
             try? FileManager.default.removeItem(at: analysisURL)
             let args = ProcessInfo.processInfo.arguments
             guard let index = args.firstIndex(of: "--forma-pair-code"), args.count > index + 1 else { throw SyncError.invalidCode }
@@ -354,7 +387,7 @@ enum NativeSmoke {
             guard !player.isPlaying else { throw SyncError.rejected("Explicit pause failed") }
             player.resume(); try await Task.sleep(nanoseconds: 500_000_000)
             guard player.isPlaying else { throw SyncError.rejected("Resume failed") }
-            var final: [String: Any] = ["status": "passed", "realPCMAnalysis": true, "nativeStarts": starts.count, "automaticTransitions": feedback.count, "background": background, "pinnedTLS": true, "wrongPinRejected": rejectedWrongPin, "bidirectionalSync": true, "wifiApprovalRequired": true, "multipleLANAddressesRecovered": true, "samePCReconnectionPreservesDraft": true, "pauseResume": true, "miniPlayerAboveTabs": true, "miniPlayerBottom": miniFrame.maxY, "tabBarTop": barFrame.minY, "preparedManualSwitchMilliseconds": switchDelay * 1000, "preparedStreamReused": true, "controlledColdStartMilliseconds": coldStartMilliseconds, "preparedPlayingMilliseconds": preparedPlayingMilliseconds, "startupTimeoutRecovered": true, "recommendationSnapshotCaptured": true, "explicitLearningFeedbackCaptured": true, "networkHandoffRecovered": true, "oldNetworkPreparedItemDiscarded": true, "networkRecoveryRespectsPause": true]
+            var final: [String: Any] = ["latePulseVetoHonored": true, "semanticONNXPassed": true, "semanticModel": SemanticAudioProfile.modelID, "semanticWindowsParity": true, "semanticWarmMilliseconds": semanticMilliseconds, "status": "passed", "realPCMAnalysis": true, "nativeStarts": starts.count, "automaticTransitions": feedback.count, "background": background, "pinnedTLS": true, "wrongPinRejected": rejectedWrongPin, "bidirectionalSync": true, "wifiApprovalRequired": true, "multipleLANAddressesRecovered": true, "samePCReconnectionPreservesDraft": true, "pauseResume": true, "miniPlayerAboveTabs": true, "miniPlayerBottom": miniFrame.maxY, "tabBarTop": barFrame.minY, "preparedManualSwitchMilliseconds": switchDelay * 1000, "preparedStreamReused": true, "controlledColdStartMilliseconds": coldStartMilliseconds, "preparedPlayingMilliseconds": preparedPlayingMilliseconds, "startupTimeoutRecovered": true, "recommendationSnapshotCaptured": true, "explicitLearningFeedbackCaptured": true, "networkHandoffRecovered": true, "oldNetworkPreparedItemDiscarded": true, "networkRecoveryRespectsPause": true]
             final["threeTracksPreparedOnCellular"] = true; final["mutedPrerollReusedWithoutExtraction"] = true; final["bufferedThirdTrackMilliseconds"] = preparation.ready
             final["parallelPreparation"] = true; final["pendingBufferTransferred"] = true
             final["pendingBufferStartMilliseconds"] = preparation.pending; final["threeTrackPreparationMilliseconds"] = preparation.window

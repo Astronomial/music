@@ -236,7 +236,7 @@ actor SyncClient {
     private func requestOnce<Body: Encodable, Reply: Decodable>(_ connection: PCConnection, path: String, body: Body, probe: Bool = false) async throws -> Reply {
 
         let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .millisecondsSince1970
-        let data = try encoder.encode(body); guard data.count <= 8 * 1024 * 1024 else { throw SyncError.tooLarge }
+        let data = try encoder.encode(body); guard data.count <= 32 * 1024 * 1024 else { throw SyncError.tooLarge }
         let delegate = PinnedPCSession(connection), config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = probe ? 2 : 12; config.timeoutIntervalForResource = probe ? 3 : 30; config.allowsCellularAccess = false; config.waitsForConnectivity = false; config.networkServiceType = .default; config.allowsExpensiveNetworkAccess = true; config.allowsConstrainedNetworkAccess = true; config.connectionProxyDictionary = [:]; config.httpShouldSetCookies = false
         let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
@@ -247,7 +247,7 @@ actor SyncClient {
         let bytes: Data, response: URLResponse
         do { (bytes, response) = try await session.data(for: req) }
         catch { if let issue = delegate.validationIssue { throw SyncError.rejected(issue) }; throw error }
-        guard bytes.count <= 8 * 1024 * 1024 else { throw SyncError.tooLarge }
+        guard bytes.count <= 32 * 1024 * 1024 else { throw SyncError.tooLarge }
         guard (response as? HTTPURLResponse)?.statusCode == 200 else {
             let failure = try? JSONDecoder().decode(Failure.self, from: bytes)
             if (response as? HTTPURLResponse)?.statusCode == 409, failure?.code == "proposal_missing" { throw SyncError.proposalMissing }
