@@ -56,8 +56,8 @@ public enum PulseEngine {
         let ids = Set(playlist.trackIDs); result.events = library.events.filter { ids.contains($0.trackID) }; return result
     }
     private struct Evidence {
-        var fit: Double; var genre: Double; var hasGenre: Bool; var direct: Int; var sameArtist: Bool; var artistNeighbour: Bool; var audio: Double?; var match: Track?; var known: Bool; var eligible: Bool
-        var nearby: Bool { known || sameArtist || artistNeighbour || direct > 0 || (audio ?? 0) >= 0.92 || (genre > 0 && (audio ?? 0) >= 0.85) }
+        var fit: Double; var genre: Double; var hasGenre: Bool; var direct: Int; var sameArtist: Bool; var preferredArtist: Bool; var artistNeighbour: Bool; var audio: Double?; var match: Track?; var known: Bool; var eligible: Bool
+        var nearby: Bool { known || sameArtist || preferredArtist || artistNeighbour || direct > 0 || (audio ?? 0) >= 0.92 || (genre > 0 && (audio ?? 0) >= 0.85) }
     }
     private static func focusMatch(_ track: Track, context: String?) -> Bool {
         context == "focus" && MoodFitness.scores(track)["focus", default: 0] >= 0.75 && !Set(GenreClassifier.genres(track)).isDisjoint(with: ["Ambient", "Lo-Fi", "Jazz", "Classical"])
@@ -97,11 +97,12 @@ public enum PulseEngine {
         let fit: Double
         if known { fit = 0.65 + 0.35 * min(1, (profile.weights[track.id] ?? 0) / max(1, topSeedWeight)) }
         else if sameArtist { fit = 0.65 + artistAffinity * 0.2 }
+        else if preferred { fit = 0.72 }
         else if compatibleDirect { fit = min(0.95, 0.58 + rootAffinity * 0.1 + Double(max(0, direct - 1)) * 0.09) }
         else if artistNeighbour { fit = 0.6 }
         else { fit = max(genreAffinity * 0.42, (audio ?? 0) >= 0.9 ? (audio ?? 0) * 0.7 : 0) }
         let match = directIDs.sorted().compactMap { library.tracks[$0] }.first
-        return Evidence(fit: fit, genre: genreFit, hasGenre: !genres.isEmpty, direct: compatibleDirect ? direct : 0, sameArtist: sameArtist, artistNeighbour: artistNeighbour, audio: audio, match: match, known: known, eligible: eligible)
+        return Evidence(fit: fit, genre: genreFit, hasGenre: !genres.isEmpty, direct: compatibleDirect ? direct : 0, sameArtist: sameArtist, preferredArtist: preferred, artistNeighbour: artistNeighbour, audio: audio, match: match, known: known, eligible: eligible)
     }
     public static func rank(_ candidates: [Track], library: Library, limit: Int = 30, mood: String? = nil, exclude: Set<String> = [], allowRecent: Bool = false, now: Date = Date(), currentID: String? = nil, index: RankingIndex? = nil, playlistID: String? = nil, trackID: String? = nil, retainFamiliarPool: Bool = false) -> [Recommendation] {
         guard limit > 0, let source = profileSource(library, playlistID: playlistID, trackID: trackID) else { return [] }
@@ -147,7 +148,7 @@ public enum PulseEngine {
             let consumption = ConsumptionFeedback.predict(track, model: feedback, mood: context)
             let learned = ContextualLearning.predict(learner, features: snapshot)
             let preferred = library.settings.preferredArtists.contains { names.contains(fold($0)) } ? 1.0 : 0
-            let fresh = ReleaseDiscovery.freshness(track, now: now), personal = e.sameArtist || e.artistNeighbour || e.direct > 0 || (e.audio ?? 0) >= 0.92
+            let fresh = ReleaseDiscovery.freshness(track, now: now), personal = e.sameArtist || e.preferredArtist || e.artistNeighbour || e.direct > 0 || (e.audio ?? 0) >= 0.92
             var score: Double = e.fit * 3 + e.genre * 0.45 + (e.sameArtist ? 0.3 : 0)
             score += Double(min(3, e.direct)) * 0.65
             score += (e.audio ?? 0) * 0.3 + preferred + sessionFit
@@ -199,7 +200,7 @@ public enum PulseEngine {
             choice.taste = updatedEvidence.fit
             choice.score += (updatedEvidence.fit - item.taste) * 3
             let fresh = ReleaseDiscovery.freshness(track, now: now)
-            let personal = updatedEvidence.sameArtist || updatedEvidence.artistNeighbour || updatedEvidence.direct > 0 || (updatedEvidence.audio ?? 0) >= 0.92
+            let personal = updatedEvidence.sameArtist || updatedEvidence.preferredArtist || updatedEvidence.artistNeighbour || updatedEvidence.direct > 0 || (updatedEvidence.audio ?? 0) >= 0.92
             if personal && !updatedEvidence.known { choice.score += fresh.score * (newReleaseTarget - 0.4) * 3 - item.freshness * (item.releasePreference - 0.4) * 3 }
             choice.freshness = fresh.score; choice.recentRelease = fresh.recent
             choice.releasePreference = newReleaseTarget
