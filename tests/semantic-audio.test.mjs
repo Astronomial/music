@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {packSemantic,validateSemanticProfile,semanticSimilarity,semanticGenres,SEMANTIC_MODEL_ID} from '../src/core/semantic-audio.mjs';
 import {effnetPatches} from '../src/core/effnet-mel.mjs';
 import styles from '../src/core/effnet-styles.json' with {type:'json'};
+import {analyzePCM} from '../src/core/sound-profile.mjs';
+import {initialState,normalizeTrack,mergeTracks} from '../src/core/model.mjs';
 
 test('semantic vectors are bounded, model-versioned and quantized without losing neighbourhoods',()=>{
  const a=Array.from({length:1280},(_,i)=>Math.sin(i*.17)),b=a.map((x,i)=>x*.9+Math.cos(i*.43)*.1),c=a.map(x=>-x);
@@ -28,4 +30,11 @@ test('EffNet input uses bounded 128-by-96 patches of actual PCM and rejects inva
  assert.ok(input.data.every(Number.isFinite));assert.ok(input.data.some(x=>x>0));
  assert.equal(effnetPatches(pcm,8000),null);assert.equal(effnetPatches(pcm.subarray(0,1000)),null);
  const silence=effnetPatches(new Float32Array(16000*8));assert.ok(silence.data.every(x=>x===0));
+});
+test('a sparse old track cannot erase a completed semantic analysis',()=>{
+ const pcm=Float32Array.from({length:16000*9},(_,i)=>.15*Math.sin(2*Math.PI*440*i/16000));
+ const base=analyzePCM(pcm),semantic=packSemantic(Array.from({length:1280},(_,i)=>Math.sin(i)),Array(400).fill(.01),9);
+ const original=normalizeTrack({id:'yt_00000000001',source:'youtube',videoId:'00000000001',title:'Audio',artist:'Artist',soundProfile:{...base,semantic}});
+ let state=mergeTracks(initialState(),[original]);state=mergeTracks(state,[{...original,soundProfile:base}]);
+ assert.deepEqual(state.tracks[original.id].soundProfile.semantic,semantic);
 });

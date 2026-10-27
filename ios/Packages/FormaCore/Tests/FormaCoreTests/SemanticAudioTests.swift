@@ -22,5 +22,30 @@ final class SemanticAudioTests: XCTestCase {
         XCTAssertTrue(input.data.allSatisfy(\.isFinite)); XCTAssertTrue(input.data.contains { $0 > 0 })
         XCTAssertNil(EffnetMel.patches(pcm, sampleRate: 8000))
         XCTAssertNil(EffnetMel.patches(Array(pcm.prefix(1000))))
+        struct Reference: Decodable { let firstMelFrame: [Double] }
+        let url = try XCTUnwrap(Bundle.module.url(forResource: "semantic-golden", withExtension: "json"))
+        let reference = try JSONDecoder().decode(Reference.self, from: Data(contentsOf: url))
+        for i in 0..<96 { XCTAssertEqual(Double(input.data[i]), reference.firstMelFrame[i], accuracy: 0.0001) }
+    }
+    func testStyleScoresAbstainWhenConflictingAndDoNotTreatRapAsBlatnaya() throws {
+        let vector = (0..<1280).map { sin(Double($0)) }
+        func profile(_ name: String, second: String? = nil) throws -> SemanticAudioProfile {
+            var scores = Array(repeating: 0.01, count: 400)
+            scores[try XCTUnwrap(SemanticAudioProfile.styleNames.firstIndex(of: name))] = 0.9
+            if let second { scores[try XCTUnwrap(SemanticAudioProfile.styleNames.firstIndex(of: second))] = 0.85 }
+            return try XCTUnwrap(SemanticAudioProfile.pack(vector, scores: scores, seconds: 12))
+        }
+        XCTAssertEqual(try profile("Children's---Nursery Rhymes").inferredGenres, ["Children's Music"])
+        XCTAssertEqual(try profile("Pop---Chanson").inferredGenres, ["Chanson"])
+        XCTAssertEqual(try profile("Hip Hop---Gangsta").inferredGenres, ["Hip-Hop/Rap"])
+        XCTAssertTrue(try profile("Pop---Chanson", second: "Rock---Alternative Rock").inferredGenres.isEmpty)
+    }
+    func testSparseOldRecordingCannotEraseSemanticAnalysis() throws {
+        let pcm = (0..<(16000 * 9)).map { Float(0.15 * sin(2 * Double.pi * 440 * Double($0) / 16000)) }
+        var profile = try XCTUnwrap(SoundProfile.analyze(pcm))
+        profile.semantic = try XCTUnwrap(SemanticAudioProfile.pack((0..<1280).map { sin(Double($0)) }, scores: Array(repeating: 0.01, count: 400), seconds: 9))
+        var track = Track(videoID: "00000000001", title: "Audio", artist: "Artist"); track.soundProfile = profile
+        var library = Library(); library.merge([track]); track.soundProfile?.semantic = nil; library.merge([track])
+        XCTAssertEqual(library.tracks[track.id]?.soundProfile?.semantic, profile.semantic)
     }
 }
