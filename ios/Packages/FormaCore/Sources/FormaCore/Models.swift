@@ -171,7 +171,7 @@ public struct Library: Codable, Sendable {
             if let old = tracks[track.id] {
                 if track.artistID == nil { track.artistID = old.artistID }
                 if track.genreEvidence == nil { track.genreEvidence = old.genreEvidence }
-                if track.soundProfile == nil { track.soundProfile = old.soundProfile }
+                if track.soundProfile == nil || (old.soundProfile?.semantic?.isValid == true && track.soundProfile?.semantic?.isValid != true) { track.soundProfile = old.soundProfile }
                 if track.publishedAt == nil { track.publishedAt = old.publishedAt }
                 track.retrievalSources = Array(Set(old.retrievalSources + track.retrievalSources)).sorted().suffix(15).map { $0 }
                 if let at = old.genreEvidence?.releasedAt { let earliest = min(at, track.genreEvidence?.releasedAt ?? at); track.genreEvidence?.releasedAt = earliest }
