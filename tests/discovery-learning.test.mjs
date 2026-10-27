@@ -64,12 +64,12 @@ test('a dominant saved artist cannot erase a minority musical interest',()=>{
   s.tracks=Object.fromEntries([...dominant,minor].map(t=>[t.id,t]));s.likes=Object.keys(s.tracks);
   const profile=buildProfile(s,now);assert.ok(profile.positive['genre:Rock']/profile.positive['genre:Jazz']<6);
   assert.ok(selectRetrievalAnchors(s,{now,limit:45}).some(t=>t.id==='minor'));
-  const jazz=song('new-jazz',{genre:'Jazz'}),weak=song('weak',{genre:'',discoveryGenres:['Jazz'],title:'Unknown',artist:'Unknown'});
+  const jazz=song('new-jazz',{genre:'Jazz',relatedTo:['minor'],directRelatedTo:['minor']}),weak=song('weak',{genre:'',discoveryGenres:['Jazz'],title:'Unknown',artist:'Unknown'});
   assert.equal(rankTracks([weak,jazz],s,{now,limit:1})[0].track.id,jazz.id);
 });
 test('repeated one-song ranking maintains 70/30 novelty using actual started playback, not shelf impressions',()=>{
   let s=initialState();s.settings.artistDiversity=0;
-  const tracks=Array.from({length:100},(_,i)=>song('s'+i));s.tracks=Object.fromEntries(tracks.map(t=>[t.id,t]));s.likes=tracks.slice(0,40).map(t=>t.id);
+  const tracks=Array.from({length:100},(_,i)=>song('s'+i,i>=40?{relatedTo:['s0'],directRelatedTo:['s0']}:{}));s.tracks=Object.fromEntries(tracks.map(t=>[t.id,t]));s.likes=tracks.slice(0,40).map(t=>t.id);
   const heard=[];
   for(let i=0;i<40;i++){
     const item=rankTracks(tracks,s,{now:now+i*1000,limit:1})[0];assert.ok(item);heard.push(item);
@@ -80,7 +80,7 @@ test('repeated one-song ranking maintains 70/30 novelty using actual started pla
   assert.equal(s.events.length,40);
 });
 test('Russian preference keeps strong nearby international matches above weak Russian search labels and respects blocks',()=>{
-  const s=initialState(),seed=song('seed',{genre:'Rock'}),good=song('good',{genre:'Rock',language:'en',title:'Song'}),weak=song('weak',{genre:'',discoveryGenres:['Rock'],discoveryLanguages:['ru'],title:'Other',artist:'Unknown'});
+  const s=initialState(),seed=song('seed',{genre:'Rock'}),good=song('good',{genre:'Rock',language:'en',title:'Song',relatedTo:['seed'],directRelatedTo:['seed']}),weak=song('weak',{genre:'',discoveryGenres:['Rock'],discoveryLanguages:['ru'],title:'Other',artist:'Unknown'});
   s.tracks={seed,good,weak};s.likes=['seed'];assert.equal(rankTracks([weak,good],s,{now,limit:1})[0].track.id,'good');
   s.settings.blockedArtists=[good.artist,weak.artist];assert.equal(rankTracks([weak,good],s,{now,limit:1}).length,0);
 });

@@ -8,7 +8,7 @@ const now=1800000000000;
 const song=(id,artist,extra={})=>normalizeTrack({id,title:'Song '+id,artist,artistId:artist,genre:'House',duration:200,...extra});
 function biasedLibrary(){
   const s=initialState(),saved=Array.from({length:30},(_,i)=>song('liked'+i,'Favourite'));
-  const fresh=Array.from({length:32},(_,i)=>song('fresh'+i,'New artist '+i));
+  const fresh=Array.from({length:32},(_,i)=>song('fresh'+i,'New artist '+i,{relatedTo:['liked0'],directRelatedTo:['liked0']}));
   s.settings.genres=['House'];s.settings.preferredArtists=['Favourite'];
   s.tracks=Object.fromEntries([...saved,...fresh].map(t=>[t.id,t]));s.likes=saved.map(t=>t.id);return s;
 }
@@ -32,7 +32,7 @@ test('instant skips and a current track without a playback event still separate 
   s.events=[];assert.notEqual(rankTracks(Object.values(s.tracks),s,{now,limit:1,currentTrackId:'liked0'})[0].track.artist,'Favourite');
 });
 test('artist alias channels and collaborations cannot evade session spacing',()=>{
-  const s=initialState(),a=song('a','Björk',{artistId:'UC1'}),b=song('b','BJORK - Topic',{artistId:'UC2'}),c=song('c','Björk, Guest',{artistId:'UC1'}),d=song('d','New artist');
+  const s=initialState(),a=song('a','Björk',{artistId:'UC1'}),b=song('b','BJORK - Topic',{artistId:'UC2'}),c=song('c','Björk, Guest',{artistId:'UC1'}),d=song('d','New artist',{relatedTo:['a'],directRelatedTo:['a']});
   s.tracks={a,b,c,d};s.likes=['a'];s.events=[{trackId:'a',type:'play',at:now-1000}];
   assert.equal(rankTracks([b,c,d],s,{now,limit:1})[0].track.id,'d');
 });

@@ -4,7 +4,7 @@ import { initialState, normalizeTrack, recordEvent } from '../src/core/model.mjs
 import { rankTracks, eventWeight, buildProfile, trackSimilarity } from '../src/core/recommender.mjs';
 const now=1800000000000;
 const track=(id,genre,artist=id,extra={})=>({id,title:id,artist,artistId:artist,genre,mood:'',tags:[],streamable:true,duration:200,favoriteCount:0,...extra});
-function setup(){const s=initialState();s.tracks={a:track('a','House','one'),b:track('b','House','two'),c:track('c','Rock','three')};return s;}
+function setup(){const s=initialState();s.tracks={a:track('a','House','one'),b:track('b','House','two',{relatedTo:['a'],directRelatedTo:['a']}),c:track('c','Rock','three')};return s;}
 test('saved tracks and playlist membership both shape taste immediately',()=>{
   let s=setup();s.likes=['a'];assert.equal(rankTracks([s.tracks.b,s.tracks.c],s,{now})[0].track.id,'b');
   s.likes=[];s.playlists=[{id:'p',trackIds:['c']}];assert.equal(rankTracks([s.tracks.b,s.tracks.c],s,{now})[0].track.id,'c');
@@ -44,7 +44,7 @@ test('tempo similarity handles half-time beats and preference clusters retain mi
   const a=track('seed','House','one',{bpm:80});
   assert.ok(trackSimilarity(a,track('half','House','two',{bpm:160}))>trackSimilarity(a,track('far','House','two',{bpm:120})));
   const s=initialState();s.likes=['a','b','c','d'];s.tracks={a:track('a','House'),b:track('b','House'),c:track('c','House'),d:track('d','Jazz')};
-  const ranked=rankTracks([track('h','House'),track('j','Jazz'),track('z','Rock')],s,{now});
+  const ranked=rankTracks([track('h','House','h',{relatedTo:['a'],directRelatedTo:['a']}),track('j','Jazz','j',{relatedTo:['d'],directRelatedTo:['d']}),track('z','Rock')],s,{now});
   assert.ok(ranked.some(r=>r.track.id==='j'));assert.ok(!ranked.some(r=>r.track.id==='z'),'Unrelated genres must not fill the queue');
 });
 test('download and stream gating are respected when parsing API responses',()=>{

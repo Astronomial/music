@@ -1,5 +1,6 @@
 import {fold,genresOf} from './wave-settings.mjs';
 import {moodFitness} from './mood-mixes.mjs';
+import {hardGenreVeto} from './genre-evidence.mjs';
 const DAY=86400000;
 export function feedbackReward(event){
   if(event.type==='dislike')return 0;
@@ -20,7 +21,7 @@ export function buildFeedbackModel(state,now=Date.now()){
   const global=new Map(),contexts=new Map(),seen=new Set();
   function update(map,key,reward,weight){const arm=map.get(key)||{positive:0,negative:0};arm.positive+=reward*weight;arm.negative+=(1-reward)*weight;map.set(key,arm);}
   for(const e of [...state.events].reverse()){
-    const reward=feedbackReward(e),track=state.tracks[e.trackId];if(reward===null||!track||!Number.isFinite(e.at)||e.at>now)continue;
+    const reward=feedbackReward(e),track=state.tracks[e.trackId];if(reward===null||!track||!Number.isFinite(e.at)||e.at>now||hardGenreVeto(track))continue;
     const token=`${e.trackId}:${Math.floor(e.at/DAY)}`;if(seen.has(token))continue;seen.add(token);
     const weight=Math.pow(.5,Math.max(0,now-e.at)/(30*DAY))*(e.type==='skip'&&state.settings.skipSensitivity==='soft'?.35:1);
     for(const [key] of arms(track)){update(global,key,reward,weight);if(e.mood)update(contexts,`${e.mood}:${key}`,reward,weight);}

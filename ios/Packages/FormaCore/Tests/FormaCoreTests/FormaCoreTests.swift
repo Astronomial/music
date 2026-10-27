@@ -74,7 +74,7 @@ final class FormaCoreTests: XCTestCase {
         XCTAssertTrue(PulseEngine.anchors(in: library, limit: 4, now: now).contains { $0.artist == "Minority" })
     }
     func testMoodPlaylistsShareLikesAndConsumedFeedback() throws {
-        var library = Library(); let seed = track(1, artist: "Mine", mood: "calm"), good = track(2, artist: "Mine", mood: "calm"), other = track(3, artist: "Other", mood: "calm"), wrong = track(4, mood: "energetic")
+        var library = Library(); let seed = track(1, artist: "Mine", mood: "calm"), good = track(2, artist: "Mine", mood: "calm", related: [String(format: "%011d", 1)]), other = track(3, artist: "Other", mood: "calm", related: [String(format: "%011d", 1), String(format: "%011d", 2)]), wrong = track(4, mood: "energetic")
         library.merge([seed, good, other, wrong]); library.likedIDs = [seed.id]
         let before = library.events.count
         let shelf = PulseEngine.rank([other, good, wrong], library: library, mood: "calm", now: now)

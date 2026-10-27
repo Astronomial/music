@@ -64,6 +64,7 @@ enum ConsumptionFeedback {
         for event in library.events.sorted(by: { $0.at > $1.at }) {
             let age = now.timeIntervalSince(event.at)
             guard age >= 0, age.isFinite, let reward = event.reward, let track = library.tracks[event.trackID] else { continue }
+            if GenreClassifier.hardVeto(track) { continue }
             let key = event.trackID + ":" + String(floor(event.at.timeIntervalSince1970 / 86400))
             guard seen.insert(key).inserted else { continue }
             let weight = pow(0.5, age / (30 * 86400)) * (event.kind == .skip && library.settings.skipSensitivity == "soft" ? 0.35 : 1)

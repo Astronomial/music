@@ -32,8 +32,8 @@ test('feedback from the same repeated track in a day is bounded and network erro
 test('current session adds context that fades without discarding permanent favorites',()=>{
   let s=initialState();const rock=track('rock','Old','Rock'),house=track('house','Now','House');s.tracks={rock,house};s.likes=['rock'];
   for(let i=0;i<3;i++)s=recordEvent(s,'house','listen',{seconds:180,ratio:1},now-i*60000);
-  const recent=rankTracks([track('h','New','House'),track('r','Other','Rock')],s,{now});assert.ok(recent.find(r=>r.track.id==='h').signals.session>0);
-  const later=rankTracks([track('h','New','House')],s,{now:now+3*3600000});assert.equal(later[0].signals.session,0);assert.equal(buildProfile(s,now+90*86400000).weights.get('rock'),5);
+  const recent=rankTracks([track('h','New','House',{relatedTo:['house'],directRelatedTo:['house']}),track('r','Other','Rock',{relatedTo:['rock'],directRelatedTo:['rock']})],s,{now});assert.ok(recent.find(r=>r.track.id==='h').signals.session>0);
+  const later=rankTracks([track('h','New','House',{relatedTo:['house'],directRelatedTo:['house']})],s,{now:now+3*3600000});assert.equal(later[0].signals.session,0);assert.equal(buildProfile(s,now+90*86400000).weights.get('rock'),5);
 });
 test('mood playlists use mood evidence and taste, enforce exclusions and preserve different contents',()=>{
   const s=initialState();const tracks=[track('calm','One','Ambient',{mood:'Peaceful'}),track('happy','Two','Pop',{mood:'Happy'}),track('sad','Three','Alternative',{mood:'Sad'}),track('energy','Four','Rock',{mood:'Energetic'}),track('night','Five','House',{mood:'Night'}),track('unknown','Six','')];s.settings.excludedGenres=['Rock'];

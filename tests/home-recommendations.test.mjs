@@ -12,7 +12,7 @@ function catalogue(){
 }
 test('home and all mood shelves keep mostly Russian taste-supported tracks even with stronger English metadata',()=>{
  const {s,tracks}=catalogue();
- for(const result of [rankTracks(tracks,s,{now,limit:12}),...moodRecommendations(tracks,s,{now,limit:12}).map(m=>m.items)]){
+ for(const result of [rankTracks(Object.values(s.tracks),s,{now,limit:12}),...moodRecommendations(Object.values(s.tracks),s,{now,limit:12}).map(m=>m.items)]){
   assert.equal(result.length,12); const ru=result.filter(r=>languageEvidence(r.track,'ru').fit>=.6).length;
   assert.ok(ru>=8,`Only ${ru}/12 Russian recommendations`); assert.ok(result.slice(0,6).filter(r=>languageEvidence(r.track,'ru').fit>=.6).length>=4,'Windows home shows the first six recommendations'); assert.ok(new Set(result.map(r=>r.track.artist)).size>=10);for(const item of result)assert.ok(result.filter(r=>r.track.artist===item.track.artist).length<=2,'No artist may dominate the 12-track shelf');
  }
@@ -38,8 +38,8 @@ test('retrieval searches favourite YouTube artists and learned genres in Russian
 test('home and every mood change with library taste even without explicit genre settings',()=>{
  const tracks=MOOD_MIXES.flatMap((m,j)=>Array.from({length:60},(_,i)=>normalizeTrack({id:'yt_'+String(j*60+i).padStart(11,'0'),videoId:String(j*60+i).padStart(11,'0'),source:'youtube',title:'Песня '+m.title+' '+i,artist:'Артист '+i,genre:i<30?'Rock':'Jazz',mood:m.id,tags:m.id==='focus'?['instrumental']:[],duration:200})));
  for(const [anchor,genre] of [[tracks[0],'Rock'],[tracks[30],'Jazz']]){
-  const s=initialState();s.settings.genres=[];s.settings.repeatCooldown=0;s.tracks=Object.fromEntries(tracks.map(t=>[t.id,t]));s.likes=[anchor.id];
-  for(const result of [rankTracks(tracks,s,{now,limit:12}),...moodRecommendations(tracks,s,{now,limit:12}).map(m=>m.items)])assert.ok(result.filter(r=>r.track.genre===genre).length>=10,genre);
+  const s=initialState();s.settings.genres=[];s.settings.repeatCooldown=0;const linked=tracks.map(t=>({...t,relatedTo:[anchor.id],directRelatedTo:[anchor.id]}));s.tracks=Object.fromEntries(linked.map(t=>[t.id,t]));s.likes=[anchor.id];
+  for(const result of [rankTracks(Object.values(s.tracks),s,{now,limit:12}),...moodRecommendations(Object.values(s.tracks),s,{now,limit:12}).map(m=>m.items)])assert.ok(result.filter(r=>r.track.genre===genre).length>=10,genre);
  }
 });
 

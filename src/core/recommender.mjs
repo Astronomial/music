@@ -1,5 +1,5 @@
 import {utilityRecording} from './recording-quality.mjs';
-import {genreRelation} from './genre-evidence.mjs';
+import {genreRelation,hardGenreVeto} from './genre-evidence.mjs';
 import {trackPulseFit,sameSong} from './track-pulse.mjs';
 const DAY = 86400000;
 import {createSoundMatcher} from './sound-profile.mjs';
@@ -163,7 +163,7 @@ function sessionProfile(state,now){
   const positive={},negative={};let positiveCount=0,negativeCount=0;
   for(const e of state.events.slice(-80)){
     if(e.at>now||now-e.at>90*60000)continue;
-    const reward=feedbackReward(e),t=state.tracks[e.trackId];if(reward===null||!t)continue;
+    const reward=feedbackReward(e),t=state.tracks[e.trackId];if(reward===null||!t||hardGenreVeto(t))continue;
     const strength=Math.pow(.5,Math.max(0,now-e.at)/(30*60000))*(e.type==='skip'&&state.settings.skipSensitivity==='soft'?.5:1);
     const target=reward>=.7?positive:negative;
     if(reward>=.7)positiveCount+=strength;else negativeCount+=strength;
@@ -278,7 +278,12 @@ export function rankTracks(candidates, state, options = {}) {
     const personal=sameArtist||direct||audible||artistNeighbour;
     const referenceAllowed=!anchors.length||!track.retrievalSources?.includes('mood-reference')||known||personal||focusMatch;
     const eligible=referenceAllowed&&(!utilityRecording(track)||utilityMatch)&&!disliked.has(track.id)&&(!anchors.length||known||sameArtist||genreFit>0||(!comparable&&direct)||audible||artistNeighbour||focusMatch);
-    const nearby=focusMatch||audible||known||sameArtist||direct||artistNeighbour||genreFit===1||(genreFit>0&&audioAffinity!==null&&audioAffinity>=.85);
+    // Broad genre is a retrieval direction, not proof of a personal neighbour.
+    // Keep genre-only candidates in the budgeted exploration lane; neither
+    // freshness, Russian text nor novelty can promote them out of that lane.
+    const moodNeighbour=Boolean(context?.mood)&&genreFit>0&&moodEvidence(track,context)>=.75;
+    const bridgeNeighbour=genreFit>0&&neighbourhoodFit.indirect>0&&track.retrievalSources?.includes('discovery-related');
+    const nearby=focusMatch||moodNeighbour||bridgeNeighbour||audible||known||sameArtist||direct||artistNeighbour||(genreFit>0&&audioAffinity!==null&&audioAffinity>=.85);
     const freshness=releaseFreshness(track,now);
     // Novel candidates still need a taste match: exploration is not random genre drift.
     const novelty = !known ? discovery * (0.2 + affinity * 0.45) : (1 - discovery) * 0.12;
