@@ -50,6 +50,7 @@ public enum LibrarySync {
         if base.settings.repeatHours != incoming.settings.repeatHours { result.settings.repeatHours = incoming.settings.repeatHours }
         if base.settings.mood != incoming.settings.mood { result.settings.mood = incoming.settings.mood }
         if base.settings.excludedGenres != incoming.settings.excludedGenres { result.settings.excludedGenres = mergeIDs(current: current.settings.excludedGenres, base: base.settings.excludedGenres, incoming: incoming.settings.excludedGenres) }
+        result.settings.tastePolicyVersion = max(current.settings.tastePolicyVersion, incoming.settings.tastePolicyVersion)
         if base.settings.preferredArtists != incoming.settings.preferredArtists { result.settings.preferredArtists = mergeIDs(current: current.settings.preferredArtists, base: base.settings.preferredArtists, incoming: incoming.settings.preferredArtists) }
         if base.settings.seedPlaylistIDs != incoming.settings.seedPlaylistIDs { result.settings.seedPlaylistIDs = mergeIDs(current: current.settings.seedPlaylistIDs, base: base.settings.seedPlaylistIDs, incoming: incoming.settings.seedPlaylistIDs) }
         if base.settings.artistDiversity != incoming.settings.artistDiversity { result.settings.artistDiversity = incoming.settings.artistDiversity }
@@ -71,6 +72,7 @@ public enum LibrarySync {
     /// merging a round trip, while respecting explicit shared-history deletion.
     public static func preservingLearning(in remote: Library, from local: Library) -> Library {
         var result = remote
+        result.settings.tastePolicyVersion = max(remote.settings.tastePolicyVersion, local.settings.tastePolicyVersion)
         for (id, at) in local.familiarPlays where at.isFinite && at > 0 { result.familiarPlays[id] = max(result.familiarPlays[id] ?? 0, at) }
         if remote.settings.recommendationVersion < 2 {
             result.settings.explorationStyle = local.settings.explorationStyle
@@ -81,7 +83,7 @@ public enum LibrarySync {
         }
         for (id, old) in local.tracks where result.tracks[id] != nil {
             if result.tracks[id]?.genreEvidence == nil { result.tracks[id]?.genreEvidence = old.genreEvidence }
-            if result.tracks[id]?.soundProfile == nil { result.tracks[id]?.soundProfile = old.soundProfile }
+            if result.tracks[id]?.soundProfile == nil || old.soundProfile?.semantic?.isValid == true && result.tracks[id]?.soundProfile?.semantic?.isValid != true { result.tracks[id]?.soundProfile = old.soundProfile }
             if result.tracks[id]?.publishedAt == nil { result.tracks[id]?.publishedAt = old.publishedAt }
             if result.tracks[id]?.retrievalSources.isEmpty == true { result.tracks[id]?.retrievalSources = old.retrievalSources }
             if let at = old.genreEvidence?.releasedAt { let earliest = min(at, result.tracks[id]?.genreEvidence?.releasedAt ?? at); result.tracks[id]?.genreEvidence?.releasedAt = earliest }
