@@ -4,6 +4,8 @@ import {initialState, normalizeTrack} from '../src/core/model.mjs';
 import {buildProfile, rankTracks, moodRecommendations} from '../src/core/recommender.mjs';
 import {blockedByPreferences, waveSettings} from '../src/core/wave-settings.mjs';
 import {matchRecordingGenre} from '../src/core/genre-evidence.mjs';
+import {buildContextualModel,contextFeatures} from '../src/core/contextual-learning.mjs';
+import {buildFeedbackModel} from '../src/core/feedback.mjs';
 
 const now=1800000000000;
 const song=(n,extra={})=>normalizeTrack({id:'yt_'+String(n).padStart(11,'0'),videoId:String(n).padStart(11,'0'),source:'youtube',title:'Песня '+n,artist:'Артист '+n,duration:200,genre:'Pop',...extra});
@@ -25,4 +27,17 @@ test('exact external recording metadata retains banned styles instead of losing 
  const track=song(40);
  const row={kind:'song',trackName:track.title,artistName:track.artist,trackTimeMillis:200000,primaryGenreName:'Russian Chanson',trackId:42};
  assert.deepEqual(matchRecordingGenre(track,[row],now).values,['Chanson']);
+});
+test('a broad Pop label alone cannot fill discovery slots or overrule a concrete library neighbour',()=>{
+ const seed=song(50),generic=Array.from({length:30},(_,i)=>song(100+i,{favoriteCount:1e9})),good=song(200,{genre:'',relatedTo:[seed.id],directRelatedTo:[seed.id]});
+ const state=initialState();state.tracks={[seed.id]:seed};state.likes=[seed.id];state.settings.repeatCooldown=0;
+ assert.deepEqual(rankTracks(generic,state,{now}).map(r=>r.track.id),[]);
+ assert.deepEqual(rankTracks([...generic,good],state,{now}).map(r=>r.track.id),[good.id]);
+});
+test('manual listening to forbidden styles never trains positive recommendation models',()=>{
+ const track=song(60,{genre:'Russian Chanson'}),state=initialState();state.tracks={[track.id]:track};
+ const recommendation={version:3,features:contextFeatures({taste:1,genre:1,known:true}),lane:'familiar'};
+ state.events=[{type:'like',trackId:track.id,at:now,seconds:0,ratio:0,recommendation}];
+ assert.equal(buildContextualModel(state,now).samples,0);
+ assert.equal(buildFeedbackModel(state,now).global.size,0);
 });

@@ -38,4 +38,20 @@ final class RecommendationPolicyTests: XCTestCase {
         let stale = adjacent.map { Recommendation(track: $0, score: 100, reason: "Generic adjacent genre", nearby: false, taste: 0.2) }
         XCTAssertNil(PulseEngine.selectCached(stale, library: library, exclude: [], now: now))
     }
+    func testGenericPopDoesNotFillDiscoveryWithoutPersonalEvidence() {
+        var seed = song(200); seed.mood = ""
+        let generic = (201..<230).map { n -> Track in var track = song(n); track.mood = ""; return track }
+        var related = song(230, genre: ""); related.relatedTo = [seed.id]; related.directRelatedTo = [seed.id]
+        var library = Library(); library.merge([seed]); library.likedIDs = [seed.id]; library.settings.repeatHours = 0
+        XCTAssertTrue(PulseEngine.rank(generic, library: library, now: now).isEmpty)
+        XCTAssertEqual(PulseEngine.rank(generic + [related], library: library, now: now).map(\.id), [related.id])
+    }
+    func testManualForbiddenListeningDoesNotTrainPositiveModels() {
+        let track = song(300, genre: "Russian Chanson")
+        var library = Library(); library.merge([track])
+        let snapshot = RecommendationContext(features: ContextualLearning.features(taste: 1, nearby: 1, session: 0, newArtist: false, known: true, language: 1, context: 0, metadata: true), lane: "familiar")
+        library.events = [ListeningEvent(trackID: track.id, kind: .like, at: now, seconds: 0, ratio: 0, recommendation: snapshot)]
+        XCTAssertEqual(ContextualLearning.model(library, now: now).samples, 0)
+        XCTAssertTrue(ConsumptionFeedback.model(library, now: now).global.isEmpty)
+    }
 }
