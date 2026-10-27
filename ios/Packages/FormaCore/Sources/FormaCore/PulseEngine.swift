@@ -63,10 +63,14 @@ public enum PulseEngine {
         context == "focus" && MoodFitness.scores(track)["focus", default: 0] >= 0.75 && !Set(GenreClassifier.genres(track)).isDisjoint(with: ["Ambient", "Lo-Fi", "Jazz", "Classical"])
     }
     private static func evidence(_ track: Track, profile: TasteProfile, index: RankingIndex, library: Library, familiarIDs: Set<String>, liveMetadata: Bool = false) -> Evidence {
+        func compatible(_ seed: Track) -> Bool {
+            guard let similarity = SemanticAudioProfile.similarity(track.soundProfile?.semantic, seed.soundProfile?.semantic) else { return true }
+            return similarity >= 0.65
+        }
         let names = liveMetadata ? PulseDiversity.artists(track) : (index.artists[track.id] ?? PulseDiversity.artists(track)), genres = liveMetadata ? GenreClassifier.genres(track) : (index.genres[track.id] ?? GenreClassifier.genres(track))
         let sameArtist = !names.isDisjoint(with: profile.artists.keys), known = familiarIDs.contains(track.id)
         let directIDs = Set(track.directRelatedTo).intersection(profile.positiveIDs).filter { id in
-            guard let seed = library.tracks[id] else { return false }
+            guard let seed = library.tracks[id], compatible(seed) else { return false }
             let sourceGenres = liveMetadata ? GenreClassifier.genres(seed) : (index.genres[id] ?? GenreClassifier.genres(seed))
             return genres.isEmpty || sourceGenres.isEmpty || GenreClassifier.relation(genres, sourceGenres) > 0
         }
@@ -78,7 +82,7 @@ public enum PulseEngine {
         let rootAffinity = directIDs.compactMap { profile.weights[$0] }.max().map { $0 / max(1, topSeedWeight) } ?? 0
         let comparable = !genres.isEmpty && !profile.genres.isEmpty
         let artistNeighbour = track.retrievalSources.contains("artist-neighbour") && track.relatedTo.contains { id in
-            guard profile.positiveIDs.contains(id), let seed = library.tracks[id] else { return false }
+            guard profile.positiveIDs.contains(id), let seed = library.tracks[id], compatible(seed) else { return false }
             let sourceGenres = liveMetadata ? GenreClassifier.genres(seed) : (index.genres[id] ?? GenreClassifier.genres(seed))
             return genres.isEmpty || sourceGenres.isEmpty || GenreClassifier.relation(genres, sourceGenres) > 0
         }

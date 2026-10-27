@@ -1,6 +1,7 @@
 import {utilityRecording} from './recording-quality.mjs';
 import {genreRelation} from './genre-evidence.mjs';
 import {recommendationVeto} from './recommendation-policy.mjs';
+import {semanticSimilarity} from './semantic-audio.mjs';
 import {trackPulseFit,sameSong} from './track-pulse.mjs';
 const DAY = 86400000;
 import {createSoundMatcher} from './sound-profile.mjs';
@@ -13,6 +14,7 @@ import {buildContextualModel,contextFeatures,predictContext,CONTEXT_VERSION} fro
 import {familiarIDs,familiarRotation,compareFamiliar} from './familiar-rotation.mjs';
 import {releaseFreshness,freshReleaseTarget} from './release-discovery.mjs';
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const semanticCompatible=(a,b)=>{const value=semanticSimilarity(a.soundProfile?.semantic,b.soundProfile?.semantic);return value===null||value>=.65;};
 // Tracks are replaced, never mutated, when catalogue metadata changes.
 const featureCache=new WeakMap(),vectorCache=new WeakMap(),semanticCache=new WeakMap();
 function rememberVector(vector){const entries=Object.entries(vector),norm=Math.sqrt(entries.reduce((sum,[,v])=>sum+v*v,0));const info={entries,norm};vectorCache.set(vector,info);return info;}
@@ -259,7 +261,7 @@ export function rankTracks(candidates, state, options = {}) {
     if(!neighbourhoods.has(track)){
       const semantic=nearestSemantic(track,anchors,artistKeys,semanticNeighbours,anchorArtists);
       const roots=(track.relatedTo||[]).filter(id=>(profile.weights.get(id)||0)>0&&state.tracks[id]&&!anchors.some(a=>a.track.id===id)).map(id=>({track:state.tracks[id],weight:profile.weights.get(id)}));
-      neighbourhoods.set(track,neighbourhood(track,[...anchors,...roots].filter(a=>!genresOf(track).values.length||!genresOf(a.track).values.length||genreRelation(track,a.track)>0),()=>0,profile.weights,semantic.fit,semantic));
+      neighbourhoods.set(track,neighbourhood(track,[...anchors,...roots].filter(a=>semanticCompatible(track,a.track)&&(!genresOf(track).values.length||!genresOf(a.track).values.length||genreRelation(track,a.track)>0)),()=>0,profile.weights,semantic.fit,semantic));
     }
     const neighbourhoodFit=neighbourhoods.get(track),language=languageEvidence(track,settings.languagePreference);
     const metadata=genresOf(track).values.length||track.mood||track.tags?.length?1:0;
@@ -276,7 +278,7 @@ export function rankTracks(candidates, state, options = {}) {
     // Confirmed piano/ambient recordings can serve that context even if the
     // ordinary Pulse is vocal pop; they never become global taste by exposure.
     const focusMatch=context?.mood==='focus'&&moodEvidence(track,context)>=.75&&genresOf(track).values.some(g=>['Ambient','Lo-Fi','Jazz','Classical'].includes(g));
-    const artistNeighbour=track.retrievalSources?.includes('artist-neighbour')&&(track.relatedTo||[]).some(id=>(profile.weights.get(id)||0)>0&&state.tracks[id]&&(!comparable||genreRelation(track,state.tracks[id])>0));
+    const artistNeighbour=track.retrievalSources?.includes('artist-neighbour')&&(track.relatedTo||[]).some(id=>(profile.weights.get(id)||0)>0&&state.tracks[id]&&semanticCompatible(track,state.tracks[id])&&(!comparable||genreRelation(track,state.tracks[id])>0));
     const personal=sameArtist||preferredArtist||direct||audible||artistNeighbour;
     const referenceAllowed=!anchors.length||!track.retrievalSources?.includes('mood-reference')||known||personal||focusMatch;
     const eligible=referenceAllowed&&(!utilityRecording(track)||utilityMatch)&&!disliked.has(track.id)&&(!anchors.length||known||sameArtist||preferredArtist||genreFit>0||(!comparable&&direct)||audible||artistNeighbour||focusMatch);
