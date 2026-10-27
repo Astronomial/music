@@ -96,6 +96,7 @@ public struct PulseSettings: Codable, Sendable {
     public var excludedArtists: [String] = []
     public var excludedGenres: [String] = []
     public var preferredArtists: [String] = []
+    public var tastePolicyVersion: Int = 0
     public var seedPlaylistIDs: [String] = []
     public var discovery: Double = 0.7
     public var repeatHours: Double = 2
@@ -112,13 +113,14 @@ public struct PulseSettings: Codable, Sendable {
     public var sessionInfluence: Double = 0.65
     public var recommendationVersion: Int = 2
     public init() {}
-    private enum CodingKeys: String, CodingKey { case genres, excludedArtists, excludedGenres, preferredArtists, seedPlaylistIDs, discovery, repeatHours, artistDiversity, mood, genreMode, energy, vocals, playlistSource, includeLibrary, explorationStyle, languagePreference, skipSensitivity, sessionInfluence, recommendationVersion }
+    private enum CodingKeys: String, CodingKey { case genres, excludedArtists, excludedGenres, preferredArtists, tastePolicyVersion, seedPlaylistIDs, discovery, repeatHours, artistDiversity, mood, genreMode, energy, vocals, playlistSource, includeLibrary, explorationStyle, languagePreference, skipSensitivity, sessionInfluence, recommendationVersion }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         genres = try c.decodeIfPresent([String].self, forKey: .genres) ?? []
         excludedArtists = try c.decodeIfPresent([String].self, forKey: .excludedArtists) ?? []
         excludedGenres = try c.decodeIfPresent([String].self, forKey: .excludedGenres) ?? []
         preferredArtists = try c.decodeIfPresent([String].self, forKey: .preferredArtists) ?? []
+        tastePolicyVersion = try c.decodeIfPresent(Int.self, forKey: .tastePolicyVersion) ?? 0
         seedPlaylistIDs = try c.decodeIfPresent([String].self, forKey: .seedPlaylistIDs) ?? []
         discovery = try c.decodeIfPresent(Double.self, forKey: .discovery) ?? 0.7
         repeatHours = try c.decodeIfPresent(Double.self, forKey: .repeatHours) ?? 2

@@ -37,7 +37,7 @@ public enum PulseDiversity {
         return pool.first { spaced($0) && capped($0) } ?? pool.first(where: spaced) ?? pool.first(where: capped) ?? pool.first
     }
     public static func blocked(_ track: Track, settings: PulseSettings) -> Bool {
-        if GenreClassifier.hardVeto(track) { return true }
+        if RecommendationPolicy.veto(track) { return true }
         let name = PulseEngine.fold(track.artist)
         if settings.excludedArtists.map(PulseEngine.fold).contains(where: { !$0.isEmpty && name.contains($0) }) { return true }
         if !Set(GenreClassifier.genres(track).map(PulseEngine.fold)).isDisjoint(with: Set(settings.excludedGenres.map(PulseEngine.fold))) { return true }

@@ -17,7 +17,7 @@ public struct GenreEvidence: Codable, Sendable, Hashable {
 
 /// Recording metadata is evidence. Search directions never become genre labels.
 public enum GenreClassifier {
-    public static let hardExcluded: Set<String> = ["Chanson", "Blatnaya", "Caucasian Estrada"]
+    public static let hardExcluded: Set<String> = ["Chanson", "Blatnaya", "Caucasian Estrada", "Children's Music"]
     static let aliases: [String: [String]] = {
         guard let url = Bundle.module.url(forResource: "genre-aliases", withExtension: "json"), let data = try? Data(contentsOf: url), let rules = try? JSONDecoder().decode([String: [String]].self, from: data) else { return [:] }
         return rules

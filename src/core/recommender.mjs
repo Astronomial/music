@@ -1,5 +1,6 @@
 import {utilityRecording} from './recording-quality.mjs';
-import {genreRelation,hardGenreVeto} from './genre-evidence.mjs';
+import {genreRelation} from './genre-evidence.mjs';
+import {recommendationVeto} from './recommendation-policy.mjs';
 import {trackPulseFit,sameSong} from './track-pulse.mjs';
 const DAY = 86400000;
 import {createSoundMatcher} from './sound-profile.mjs';
@@ -163,7 +164,7 @@ function sessionProfile(state,now){
   const positive={},negative={};let positiveCount=0,negativeCount=0;
   for(const e of state.events.slice(-80)){
     if(e.at>now||now-e.at>90*60000)continue;
-    const reward=feedbackReward(e),t=state.tracks[e.trackId];if(reward===null||!t||hardGenreVeto(t))continue;
+    const reward=feedbackReward(e),t=state.tracks[e.trackId];if(reward===null||!t||recommendationVeto(t))continue;
     const strength=Math.pow(.5,Math.max(0,now-e.at)/(30*60000))*(e.type==='skip'&&state.settings.skipSensitivity==='soft'?.5:1);
     const target=reward>=.7?positive:negative;
     if(reward>=.7)positiveCount+=strength;else negativeCount+=strength;

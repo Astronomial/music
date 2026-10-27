@@ -150,6 +150,10 @@ final class AppModel: ObservableObject {
                 loaded.library.settings.discovery = 0.7; loaded.library.settings.recommendationVersion = 2
             }
             library = LibrarySync.merge(current: loaded.library, base: Library(), incoming: library)
+            if library.settings.tastePolicyVersion < RecommendationPolicy.version {
+                for name in RecommendationPolicy.preferredArtists where !library.settings.preferredArtists.contains(name) { library.settings.preferredArtists.append(name) }
+                library.settings.tastePolicyVersion = RecommendationPolicy.version
+            }
             storage = store; didLoadLibrary = true; libraryRecoveryMessage = nil; message = loaded.notice
         } catch {
             // A read/access failure must never be followed by saving an empty profile.

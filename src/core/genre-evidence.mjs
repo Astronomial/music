@@ -8,9 +8,10 @@ export const GENRE_ALIASES={
   Classical:['classical','классическая'],Metal:['metal','heavy metal','метал'],Reggae:['reggae','регги'],'Folk/Country':['folk','country','singer songwriter','фолк'],
   Chanson:['chanson','russian chanson','русский шансон','шансон'],
   Blatnaya:['blatnaya','blatnaya pesnya','criminal chanson','блатная','блатная песня','блатные песни','блатняк','тюремная песня','тюремные песни'],
-  'Caucasian Estrada':['caucasian estrada','caucasian pop','кавказская эстрада','кавказский шансон']
+  'Caucasian Estrada':['caucasian estrada','caucasian pop','кавказская эстрада','кавказский шансон'],
+  "Children's Music":['children s music','children music','kids music','nursery rhymes','детская музыка','детские песни','музыка для детей']
 };
-export const HARD_EXCLUDED_GENRES=new Set(['Chanson','Blatnaya','Caucasian Estrada']);
+export const HARD_EXCLUDED_GENRES=new Set(['Chanson','Blatnaya','Caucasian Estrada',"Children's Music"]);
 export const genreFold=value=>String(value||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/ё/g,'е').replace(/[^\p{L}\p{N}]+/gu,' ').trim().replace(/\s+/g,' ');
 const genreNames=new Map(Object.entries(GENRE_ALIASES).flatMap(([name,aliases])=>[name,...aliases].map(alias=>[genreFold(alias),name])));
 const curatedRecordings=new Map(recordings.map(r=>[artistIdentity(r.artist)+'|'+recordingIdentity(r.title),r]));
