@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {initialState, normalizeTrack} from '../src/core/model.mjs';
 import {buildProfile, rankTracks, moodRecommendations} from '../src/core/recommender.mjs';
-import {blockedByPreferences, waveSettings} from '../src/core/wave-settings.mjs';
+import {blockedByPreferences, waveSettings, upgradeWaveSettings} from '../src/core/wave-settings.mjs';
 import {matchRecordingGenre} from '../src/core/genre-evidence.mjs';
 import {buildContextualModel,contextFeatures} from '../src/core/contextual-learning.mjs';
 import {buildFeedbackModel} from '../src/core/feedback.mjs';
@@ -40,4 +40,14 @@ test('manual listening to forbidden styles never trains positive recommendation 
  state.events=[{type:'like',trackId:track.id,at:now,seconds:0,ratio:0,recommendation}];
  assert.equal(buildContextualModel(state,now).samples,0);
  assert.equal(buildFeedbackModel(state,now).global.size,0);
+});
+test('explicit unwanted artists and children music are excluded without banning nearby names or winter songs',()=>{
+ for(const extra of [{artist:'Стас Михайлов - Topic'},{artist:'Ваня Дмитриенко'},{artist:'Vanya Dmitrienko'},{genre:"Children’s Music"},{genre:'Детская музыка'}])assert.equal(blockedByPreferences(song(70,extra),waveSettings()),true);
+ for(const extra of [{artist:'ксюшенька'},{artist:'бэя'},{artist:'Три дня дождя'},{artist:'MARKUL'},{title:'Скоро новый год',artist:'Janna RAY'},{artist:'Михайловский оркестр'}])assert.equal(blockedByPreferences(song(71,extra),waveSettings()),false);
+});
+test('artist taste guidance migrates once and later user edits are preserved',()=>{
+ const first=upgradeWaveSettings({preferredArtists:['Existing'],recommendationVersion:2});
+ for(const name of ['ксюшенька','бэя','Три дня дождя','MARKUL'])assert.ok(first.preferredArtists.includes(name));
+ assert.ok(first.preferredArtists.includes('Existing'));
+ const edited=upgradeWaveSettings({...first,preferredArtists:['Other']});assert.deepEqual(edited.preferredArtists,['Other']);
 });

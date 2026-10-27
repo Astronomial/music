@@ -54,4 +54,15 @@ final class RecommendationPolicyTests: XCTestCase {
         XCTAssertEqual(ContextualLearning.model(library, now: now).samples, 0)
         XCTAssertTrue(ConsumptionFeedback.model(library, now: now).global.isEmpty)
     }
+    func testNamedExclusionsAndChildrenMusicDoNotBanWinterSongsOrUnrelatedNames() {
+        for name in ["Стас Михайлов - Topic", "Ваня Дмитриенко", "Vanya Dmitrienko"] {
+            var track = song(400); track.artist = name
+            XCTAssertTrue(PulseDiversity.blocked(track, settings: PulseSettings()), name)
+        }
+        for genre in ["Children’s Music", "Детская музыка"] { XCTAssertTrue(PulseDiversity.blocked(song(401, genre: genre), settings: PulseSettings())) }
+        for name in ["ксюшенька", "бэя", "Три дня дождя", "MARKUL", "Janna RAY", "Михайловский оркестр"] {
+            var track = song(402); track.artist = name; track.title = "Скоро новый год"
+            XCTAssertFalse(PulseDiversity.blocked(track, settings: PulseSettings()), name)
+        }
+    }
 }
