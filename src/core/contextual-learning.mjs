@@ -1,4 +1,5 @@
 import {feedbackReward} from './feedback.mjs';
+import {recommendationVeto} from './recommendation-policy.mjs';
 // Shared linear ridge/UCB model over *selection-time* context. Unlike independent
 // artist arms it generalises feedback to unseen artists with similar circumstances.
 // This is an on-device adaptation of the contextual-bandit principle, not a neural
@@ -27,7 +28,7 @@ export function buildContextualModel(state,now=Date.now()){
   const target=PRIOR.map(x=>x*RIDGE),seen=new Set();let evidence=0,samples=0;
   for(const event of state.events.slice(-3000).slice().sort((a,b)=>b.at-a.at)){
     const reward=feedbackReward(event);
-    if(reward===null||!Number.isFinite(event.at)||event.at>now||!validContext(event.recommendation))continue;
+    if(reward===null||!Number.isFinite(event.at)||event.at>now||!validContext(event.recommendation)||state.tracks[event.trackId]&&recommendationVeto(state.tracks[event.trackId]))continue;
     const key=event.trackId+':'+Math.floor(event.at/DAY);if(seen.has(key))continue;seen.add(key);
     const weight=Math.pow(.5,(now-event.at)/(30*DAY))*(event.type==='skip'&&state.settings.skipSensitivity==='soft'?.35:1);
     const x=[...event.recommendation.features,...Array(d-event.recommendation.features.length).fill(0)];

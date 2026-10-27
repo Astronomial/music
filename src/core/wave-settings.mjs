@@ -1,6 +1,7 @@
-import {GENRE_ALIASES,genresOf} from './genre-evidence.mjs';
+import {GENRE_ALIASES,genresOf,HARD_EXCLUDED_GENRES} from './genre-evidence.mjs';
+import {recommendationVeto,TASTE_POLICY} from './recommendation-policy.mjs';
 export {genresOf} from './genre-evidence.mjs';
-export const WAVE_GENRES=Object.keys(GENRE_ALIASES);
+export const WAVE_GENRES=Object.keys(GENRE_ALIASES).filter(g=>!HARD_EXCLUDED_GENRES.has(g));
 export const MOODS=[
   {id:'any',name:'Любое',query:'',values:[]},
   {id:'calm',name:'Спокойное',query:'calm relaxing',values:['peaceful','calm','relaxing']},
@@ -9,7 +10,7 @@ export const MOODS=[
   {id:'energetic',name:'Заряженное',query:'energetic upbeat',values:['energetic','excited','upbeat','motivating']},
   {id:'focus',name:'Для концентрации',query:'focus study',values:['focused','sophisticated','calm','peaceful']}
 ];
-export const DEFAULT_WAVE_SETTINGS={genres:[],excludedGenres:[],genreMode:'prefer',discovery:0.7,mood:'any',energy:'any',vocals:'any',artistDiversity:0.6,repeatCooldown:2,includeLibrary:true,preferredArtists:[],blockedArtists:[],playlistSource:'all',seedPlaylistIds:[],explorationStyle:'nearby',languagePreference:'ru',skipSensitivity:'strict',sessionInfluence:0.65,recommendationVersion:2};
+export const DEFAULT_WAVE_SETTINGS={genres:[],excludedGenres:[],genreMode:'prefer',discovery:0.7,mood:'any',energy:'any',vocals:'any',artistDiversity:0.6,repeatCooldown:2,includeLibrary:true,preferredArtists:[],blockedArtists:[],playlistSource:'all',seedPlaylistIds:[],explorationStyle:'nearby',languagePreference:'ru',skipSensitivity:'strict',sessionInfluence:0.65,recommendationVersion:2,tastePolicyVersion:0};
 const clamp=(n,min,max,fallback)=>Number.isFinite(Number(n))?Math.max(min,Math.min(max,Number(n))):fallback;
 export const fold=value=>String(value||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/ё/g,'е').replace(/[^\p{L}\p{N}]+/gu,' ').trim().replace(/\s+/g,' ');
 const strings=(a,max=40)=>Array.isArray(a)?[...new Map(a.filter(v=>typeof v==='string').map(v=>v.trim().slice(0,100)).filter(Boolean).map(v=>[fold(v),v])).values()].slice(0,max):[];
@@ -22,12 +23,13 @@ export function waveSettings(settings={}){
     mood:MOODS.some(m=>m.id===settings.mood)?settings.mood:'any',energy:['low','medium','high'].includes(settings.energy)?settings.energy:'any',vocals:['instrumental','vocal'].includes(settings.vocals)?settings.vocals:'any',
     artistDiversity:clamp(settings.artistDiversity,0,1,0.6),repeatCooldown:clamp(settings.repeatCooldown,0,24,2),includeLibrary:settings.includeLibrary!==false,
     explorationStyle:['nearby','balanced','adventurous'].includes(settings.explorationStyle)?settings.explorationStyle:'nearby',languagePreference:['ru','en','any'].includes(settings.languagePreference)?settings.languagePreference:'ru',skipSensitivity:settings.skipSensitivity==='soft'?'soft':'strict',sessionInfluence:clamp(settings.sessionInfluence,0,1,0.65),
-    preferredArtists:strings(settings.preferredArtists),blockedArtists:strings(settings.blockedArtists),playlistSource:settings.playlistSource==='selected'?'selected':'all',seedPlaylistIds:strings(settings.seedPlaylistIds,200)
+    preferredArtists:strings(settings.preferredArtists),tastePolicyVersion:settings.tastePolicyVersion>=TASTE_POLICY.version?TASTE_POLICY.version:0,blockedArtists:strings(settings.blockedArtists),playlistSource:settings.playlistSource==='selected'?'selected':'all',seedPlaylistIds:strings(settings.seedPlaylistIds,200)
   };
 }
 const contains=(text,term)=>` ${fold(text)} `.includes(` ${fold(term)} `);
 export function matchesArtist(track,name){return contains(track.artist,name);}
 export function blockedByPreferences(track,settings){
+  if(recommendationVeto(track))return true;
   if(settings.blockedArtists.some(name=>matchesArtist(track,name)))return true;
   const {values,confidence}=genresOf(track);
   if(values.length&&(confidence===1?values.some(g=>settings.excludedGenres.includes(g)):values.every(g=>settings.excludedGenres.includes(g))))return true;
@@ -74,5 +76,7 @@ export function retrievalContext(settings,genre){return {discoveryGenres:genre?[
 
 // One-time PC upgrade to the requested daily balance; subsequent edits survive reload.
 export function upgradeWaveSettings(settings={}){
-  return {...waveSettings(settings),discovery:settings.recommendationVersion>=2?waveSettings(settings).discovery:.7};
+  const normalized=waveSettings(settings);
+  return {...normalized,discovery:settings.recommendationVersion>=2?normalized.discovery:.7,
+    preferredArtists:settings.tastePolicyVersion>=TASTE_POLICY.version?normalized.preferredArtists:strings([...normalized.preferredArtists,...TASTE_POLICY.preferredArtists]),tastePolicyVersion:TASTE_POLICY.version};
 }

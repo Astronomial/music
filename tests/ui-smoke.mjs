@@ -149,7 +149,7 @@ try{
   assert.equal(await page.getByRole('switch',{name:'Только выбранные жанры',exact:true}).getAttribute('aria-checked'),'true');
   assert.equal(await page.getByRole('checkbox',{name:'Вечерний маршрут',exact:false}).isChecked(),true);
   const persisted=await page.evaluate(()=>JSON.parse(localStorage.getItem('forma-library')));
-  assert.deepEqual(persisted.settings.excludedGenres,['Rock']);assert.deepEqual(persisted.settings.preferredArtists,['Test Artist One']);
+  assert.deepEqual(persisted.settings.excludedGenres,['Rock']);assert.deepEqual(persisted.settings.preferredArtists,['ксюшенька','бэя','Три дня дождя','MARKUL','Test Artist One']);
   await page.getByRole('button',{name:'Свернуть настройки Пульса',exact:true}).click();
   await page.getByRole('button',{name:'Любимые треки',exact:false}).first().click();
   assert.equal(await page.locator('.track-name strong').innerText(),firstTitle);

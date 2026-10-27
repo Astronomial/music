@@ -57,7 +57,7 @@ final class GenreRelevanceTests: XCTestCase {
         let seed = song(1, genre: "Rock")
         var library = Library(); library.merge([seed]); library.likedIDs = [seed.id]; library.settings.repeatHours = 0
         library.settings.genres = ["Electronic", "Rock", "Hip-Hop/Rap"]
-        let good = (10..<28).map { i -> Track in var t = song(i, genre: "Rock"); t.language = "en"; t.mood = "calm"; return t }
+        let good = (10..<28).map { i -> Track in var t = song(i, genre: "Rock"); t.language = "en"; t.mood = "calm"; t.relatedTo = [seed.id]; t.directRelatedTo = [seed.id]; return t }
         let garbage = (100..<180).map { i -> Track in
             var t = song(i, genre: i % 2 == 0 ? "Jazz" : "Hip-Hop/Rap"); t.mood = "calm"; t.genres = ["Rock"]; t.relatedTo = [seed.id]; t.directRelatedTo = [seed.id]; return t
         }

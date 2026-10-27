@@ -21,7 +21,7 @@ test('playlist Pulse follows that playlist instead of unrelated favorites and le
 });
 test('playlist Pulse obeys exclusions and shared consumption feedback',()=>{
   let s=library();const ctx=playlistPulseContext(s,'j'),a=song('new1','One','Jazz'),b=song('new2','Two','Jazz');
-  s.tracks={...s.tracks,a,b};for(let day=0;day<5;day++){s=recordEvent(s,'a','listen',{ratio:.95,seconds:190},now-day*86400000);s=recordEvent(s,'b','skip',{ratio:.04,seconds:8},now-day*86400000);}
+  for(const candidate of [a,b]){candidate.relatedTo=['jazz'];candidate.directRelatedTo=['jazz'];}s.tracks={...s.tracks,a,b};for(let day=0;day<5;day++){s=recordEvent(s,'a','listen',{ratio:.95,seconds:190},now-day*86400000);s=recordEvent(s,'b','skip',{ratio:.04,seconds:8},now-day*86400000);}
   assert.equal(rankTracks([b,a],s,{now,context:ctx})[0].track.id,'new1');
   s.settings.blockedArtists=['One'];assert.equal(rankTracks([a,b],s,{now,context:ctx}).some(r=>r.track.id==='new1'),false);
 });

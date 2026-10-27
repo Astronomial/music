@@ -1,4 +1,5 @@
 import {validateGenreEvidence} from './genre-evidence.mjs';
+import {validateSemanticProfile} from './semantic-audio.mjs';
 import {WAVE_GENRES,DEFAULT_WAVE_SETTINGS} from './wave-settings.mjs';
 export const GENRES = WAVE_GENRES;
 export const initialState = () => ({ version: 1, tracks: {}, likes: [], playlists: [], events: [], familiarPlays: {}, hidden: [], dislikes: [], imports: [], settings: { ...structuredClone(DEFAULT_WAVE_SETTINGS), offlineOnly: false, volume: 0.7, palette: 'iris', textScale: 1, provider:'youtube' }, onboarded: false });
@@ -22,7 +23,7 @@ export function normalizeTrack(t) {
 export function mergeTracks(state, tracks, now=Date.now()) {
   const next = { ...state.tracks };
   for (const t of tracks) if (t?.id) {
-    const merged={...t,publishedAt:next[t.id]?.publishedAt||t.publishedAt||null,artistId:t.artistId||next[t.id]?.artistId||'',releaseDate:t.releaseDate||next[t.id]?.releaseDate||'',playCount:t.playCount||next[t.id]?.playCount||0,favoriteCount:t.favoriteCount||next[t.id]?.favoriteCount||0,genre:t.genre||next[t.id]?.genre||'',genreEvidence:validateGenreEvidence(t.genreEvidence)||next[t.id]?.genreEvidence||null,soundProfile:t.soundProfile||next[t.id]?.soundProfile||null,discoveredAt:next[t.id]?.discoveredAt||t.discoveredAt||now};
+    const merged={...t,publishedAt:next[t.id]?.publishedAt||t.publishedAt||null,artistId:t.artistId||next[t.id]?.artistId||'',releaseDate:t.releaseDate||next[t.id]?.releaseDate||'',playCount:t.playCount||next[t.id]?.playCount||0,favoriteCount:t.favoriteCount||next[t.id]?.favoriteCount||0,genre:t.genre||next[t.id]?.genre||'',genreEvidence:validateGenreEvidence(t.genreEvidence)||next[t.id]?.genreEvidence||null,soundProfile:validateSemanticProfile(next[t.id]?.soundProfile?.semantic)&&!validateSemanticProfile(t.soundProfile?.semantic)?next[t.id].soundProfile:t.soundProfile||next[t.id]?.soundProfile||null,discoveredAt:next[t.id]?.discoveredAt||t.discoveredAt||now};
     if(merged.genreEvidence&&next[t.id]?.genreEvidence?.releasedAt)merged.genreEvidence={...merged.genreEvidence,releasedAt:Math.min(next[t.id].genreEvidence.releasedAt,merged.genreEvidence.releasedAt||Infinity)};
     for(const key of ['relatedTo','directRelatedTo','discoveryGenres','discoveryMoods','discoveryEnergy','discoveryVocals','discoveryLanguages','retrievalSources'])merged[key]=[...new Set([...(next[t.id]?.[key]||[]),...(t[key]||[])])].slice(-15);
     next[t.id]=merged;

@@ -4,8 +4,8 @@ import XCTest
 
 final class ContextualLearningTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
-    private func track(_ number: Int, artist: String? = nil, genre: String = "Pop", language: String = "ru") -> Track {
-        Track(videoID: String(format: "%011d", number), title: "Песня \(number)", artist: artist ?? "Artist \(number)", duration: 200, genre: genre, language: language)
+    private func track(_ number: Int, artist: String? = nil, genre: String = "Pop", language: String = "ru", root: Int? = nil) -> Track {
+        Track(videoID: String(format: "%011d", number), title: "Песня \(number)", artist: artist ?? "Artist \(number)", duration: 200, relatedTo: root.map { [String(format: "%011d", $0)] } ?? [], directRelatedTo: root.map { [String(format: "%011d", $0)] } ?? [], genre: genre, language: language)
     }
     private var snapshot: RecommendationContext {
         .init(features: ContextualLearning.features(taste: 0.6, nearby: 0.7, session: 0.3, newArtist: true, known: false, language: 0.8, context: 0.25, metadata: true), lane: "nearby")
@@ -48,7 +48,7 @@ final class ContextualLearningTests: XCTestCase {
     }
     func testSeventyThirtySurvivesRepeatedSingleTrackSelections() throws {
         var library = Library(); library.settings.artistDiversity = 0; library.settings.repeatHours = 24
-        let tracks = (0..<100).map { track($0) }; library.merge(tracks); library.likedIDs = Array(tracks.prefix(40).map(\.id))
+        let tracks = (0..<100).map { track($0, root: 0) }; library.merge(tracks); library.likedIDs = Array(tracks.prefix(40).map(\.id))
         var choices: [Recommendation] = []
         for i in 0..<40 {
             let at = now.addingTimeInterval(Double(i))
@@ -60,7 +60,7 @@ final class ContextualLearningTests: XCTestCase {
     }
     func testCachedPlaybackSelectionAlsoMaintainsBalanceWithoutResettingExposure() throws {
         var library = Library(); library.settings.artistDiversity = 0; library.settings.repeatHours = 24
-        let tracks = (0..<100).map { track($0) }; library.merge(tracks); library.likedIDs = Array(tracks.prefix(40).map(\.id))
+        let tracks = (0..<100).map { track($0, root: 0) }; library.merge(tracks); library.likedIDs = Array(tracks.prefix(40).map(\.id))
         let cached = PulseEngine.rank(tracks, library: library, limit: 100, now: now)
         var choices: [Recommendation] = []
         for i in 0..<30 {
@@ -71,7 +71,7 @@ final class ContextualLearningTests: XCTestCase {
         XCTAssertEqual(Set(choices.map(\.id)).count, 30); XCTAssertGreaterThanOrEqual(choices.filter { !$0.known }.count, 19); XCTAssertLessThanOrEqual(choices.filter { !$0.known }.count, 23)
     }
     func testSkipsThrottleExperimentsAndStrongForeignMatchBeatsWeakRussianSearchHint() throws {
-        var library = Library(); let seed = track(1), foreign = track(2, language: "en")
+        var library = Library(); let seed = track(1), foreign = track(2, language: "en", root: 1)
         var weak = track(3, genre: "", language: ""); weak.title = "Latin"; weak.discoveryLanguages = ["ru"]; weak.genres = ["Pop"]
         library.merge([seed, foreign, weak]); library.likedIDs = [seed.id]
         XCTAssertEqual(PulseEngine.rank([weak, foreign], library: library, limit: 1, now: now).first?.id, foreign.id)
@@ -109,7 +109,7 @@ final class ContextualLearningTests: XCTestCase {
         let elapsed = Date().timeIntervalSince(begin)
         print("FORMA_CACHED_CHOICE_BENCHMARK: 3000 tracks / 3000 events = \(elapsed) seconds")
         XCTAssertLessThan(elapsed, 0.5)
-        let pop = track(4000, genre: "Pop"), rock = track(4001, genre: "Rock")
+        let pop = track(4000, genre: "Pop"), rock = track(4001, genre: "Rock", root: 1)
         library.merge([pop, rock]); library.playlists = [.init(id: "rock", name: "Rock", trackIDs: [tracks[1].id])]
         XCTAssertEqual(PulseEngine.rank([pop, rock], library: library, limit: 1, now: now, playlistID: "rock").first?.id, rock.id)
         XCTAssertTrue(PulseEngine.rank([pop, rock], library: library, now: now, playlistID: "deleted").isEmpty)
@@ -117,7 +117,7 @@ final class ContextualLearningTests: XCTestCase {
 
     func testEarlySkipChangesImmediateCachedChoiceBeforeBackgroundRanking() throws {
         var library = Library(); library.settings.genres = []; library.settings.artistDiversity = 0
-        let a = track(1, genre: "Rock"), b = track(2, genre: "Pop"), rock = track(3, genre: "Rock"), pop = track(4, genre: "Pop")
+        let a = track(1, genre: "Rock"), b = track(2, genre: "Pop"), rock = track(3, genre: "Rock", root: 1), pop = track(4, genre: "Pop", root: 2)
         library.merge([a, b, rock, pop]); library.likedIDs = [a.id, b.id]
         let index = PulseEngine.makeIndex([rock, pop], library: library)
         let cached = PulseEngine.rank([rock, pop], library: library, limit: 2, now: now, index: index)

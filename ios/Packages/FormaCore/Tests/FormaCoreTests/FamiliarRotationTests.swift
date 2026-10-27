@@ -27,7 +27,7 @@ final class FamiliarRotationTests: XCTestCase {
         XCTAssertEqual(PulseEngine.selectCached(cached, library: library, exclude: [], now: now.addingTimeInterval(1000), index: index)?.id, drawn.first)
     }
     func testCompletedUnsavedRecordingRemainsDiscoveryAndLiveDislikeWins() throws {
-        let tracks = (0..<4).map { song($0) }
+        let tracks = (0..<4).map { n -> Track in var track = song(n); track.relatedTo = [song(0).id]; track.directRelatedTo = track.relatedTo; return track }
         var library = Library(); library.merge(tracks); library.likedIDs = [tracks[0].id]
         library.settings.repeatHours = 0; library.settings.discovery = 1
         library.events = [.init(trackID: tracks[1].id, kind: .listen, at: now, seconds: 190, ratio: 0.95)]
@@ -91,7 +91,7 @@ final class FamiliarRotationTests: XCTestCase {
         XCTAssertTrue(PulseEngine.rank(tracks, library: library, mood: "focus", now: now).isEmpty)
     }
     func testCachedArtistNoveltyAndPlaybackMetadataAreRefreshed() throws {
-        let seed = song(1), fresh = song(2)
+        let seed = song(1); var fresh = song(2); fresh.relatedTo = [seed.id]; fresh.directRelatedTo = [seed.id]
         var library = Library(); library.merge([seed, fresh]); library.likedIDs = [seed.id]; library.settings.repeatHours = 0
         let cached = PulseEngine.rank([fresh], library: library, now: now)
         XCTAssertTrue(try XCTUnwrap(cached.first).newArtist)

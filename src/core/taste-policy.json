@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "preferredArtists": ["ксюшенька", "бэя", "Три дня дождя", "MARKUL"],
+  "excludedArtists": ["Стас Михайлов", "Stas Mikhaylov", "Stas Mihaylov", "Дмитриенко", "Dmitrienko"],
+  "reason": "Explicit listener preferences; applies to recommendations, not manual listening."
+}

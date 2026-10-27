@@ -18,6 +18,7 @@ for(let i=0;i<samples;i++)wav.writeInt16LE(Math.round(Math.sin(i*440*2*Math.PI/2
 // depending on AVFoundation's probing strategy rather than the player's work.
 const audioReleaseAt=new Map();
 const audioServer=http.createServer((request,response)=>{
+  if(request.url==='/forma-background'){response.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Content-Security-Policy':"default-src 'none'"});response.end('<!doctype html><title>Background playback test</title><p>Forma remains playing in the background.</p>');return;}
   const range=/^bytes=(\d+)-(\d*)$/.exec(request.headers.range||'');
   const start=range?Math.min(wav.length-1,Number(range[1])):0;
   const end=range&&range[2]?Math.min(wav.length-1,Number(range[2])):wav.length-1;

@@ -39,7 +39,7 @@ test('mood, energy, vocals and artist preferences change ranking using available
   s.settings={...s.settings,mood:'any',energy:'any',vocals:'any',preferredArtists:['Two']};assert.equal(ids([match,opposite],s)[0],'opposite');
 });
 test('repeat interval and library inclusion change eligibility independently of taste',()=>{
-  const s=initialState(),tracks=[track('recent'),track('older'),track('new')];s.tracks=Object.fromEntries(tracks.map(t=>[t.id,t]));s.likes=['recent'];
+  const s=initialState(),tracks=[track('recent'),track('older','House','older',{relatedTo:['recent'],directRelatedTo:['recent']}),track('new','House','new',{relatedTo:['recent'],directRelatedTo:['recent']})];s.tracks=Object.fromEntries(tracks.map(t=>[t.id,t]));s.likes=['recent'];
   s.events=[{type:'play',trackId:'recent',at:now-10*60000},{type:'play',trackId:'older',at:now-4*3600000}];
   assert.deepEqual(new Set(ids(tracks,s)),new Set(['older','new']));
   s.settings.repeatCooldown=24;assert.deepEqual(ids(tracks,s),['new']);

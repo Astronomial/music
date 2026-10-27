@@ -117,9 +117,13 @@ final class TasteDiscoveryTests: XCTestCase {
         let pop = song(1, genre: "Pop"), rock = song(2, genre: "Rock")
         var neighbour = song(3); neighbour.directRelatedTo = [pop.id]
         var library = Library(); library.merge([pop, rock]); library.likedIDs = [pop.id, rock.id]
+        // A conflicting edge plus a broad genre must wait for independent
+        // personal evidence rather than being reported as a close neighbour.
+        XCTAssertTrue(PulseEngine.rank([neighbour], library: library, now: now).isEmpty)
+        neighbour.relatedTo = [rock.id]; neighbour.directRelatedTo = [rock.id]
         let choice = try XCTUnwrap(PulseEngine.rank([neighbour], library: library, now: now).first)
         XCTAssertFalse(choice.reason.contains(pop.title))
-        XCTAssertLessThan(choice.taste, 0.58)
+        XCTAssertGreaterThanOrEqual(choice.taste, 0.58)
     }
     func testCachePreservesSavedAndFreshDiscoveriesOverAlphabeticIDs() {
         let tracks = (0..<20).map { song($0) }; var library = Library(); library.merge(tracks)

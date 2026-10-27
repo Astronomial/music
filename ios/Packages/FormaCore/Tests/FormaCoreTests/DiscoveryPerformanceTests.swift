@@ -75,10 +75,11 @@ final class DiscoveryPerformanceTests: XCTestCase {
             }
         }
         for (anchor, genre) in [(tracks[0], "Rock"), (tracks[30], "Jazz")] {
-            var library = Library(); library.merge(tracks); library.settings.genres = []; library.settings.repeatHours = 0
+            let linked = tracks.map { source -> Track in var track = source; track.relatedTo = [anchor.id]; track.directRelatedTo = [anchor.id]; return track }
+            var library = Library(); library.merge(linked); library.settings.genres = []; library.settings.repeatHours = 0
             library.likedIDs = [anchor.id]
             for mood in [nil] + MoodMix.all.map({ Optional($0.id) }) {
-                let result = PulseEngine.rank(tracks, library: library, limit: 12, mood: mood)
+                let result = PulseEngine.rank(linked, library: library, limit: 12, mood: mood)
                 XCTAssertEqual(result.count, 12)
                 XCTAssertGreaterThanOrEqual(result.filter { $0.track.genre == genre }.count, 10, "Mood must refine actual library taste")
             }

@@ -117,6 +117,10 @@ final class AppModel: ObservableObject {
             if self.library.events.count % 4 == 0 { Task { await self.refresh(automatic: true) } }
         }
         player.pulseNext = { [weak self] excluded, mood in self?.nextPulse(excluded: excluded, mood: mood) }
+        player.pulseAllowed = { [weak self] track in
+            guard let self else { return false }
+            return !PulseDiversity.blocked(library.tracks[track.id] ?? track, settings: library.settings)
+        }
         player.onPulseLow = { [weak self] in self?.scheduleDiscoveryIfLow(force: true) }
         player.pulseRefill = { [weak self] excluded, mood in
             guard let self else { return nil }
@@ -150,6 +154,10 @@ final class AppModel: ObservableObject {
                 loaded.library.settings.discovery = 0.7; loaded.library.settings.recommendationVersion = 2
             }
             library = LibrarySync.merge(current: loaded.library, base: Library(), incoming: library)
+            if library.settings.tastePolicyVersion < RecommendationPolicy.version {
+                for name in RecommendationPolicy.preferredArtists where !library.settings.preferredArtists.contains(name) { library.settings.preferredArtists.append(name) }
+                library.settings.tastePolicyVersion = RecommendationPolicy.version
+            }
             storage = store; didLoadLibrary = true; libraryRecoveryMessage = nil; message = loaded.notice
         } catch {
             // A read/access failure must never be followed by saving an empty profile.
@@ -479,6 +487,17 @@ final class AppModel: ObservableObject {
         }
     }
     private func updateRecommendations() {
+        // A newly learned veto applies to an existing prepared item immediately,
+        // before the asynchronous ranker replaces the rest of its cache.
+        // Feedback can arrive inside an AVQueuePlayer handoff. Validate on the
+        // next actor turn so callbacks cannot recursively adopt the same item.
+        Task { [weak self] in
+            guard let self else { return }
+            if player.selectionSurface != "manual", player.isPlaying, let current = player.current,
+               PulseDiversity.blocked(library.tracks[current.id] ?? current, settings: library.settings) {
+                player.skipDislikedTrack(current.id)
+            } else { player.refreshPreparedSelection() }
+        }
         let token = UUID(); recommendationGeneration = token
         let snapshot = library, playlistID = pulsePlaylistID, trackID = pulseTrackID
         recommendationTask?.cancel(); rankingWork?.cancel()
@@ -552,9 +571,9 @@ final class AppModel: ObservableObject {
         guard UserDefaults.standard.object(forKey: "forma.soundAnalysis") as? Bool != false else { return }
         let cellular = UserDefaults.standard.object(forKey: "forma.soundCellular") as? Bool != false
         guard cellular || !player.networkPolicy.lean else { return }
-        let unanalysed = tasteProfile.seeds.first { library.tracks[$0.id]?.soundProfile == nil && Date().timeIntervalSince(soundAttempts[$0.id] ?? .distantPast) > 3600 }
+        let unanalysed = tasteProfile.seeds.first { library.tracks[$0.id]?.soundProfile?.semantic?.isValid != true && Date().timeIntervalSince(soundAttempts[$0.id] ?? .distantPast) > 3600 }
         let pool = [current] + pulseCache.prefix(2).map(\.track) + (unanalysed.map { [$0] } ?? [])
-        var seen = Set<String>(); let tracks = pool.filter { library.tracks[$0.id]?.soundProfile == nil && seen.insert($0.id).inserted }
+        var seen = Set<String>(); let tracks = pool.filter { library.tracks[$0.id]?.soundProfile?.semantic?.isValid != true && seen.insert($0.id).inserted }
         soundTask = Task(priority: .utility) {
             for track in tracks.prefix(4) {
                 try? await Task.sleep(nanoseconds: 10_000_000_000)

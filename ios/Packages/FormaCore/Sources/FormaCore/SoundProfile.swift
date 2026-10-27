@@ -9,11 +9,13 @@ public struct SoundProfile: Codable, Hashable, Sendable {
     public var dynamicRange: Double
     public var brightness: Double
     public var onsetRate: Double
+    public var semantic: SemanticAudioProfile? = nil
     public var isValid: Bool {
         version == 1 && bands.count == 8 && bands.allSatisfy { $0.isFinite && (0...1).contains($0) } && bands.reduce(0, +) >= 0.5 && (0.9...1.1).contains(bands.reduce(0) { $0 + $1 * $1 }) && seconds.isFinite && (8...30).contains(seconds) && tempo.isFinite && (0...220).contains(tempo) && [tempoConfidence, dynamicRange, brightness, onsetRate].allSatisfy { $0.isFinite && (0...1).contains($0) }
     }
     public static func similarity(_ a: SoundProfile?, _ b: SoundProfile?) -> Double? {
         guard let a, let b, a.isValid, b.isValid else { return nil }
+        if let deep = SemanticAudioProfile.similarity(a.semantic, b.semantic) { return deep }
         let timbre = zip(a.bands, b.bands).reduce(0) { $0 + $1.0 * $1.1 }
         let tempo = a.tempo > 0 && b.tempo > 0 ? exp(-([1.0, 2.0, 0.5].map { abs(a.tempo * $0 - b.tempo) / b.tempo }.min() ?? 0) * 5) : 0.5
         return min(1, max(0, timbre * 0.6 + tempo * 0.2 + (1 - abs(a.dynamicRange - b.dynamicRange)) * 0.1 + (1 - abs(a.onsetRate - b.onsetRate)) * 0.1))

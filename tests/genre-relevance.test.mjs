@@ -39,7 +39,7 @@ test('language, mood, popularity and novelty quotas cannot force unrelated recor
  const seed=song(1,'Rock'),s=initialState();s.likes=[seed.id];s.tracks={[seed.id]:seed};s.settings.repeatCooldown=0;
  // Simulate the original iOS defaults: they must not expand a real Rock library into rap/electronic music.
  s.settings.genres=['Electronic','Rock','Hip-Hop/Rap'];
- const good=Array.from({length:18},(_,i)=>song(10+i,'Rock',{mood:'calm',language:'en'}));
+ const good=Array.from({length:18},(_,i)=>song(10+i,'Rock',{mood:'calm',language:'en',relatedTo:[seed.id],directRelatedTo:[seed.id]}));
  const garbage=Array.from({length:80},(_,i)=>song(100+i,i%2?'Jazz':'Hip-Hop/Rap',{mood:'calm',discoveryGenres:['Rock'],favoriteCount:1e9,relatedTo:[seed.id],directRelatedTo:[seed.id]}));
  const moodOnly=song(300,'',{mood:'calm',discoveryGenres:['Rock']});
  const result=rankTracks([...garbage,moodOnly,...good],s,{now,limit:30});

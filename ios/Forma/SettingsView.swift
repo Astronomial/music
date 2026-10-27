@@ -34,7 +34,7 @@ struct SettingsView: View {
                         Toggle("Анализ по мобильной сети", isOn: $soundCellular).disabled(!soundAnalysis).onChange(of: soundCellular) { _, _ in model.soundPolicyChanged() }
                         Text("Проанализировано: \(trackCountText(model.library.tracks.values.filter { $0.soundProfile != nil }.count))").font(.footnote).foregroundStyle(.secondary)
                         DisclosureGroup("Как работает анализ") {
-                            Text("Учитываются темп, ритм и энергия. До 6 МБ на трек, 12 треков в час. Временное аудио удаляется после обработки.").font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
+                            Text("Нейромодель сравнивает звучание и музыкальные стили. Анализ идёт в фоне: до 6 МБ на трек, до 120 треков в час. Аудио после обработки удаляется.").font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
                         }
                     }
                 }

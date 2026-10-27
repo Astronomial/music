@@ -9,7 +9,7 @@ actor SoundAnalyzer {
     private var budget: [Date] = []
     func analyze(_ track: Track, resolver: any StreamResolving) async -> SoundProfile? {
         let now = Date(); budget.removeAll { now.timeIntervalSince($0) > 3600 }
-        guard budget.count < 12, now.timeIntervalSince(attempts[track.id] ?? .distantPast) > 300 else { return nil }
+        guard budget.count < 120, now.timeIntervalSince(attempts[track.id] ?? .distantPast) > 300 else { return nil }
         attempts[track.id] = now; budget.append(now)
         if attempts.count > 512 { attempts = attempts.filter { now.timeIntervalSince($0.value) < 3600 } }
         do {
@@ -45,6 +45,10 @@ actor SoundAnalyzer {
             let status = chunk.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: count * MemoryLayout<Float>.size, destination: $0.baseAddress!) }
             if status == kCMBlockBufferNoErr { pcm += chunk }
         }
-        try Task.checkCancellation(); return SoundProfile.analyze(pcm)
+        try Task.checkCancellation()
+        guard var profile = SoundProfile.analyze(pcm) else { return nil }
+        // Preserve DSP fallback if the optional model cannot load or run.
+        profile.semantic = try? await SemanticAnalyzer.shared.analyze(pcm)
+        try Task.checkCancellation(); return profile
     }
 }

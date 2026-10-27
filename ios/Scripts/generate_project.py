@@ -2,6 +2,7 @@
 """Generate a deterministic, dependency-free Xcode project. Run --check in CI."""
 import hashlib
 import json
+import os
 from pathlib import Path
 import sys
 import xml.etree.ElementTree as ET
@@ -20,10 +21,10 @@ def add(name, body):
     return uid(name)
 
 sources = sorted((root / 'Forma').glob('*.swift'))
-resources = sorted((root / 'Forma' / 'Resources').glob('*'))
+resources = sorted((root / 'Forma' / 'Resources').glob('*')) + [root.parent / 'build/music-model/discogs-effnet-bsdynamic-1.onnx', root.parent / 'build/music-model/discogs-effnet-bsdynamic-1.json', root.parent / 'build/music-model/NOTICE.md']
 files, source_builds, resource_builds = [], [], []
 for p in sources + resources:
-    name = str(p.relative_to(root))
+    name = os.path.relpath(p, root)
     kind = 'sourcecode.swift' if p.suffix == '.swift' else 'folder.assetcatalog' if p.suffix == '.xcassets' else 'text'
     ref = add('file:' + name, f'isa = PBXFileReference; lastKnownFileType = {kind}; path = {quote(name)}; sourceTree = "<group>";')
     files.append(ref)
@@ -39,6 +40,10 @@ for name, relative in [('FormaCore', 'Packages/FormaCore'), ('YouTubeKit', 'Vend
     dep = add('dependency:' + name, f'isa = XCSwiftPackageProductDependency; package = {ref}; productName = {name};')
     framework_builds.append(add('framework:' + name, f'isa = PBXBuildFile; productRef = {dep};'))
     packages.append(ref); dependencies.append(dep)
+ref = add('package:onnxruntime', 'isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/microsoft/onnxruntime-swift-package-manager"; requirement = { kind = exactVersion; version = "1.24.2"; };')
+dep = add('dependency:onnxruntime', f'isa = XCSwiftPackageProductDependency; package = {ref}; productName = onnxruntime;')
+framework_builds.append(add('framework:onnxruntime', f'isa = PBXBuildFile; productRef = {dep};'))
+packages.append(ref); dependencies.append(dep)
 phase_ids = []
 for name, isa, entries in [('sources', 'PBXSourcesBuildPhase', source_builds), ('frameworks', 'PBXFrameworksBuildPhase', framework_builds), ('resources', 'PBXResourcesBuildPhase', resource_builds)]:
     phase_ids.append(add(name, f'isa = {isa}; buildActionMask = 2147483647; files = ({", ".join(entries)},); runOnlyForDeploymentPostprocessing = 0;'))
@@ -48,7 +53,7 @@ for scope in ['project', 'target']:
     for mode in ['Debug', 'Release']:
         settings = {'CLANG_ENABLE_MODULES': 'YES', 'SDKROOT': 'iphoneos', 'IPHONEOS_DEPLOYMENT_TARGET': '17.0', 'SWIFT_VERSION': '5.0'}
         if scope == 'target':
-            settings.update({'PRODUCT_NAME': 'Forma', 'PRODUCT_BUNDLE_IDENTIFIER': 'music.forma.ios', 'INFOPLIST_FILE': 'Forma/Info.plist', 'GENERATE_INFOPLIST_FILE': 'NO', 'MARKETING_VERSION': '1.11.2', 'CURRENT_PROJECT_VERSION': '25', 'TARGETED_DEVICE_FAMILY': '1,2', 'SUPPORTED_PLATFORMS': 'iphoneos iphonesimulator', 'CODE_SIGN_STYLE': 'Automatic', 'ASSETCATALOG_COMPILER_APPICON_NAME': 'AppIcon', 'LD_RUNPATH_SEARCH_PATHS': '$(inherited) @executable_path/Frameworks', 'SWIFT_STRICT_CONCURRENCY': 'targeted'})
+            settings.update({'PRODUCT_NAME': 'Forma', 'PRODUCT_BUNDLE_IDENTIFIER': 'music.forma.ios', 'INFOPLIST_FILE': 'Forma/Info.plist', 'GENERATE_INFOPLIST_FILE': 'NO', 'MARKETING_VERSION': '1.12.0', 'CURRENT_PROJECT_VERSION': '26', 'TARGETED_DEVICE_FAMILY': '1,2', 'SUPPORTED_PLATFORMS': 'iphoneos iphonesimulator', 'CODE_SIGN_STYLE': 'Automatic', 'ASSETCATALOG_COMPILER_APPICON_NAME': 'AppIcon', 'LD_RUNPATH_SEARCH_PATHS': '$(inherited) @executable_path/Frameworks', 'SWIFT_STRICT_CONCURRENCY': 'targeted'})
         settings.update({'SWIFT_OPTIMIZATION_LEVEL': '-Onone' if mode == 'Debug' else '-O', 'DEBUG_INFORMATION_FORMAT': 'dwarf' if mode == 'Debug' else 'dwarf-with-dsym'})
         if mode == 'Debug': settings['SWIFT_ACTIVE_COMPILATION_CONDITIONS'] = 'DEBUG'
         body = ' '.join(f'{key} = {quote(value)};' for key, value in sorted(settings.items()))
@@ -75,4 +80,4 @@ for path, data in outputs.items():
         if not path.exists() or path.read_text() != data: raise SystemExit(f'Outdated: {path}; run ios/Scripts/generate_project.py')
     else:
         path.parent.mkdir(parents=True, exist_ok=True); path.write_text(data)
-print(f'PASS: Xcode project includes {len(sources)} Swift sources, {len(resources)} resources and 2 local packages.')
+print(f'PASS: Xcode project includes {len(sources)} Swift sources, {len(resources)} resources and 3 packages (2 local, pinned ONNX Runtime).')

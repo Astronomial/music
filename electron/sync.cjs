@@ -38,8 +38,8 @@ class SyncServer {
     if(!privateIP(req.socket.remoteAddress||'')||req.method!=='POST'||req.headers.origin)return send(403,{error:'Доступ разрешён только приложению в локальной сети'});
     if(!['/health','/pair','/sync','/sync/ping','/sync/prepare','/sync/status','/sync/approve','/sync/reject','/sync/ack'].includes(req.url))return send(404,{error:'Не найдено'});
     if(req.url==='/health')return send(200,{protocolVersion:2});
-    if(Number(req.headers['content-length'])>8*1024**2)return send(413,{error:'Библиотека слишком большая'});
-    const chunks=[];let size=0;for await(const part of req){size+=part.length;if(size>8*1024**2){req.destroy();return;}chunks.push(part);}
+    if(Number(req.headers['content-length'])>32*1024**2)return send(413,{error:'Библиотека слишком большая'});
+    const chunks=[];let size=0;for await(const part of req){size+=part.length;if(size>32*1024**2){req.destroy();return;}chunks.push(part);}
     const body=JSON.parse(Buffer.concat(chunks).toString('utf8'));
     if(req.url==='/pair'){
       // Retrying a lost reply on another LAN address must not consume a second code.

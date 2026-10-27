@@ -86,13 +86,15 @@ with tempfile.TemporaryDirectory(prefix='forma-simulator-') as directory:
         run('xcrun','simctl','io',device,'screenshot',str(root/'ios/native-layout.png'))
         design = container/'Documents/design-audit'
         if not design.is_dir(): raise RuntimeError('Native design captures missing')
-        # Moving to Safari is the assertion's only purpose: opening our pinned
-        # self-signed HTTPS server additionally invokes unrelated browser/TLS UI.
+        # Actively open a non-media loopback page. Launching an already running
+        # Safari process alone can succeed without activating its foreground scene.
+        # The page has no external network, TLS prompt or competing audio.
+        background_page = urllib.parse.urlunsplit((audio_address.scheme, audio_address.netloc, '/forma-background', '', ''))
         # A cold Simulator may time out its launch RPC after Safari actually opens;
         # confirm the app's background handshake before retrying or failing.
         for attempt in range(3):
             try:
-                subprocess.check_output(['xcrun', 'simctl', 'launch', device, 'com.apple.mobilesafari'], text=True, timeout=30)
+                subprocess.check_output(['xcrun', 'simctl', 'openurl', device, background_page], text=True, timeout=30)
                 break
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
                 if report.exists():
@@ -113,6 +115,10 @@ with tempfile.TemporaryDirectory(prefix='forma-simulator-') as directory:
         else: raise RuntimeError('Native simulator smoke timed out')
         passed = True
     finally:
+        if container and (container/'Documents/smoke-result.json').exists():
+            snapshot = (container/'Documents/smoke-result.json').read_text()
+            (root/'ios/native-smoke-result.json').write_text(snapshot)
+            if not passed: print('Last native report: ' + snapshot, flush=True)
         if container and (container/'Documents/native-startup.txt').exists():
             shutil.copy2(container/'Documents/native-startup.txt', root/'ios/native-startup.txt')
             print((container/'Documents/native-startup.txt').read_text(), flush=True)
@@ -128,6 +134,8 @@ with tempfile.TemporaryDirectory(prefix='forma-simulator-') as directory:
             if processes.stdout.strip():
                 pid = processes.stdout.strip().splitlines()[-1]
                 diagnose(['sample',pid,'3','-file',str(root/'ios/native-process-sample.txt')], 'native-sample-log.txt')
+                sample = root/'ios/native-process-sample.txt'
+                if sample.exists(): print('Native stack sample: ' + sample.read_text()[-14000:], flush=True)
         if container and (container/'Documents/design-audit').is_dir():
             shutil.copytree(container/'Documents/design-audit', root/'ios/native-design', dirs_exist_ok=True)
         if launch and launch.poll() is None:

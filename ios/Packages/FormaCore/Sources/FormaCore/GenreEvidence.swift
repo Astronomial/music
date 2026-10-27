@@ -17,25 +17,40 @@ public struct GenreEvidence: Codable, Sendable, Hashable {
 
 /// Recording metadata is evidence. Search directions never become genre labels.
 public enum GenreClassifier {
+    public static let hardExcluded: Set<String> = ["Chanson", "Blatnaya", "Caucasian Estrada", "Children's Music"]
     static let aliases: [String: [String]] = {
         guard let url = Bundle.module.url(forResource: "genre-aliases", withExtension: "json"), let data = try? Data(contentsOf: url), let rules = try? JSONDecoder().decode([String: [String]].self, from: data) else { return [:] }
         return rules
     }()
-    private static let reverse = Dictionary(aliases.flatMap { key, values in values.map { ($0, key) } }, uniquingKeysWith: { a, _ in a })
+    private static let reverse = Dictionary(aliases.flatMap { key, values in ([key] + values).map { (PulseEngine.fold($0), key) } }, uniquingKeysWith: { a, _ in a })
     public static func canonical(_ value: String) -> [String] {
+        // Most catalogue/library records already contain a canonical name.
+        // Avoid normalizing the same short value thousands of times per pick.
+        if aliases[value] != nil { return [value] }
         let text = PulseEngine.fold(value)
         if let exact = reverse[text] { return [exact] }
         let parts = value.components(separatedBy: CharacterSet(charactersIn: ",;|/"))
         return parts.count > 1 ? Array(Set(parts.flatMap(canonical))).sorted() : []
     }
+    /// Hard rules survive conflicting positive metadata and library membership.
+    /// Search directions, artist names and geographical identity are not labels.
+    public static func hardVeto(_ track: Track) -> Bool {
+        if !hardExcluded.isDisjoint(with: canonical(track.genre)) { return true }
+        if let evidence = track.genreEvidence, evidence.isValid, !hardExcluded.isDisjoint(with: evidence.values) { return true }
+        return track.tags.contains { !hardExcluded.isDisjoint(with: canonical($0)) }
+    }
     public static func genres(_ track: Track) -> [String] {
         if let evidence = track.genreEvidence, evidence.isValid, evidence.confidence >= 0.8, !evidence.values.isEmpty { return evidence.values }
         let metadata = canonical(track.genre)
-        return metadata.isEmpty ? MoodFitness.recordingGenres(track) : metadata
+        if !metadata.isEmpty { return metadata }
+        let curated = MoodFitness.recordingGenres(track)
+        return curated.isEmpty ? (track.soundProfile?.semantic?.inferredGenres ?? []) : curated
     }
     public static func confidence(_ track: Track) -> Double {
         if let evidence = track.genreEvidence, evidence.isValid, evidence.confidence >= 0.8, !evidence.values.isEmpty { return evidence.confidence }
-        return canonical(track.genre).isEmpty ? (MoodFitness.recordingGenres(track).isEmpty ? 0 : 0.85) : 1
+        if !canonical(track.genre).isEmpty { return 1 }
+        if !MoodFitness.recordingGenres(track).isEmpty { return 0.85 }
+        return track.soundProfile?.semantic?.inferredGenres.isEmpty == false ? 0.7 : 0
     }
     private static let neighbours = [["Electronic", "House", "Techno", "Drum & Bass"], ["Ambient", "Lo-Fi"], ["Pop", "R&B/Soul"], ["Rock", "Alternative", "Metal"], ["Hip-Hop/Rap", "R&B/Soul"], ["Jazz", "Lo-Fi"]]
     public static func relation(_ a: Track, _ b: Track) -> Double {

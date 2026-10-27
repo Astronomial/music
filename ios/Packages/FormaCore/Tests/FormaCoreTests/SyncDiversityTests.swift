@@ -52,7 +52,7 @@ final class SyncDiversityTests: XCTestCase {
     }
     func testQueueDeliversUniqueRecordingsAndSpacedArtistsFromSkewedCatalogue() {
         var library = Library(); let seed = track(1, artist: "Saved")
-        let tracks = (2...40).map { track($0, artist: "Saved") } + (41...64).map { track($0, artist: "New \($0)") }
+        let tracks = ((2...40).map { track($0, artist: "Saved") } + (41...64).map { track($0, artist: "New \($0)") }).map { source -> Track in var track = source; track.relatedTo = [seed.id]; track.directRelatedTo = [seed.id]; return track }
         library.merge([seed] + tracks); library.likedIDs = [seed.id]; library.settings.artistDiversity = 1
         let result = PulseEngine.rank(tracks, library: library, limit: 18, now: now)
         XCTAssertEqual(result.count, 18); XCTAssertGreaterThanOrEqual(Set(result.map { $0.track.artist }).count, 16)
