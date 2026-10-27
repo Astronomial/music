@@ -1,7 +1,7 @@
 const http=require('node:http');
 const fs=require('node:fs/promises');
 const path=require('node:path');
-const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.png':'image/png','.svg':'image/svg+xml','.ico':'image/x-icon','.woff2':'font/woff2'};
+const mime={'.onnx':'application/octet-stream','.wasm':'application/wasm','.mjs':'text/javascript; charset=utf-8','.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.png':'image/png','.svg':'image/svg+xml','.ico':'image/x-icon','.woff2':'font/woff2'};
 // A loopback origin lets the official IFrame API validate postMessage origins.
 // The server serves immutable UI assets only; native operations remain behind IPC.
 async function startStaticServer(root){
