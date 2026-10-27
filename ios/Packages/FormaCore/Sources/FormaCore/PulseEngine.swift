@@ -270,7 +270,10 @@ public enum PulseEngine {
             let surpriseDeficit = history.surpriseRate * Double(history.classifiedCount + result.count + 1) - Double(surpriseCount)
             if surpriseDeficit < 0.5 {
                 let safer = indices.filter { pool[$0].nearby }
-                if !safer.isEmpty { indices = safer }
+                // An empty close pool cannot turn an explicit exploration limit
+                // into permission to play every adjacent-genre candidate.
+                guard !safer.isEmpty else { break }
+                indices = safer
             }
             let balanced = indices.filter { pool[$0].known != (deficit >= 0.5) }; if !balanced.isEmpty { indices = balanced }
             if deficit >= 0.5, newReleaseTarget * Double(newCount + 1) - Double(freshTracks) >= 0.5 {

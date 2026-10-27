@@ -1,6 +1,6 @@
-import {GENRE_ALIASES,genresOf} from './genre-evidence.mjs';
+import {GENRE_ALIASES,genresOf,hardGenreVeto,HARD_EXCLUDED_GENRES} from './genre-evidence.mjs';
 export {genresOf} from './genre-evidence.mjs';
-export const WAVE_GENRES=Object.keys(GENRE_ALIASES);
+export const WAVE_GENRES=Object.keys(GENRE_ALIASES).filter(g=>!HARD_EXCLUDED_GENRES.has(g));
 export const MOODS=[
   {id:'any',name:'Любое',query:'',values:[]},
   {id:'calm',name:'Спокойное',query:'calm relaxing',values:['peaceful','calm','relaxing']},
@@ -28,6 +28,7 @@ export function waveSettings(settings={}){
 const contains=(text,term)=>` ${fold(text)} `.includes(` ${fold(term)} `);
 export function matchesArtist(track,name){return contains(track.artist,name);}
 export function blockedByPreferences(track,settings){
+  if(hardGenreVeto(track))return true;
   if(settings.blockedArtists.some(name=>matchesArtist(track,name)))return true;
   const {values,confidence}=genresOf(track);
   if(values.length&&(confidence===1?values.some(g=>settings.excludedGenres.includes(g)):values.every(g=>settings.excludedGenres.includes(g))))return true;

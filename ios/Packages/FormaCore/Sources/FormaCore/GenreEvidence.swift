@@ -17,16 +17,24 @@ public struct GenreEvidence: Codable, Sendable, Hashable {
 
 /// Recording metadata is evidence. Search directions never become genre labels.
 public enum GenreClassifier {
+    public static let hardExcluded: Set<String> = ["Chanson", "Blatnaya", "Caucasian Estrada"]
     static let aliases: [String: [String]] = {
         guard let url = Bundle.module.url(forResource: "genre-aliases", withExtension: "json"), let data = try? Data(contentsOf: url), let rules = try? JSONDecoder().decode([String: [String]].self, from: data) else { return [:] }
         return rules
     }()
-    private static let reverse = Dictionary(aliases.flatMap { key, values in values.map { ($0, key) } }, uniquingKeysWith: { a, _ in a })
+    private static let reverse = Dictionary(aliases.flatMap { key, values in ([key] + values).map { (PulseEngine.fold($0), key) } }, uniquingKeysWith: { a, _ in a })
     public static func canonical(_ value: String) -> [String] {
         let text = PulseEngine.fold(value)
         if let exact = reverse[text] { return [exact] }
         let parts = value.components(separatedBy: CharacterSet(charactersIn: ",;|/"))
         return parts.count > 1 ? Array(Set(parts.flatMap(canonical))).sorted() : []
+    }
+    /// Hard rules survive conflicting positive metadata and library membership.
+    /// Search directions, artist names and geographical identity are not labels.
+    public static func hardVeto(_ track: Track) -> Bool {
+        if !hardExcluded.isDisjoint(with: canonical(track.genre)) { return true }
+        if let evidence = track.genreEvidence, evidence.isValid, !hardExcluded.isDisjoint(with: evidence.values) { return true }
+        return track.tags.contains { !hardExcluded.isDisjoint(with: canonical($0)) }
     }
     public static func genres(_ track: Track) -> [String] {
         if let evidence = track.genreEvidence, evidence.isValid, evidence.confidence >= 0.8, !evidence.values.isEmpty { return evidence.values }

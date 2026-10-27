@@ -5,9 +5,14 @@ export const GENRE_ALIASES={
   'Hip-Hop/Rap':['hip hop','hip hop rap','rap','alternative rap','хип хоп','рэп'],Alternative:['alternative','indie','alternative rock','альтернатива'],
   Pop:['pop','russian pop','поп'],Ambient:['ambient','эмбиент'],Jazz:['jazz','джаз'],Rock:['rock','russian rock','рок'],
   'R&B/Soul':['r b','rnb','r b soul','soul','соул'],'Lo-Fi':['lo fi','lofi'],'Drum & Bass':['drum bass','drum and bass','dnb','драм н бэйс'],
-  Classical:['classical','классическая'],Metal:['metal','heavy metal','метал'],Reggae:['reggae','регги'],'Folk/Country':['folk','country','singer songwriter','фолк']
+  Classical:['classical','классическая'],Metal:['metal','heavy metal','метал'],Reggae:['reggae','регги'],'Folk/Country':['folk','country','singer songwriter','фолк'],
+  Chanson:['chanson','russian chanson','русский шансон','шансон'],
+  Blatnaya:['blatnaya','blatnaya pesnya','criminal chanson','блатная','блатная песня','блатные песни','блатняк','тюремная песня','тюремные песни'],
+  'Caucasian Estrada':['caucasian estrada','caucasian pop','кавказская эстрада','кавказский шансон']
 };
+export const HARD_EXCLUDED_GENRES=new Set(['Chanson','Blatnaya','Caucasian Estrada']);
 export const genreFold=value=>String(value||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/ё/g,'е').replace(/[^\p{L}\p{N}]+/gu,' ').trim().replace(/\s+/g,' ');
+const genreNames=new Map(Object.entries(GENRE_ALIASES).flatMap(([name,aliases])=>[name,...aliases].map(alias=>[genreFold(alias),name])));
 const curatedRecordings=new Map(recordings.map(r=>[artistIdentity(r.artist)+'|'+recordingIdentity(r.title),r]));
 
 export function canonicalGenres(value){
@@ -15,10 +20,17 @@ export function canonicalGenres(value){
   return [...new Set(parts.flatMap(part=>{
     const text=genreFold(part);
     // Exact aliases first: Alternative Rock must not also become generic Rock.
-    const exact=Object.entries(GENRE_ALIASES).find(([,aliases])=>aliases.includes(text));
-    if(exact)return [exact[0]];
+    const exact=genreNames.get(text);
+    if(exact)return [exact];
     return String(part||'').split(/[,;|/]/).length>1?String(part).split(/[,;|/]/).flatMap(canonicalGenres):[];
   }))];
+}
+// A veto is independent of positive metadata selection: a conflicting Pop
+// label, library membership or recommendation score cannot erase it. Region,
+// artist names and query directions are deliberately not classifiers.
+export function hardGenreVeto(track){
+  const values=[...canonicalGenres(track.genre),...(validateGenreEvidence(track.genreEvidence)?.values||[]),...(track.tags||[]).flatMap(canonicalGenres)];
+  return values.some(g=>HARD_EXCLUDED_GENRES.has(g));
 }
 export function validateGenreEvidence(e){
   if(!e||e.version!==1||e.source!=='itunes'||!Array.isArray(e.values)||!Number.isFinite(e.checkedAt)||e.checkedAt<0||!Number.isFinite(e.confidence))return null;
