@@ -27,7 +27,7 @@ test('radio coverage deduplicates recordings and separates seed songs from disco
  assert.equal(r.genreCoverage,null);assert.equal(r.relevance,null);
 });
 test('radio errors, malformed artists and missing recording identities are not discoveries',()=>{
- for(const data of [{error:'upstream unavailable'},[],null,{[seed]:{}},{[seed]:[{...row(),similar_artist_mbid:seed}]},{[seed]:[{...row(seed),recording_mbid:'bad'}]}])assert.equal(summariseRadio(data,seed).status,'invalid_response');
+ for(const data of [{error:'upstream unavailable'},[],null,{[seed]:{}},{[seed]:[row()]},{[seed]:[{...row(seed),recording_mbid:'bad'}]}])assert.equal(summariseRadio(data,seed).status,'invalid_response');
  assert.equal(summariseRadio({},seed).status,'empty');
  assert.equal(summariseRadio({[seed]:[]},seed).status,'empty');
 });
