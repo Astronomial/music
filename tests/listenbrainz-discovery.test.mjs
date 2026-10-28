@@ -4,6 +4,7 @@ import {SimilarArtistCache, similarArtists, collaborativeMatch} from '../src/cor
 import {initialState,normalizeTrack} from '../src/core/model.mjs';
 import {rankTracks} from '../src/core/recommender.mjs';
 import {YouTubeCatalog} from '../src/core/youtube.mjs';
+import {collectYouTubeCandidates} from '../src/core/catalog.mjs';
 
 const seedID='3c1b6453-a4a0-4801-9e33-af590e33b875',otherID='b2e4a44e-e105-4325-a085-75d608753f0e';
 const data={ [seedID]:[],[otherID]:[{recording_mbid:'401c1a5d-56e7-434d-b07e-a14d4e7eb83c',similar_artist_mbid:otherID,similar_artist_name:'Новый артист',total_listen_count:8}] };
@@ -54,4 +55,15 @@ test('neighbour lookup searches only exact returned artists and never attaches a
  service.search=async()=>({items:[song(1,{artist:'Новый артист - Topic'}),song(2,{artist:'Not the artist'})]});
  const result=await service.request('/tracks/neighbours',{query:'Три дня дождя'});
  assert.equal(result.items.length,1);assert.deepEqual(result.items[0].directRelatedTo,[]);assert.deepEqual(result.items[0].retrievalSources,['listenbrainz-neighbour']);
+});
+test('empty optional enrichment cannot hide a complete YouTube catalogue outage',async()=>{
+ const seed=song(1),state=initialState();state.likes=[seed.id];state.tracks={[seed.id]:seed};
+ await assert.rejects(collectYouTubeCandidates(state,async route=>{if(route==='/tracks/neighbours')return [];throw new Error('YouTube offline');}),/YouTube не отвечает/);
+});
+test('cached neighbouring artists rotate instead of repeating the same first two forever',async()=>{
+ const names=Array.from({length:6},(_,i)=>({mbid:String(i),name:'Artist '+i}));
+ const service=new YouTubeCatalog(async()=>{throw new Error('not required');},{neighbourLookup:()=>names});
+ service.search=async name=>({items:[song(Number(name.split(' ')[1])+10,{artist:name})]});
+ const seen=new Set();for(let i=0;i<3;i++)for(const track of (await service.request('/tracks/neighbours',{query:'Три дня дождя'})).items)seen.add(track.artist);
+ assert.equal(seen.size,6);
 });
