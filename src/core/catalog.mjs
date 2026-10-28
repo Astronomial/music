@@ -57,6 +57,10 @@ export async function collectYouTubeCandidates(state,request,{context=null,onBat
     // from these globally known songs to the listener's favourites.
     for(const query of moodSeedQueries(mix.id,{artists,genres:permitted,offset:Math.max(0,round)*3,limit:3}))jobs.push({route:'/tracks/search',params:{query},context:{retrievalSources:['mood-reference']}});
   }
+  // Optional co-listening enrichment runs after the ordinary sources. A cold
+  // lookup only warms a cache in the main process and returns immediately.
+  const collaborator=anchors.filter(t=>t.source==='youtube'&&artists.includes(t.artist));
+  if(collaborator.length){const seed=collaborator[Math.max(0,round)%collaborator.length];jobs.push({route:'/tracks/neighbours',params:{query:seed.artist},context:{relatedTo:[seed.id],retrievalSources:['listenbrainz-neighbour','lb-root:'+seed.videoId]}});}
   const found=new Map();let successes=0;
   let expanded=false;const primaryCount=jobs.length;
   for(let i=0;i<jobs.length;){
@@ -64,7 +68,7 @@ export async function collectYouTubeCandidates(state,request,{context=null,onBat
     const batch=await Promise.allSettled(batchJobs.map(({route,params})=>request(route,params)));
     const batchTracks=[];
     for(let j=0;j<batch.length;j++){
-      const result=batch[j];if(result.status!=='fulfilled')continue;successes++;
+      const result=batch[j];if(result.status!=='fulfilled')continue;if(batchJobs[j].route!=='/tracks/neighbours'||result.value.length)successes++;
       for(const raw of result.value){
         const t=normalizeTrack(raw);if(!t.streamable)continue;
         const merged={...t};

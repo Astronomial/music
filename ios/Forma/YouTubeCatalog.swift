@@ -8,9 +8,11 @@ protocol MusicCatalogProviding: Sendable {
     func orderedSearch(_ query: String, recent: Bool) async throws -> [Track]
     func artistTracks(_ track: Track) async throws -> [Track]
     func related(to track: Track) async throws -> [Track]
+    func neighbours(to track: Track) async throws -> [Track]
     func describe(videoID: String) async -> Track?
 }
 extension MusicCatalogProviding {
+    func neighbours(to track: Track) async throws -> [Track] { [] }
     func discoveryPage(_ request: DiscoveryRequest) async throws -> DiscoveryPage {
         switch request.kind {
         case .related: return DiscoveryPage(tracks: try await related(to: request.seed))
@@ -29,10 +31,17 @@ extension MusicCatalogProviding {
 /// Unofficial renderer formats can change; the parser is isolated in FormaCore.
 actor YouTubeCatalog: MusicCatalogProviding {
     private let releaseCatalog = GenreCatalog()
+    private let neighbourCatalog = SimilarArtistStore { url in
+        var request = URLRequest(url: url); request.timeoutInterval = 15
+        request.setValue("Forma/1.20 (https://github.com/Astronomial/music)", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        return try await BoundedHTTPData(limit: 2 * 1024 * 1024).load(request)
+    }
     private let session: URLSession
     private var versions: [Bool: (String, Date)] = [:]
     private var versionTasks: [Bool: Task<String, Error>] = [:]
     private var cache: [String: (Date, [Track])] = [:]
+    private var neighbourOffsets: [String: Int] = [:]
     init() {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 12
@@ -83,6 +92,28 @@ actor YouTubeCatalog: MusicCatalogProviding {
         return try CatalogParser.tracks(from: data).filter { $0.id != track.id }.map { t in
             var related = t; related.relatedTo = [track.id]; related.directRelatedTo = [track.id]; return related
         }
+    }
+    func neighbours(to seed: Track) async throws -> [Track] {
+        // Cold optional lookup only warms a separate actor cache. No metadata
+        // server is awaited by playback, ordinary discovery or manual search.
+        let names = await neighbourCatalog.cached(seed.artist)
+        let key = GenreClassifier.artistIdentity(seed.artist)
+        let window = CollaborativeDiscovery.window(names, offset: neighbourOffsets[key, default: 0])
+        if !names.isEmpty {
+            if neighbourOffsets.count >= 64 { neighbourOffsets.removeAll(keepingCapacity: true) }
+            neighbourOffsets[key] = (neighbourOffsets[key, default: 0] + window.count) % names.count
+        }
+        var result: [Track] = [], seen = Set<String>()
+        for artist in window {
+            try Task.checkCancellation()
+            guard let tracks = try? await search(artist.name) else { continue }
+            for var track in tracks.filter({ GenreClassifier.artistIdentity($0.artist) == GenreClassifier.artistIdentity(artist.name) }).prefix(12) where seen.insert(track.id).inserted {
+                track.relatedTo = Array(Set(track.relatedTo + [seed.id]))
+                track.retrievalSources = Array(Set(track.retrievalSources + ["listenbrainz-neighbour", "lb-root:" + seed.id]))
+                result.append(track)
+            }
+        }
+        return result
     }
     func discoveryPage(_ intent: DiscoveryRequest) async throws -> DiscoveryPage {
         if intent.kind == .releases {

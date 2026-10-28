@@ -1,6 +1,6 @@
 import {publicationAgeDays} from './search.mjs';
 import {normalizeTrack} from './model.mjs';
-import {matchRecordingGenre} from './genre-evidence.mjs';
+import {matchRecordingGenre,artistIdentity} from './genre-evidence.mjs';
 import {recentSongPublication} from './release-discovery.mjs';
 
 export const validVideoID=id=>typeof id==='string'&&/^[\w-]{11}$/.test(id);
@@ -23,7 +23,17 @@ function nodes(page){return [...(page.contents||[])].flatMap(s=>s.contents||[]);
 
 // Public catalogue metadata. Native audio playback is handled in the main process.
 export class YouTubeCatalog {
-  constructor(createClient,{releaseLookup=async()=>[]}={}){this.createClient=createClient;this.releaseLookup=releaseLookup;this.client=null;this.searches=new Map();this.artists=new Map();this.relatedCache=new Map();}
+  constructor(createClient,{releaseLookup=async()=>[],neighbourLookup=()=>[]}={}){this.createClient=createClient;this.releaseLookup=releaseLookup;this.neighbourLookup=neighbourLookup;this.neighbourOffsets=new Map();this.client=null;this.searches=new Map();this.artists=new Map();this.relatedCache=new Map();}
+  async neighbours(artist){
+    const all=this.neighbourLookup(artist),key=artistIdentity(artist),offset=this.neighbourOffsets.get(key)||0,found=new Map();
+    const names=Array.from({length:Math.min(2,all.length)},(_,i)=>all[(offset+i)%all.length]);
+    if(names.length){this.neighbourOffsets.delete(key);this.neighbourOffsets.set(key,(offset+names.length)%all.length);while(this.neighbourOffsets.size>64)this.neighbourOffsets.delete(this.neighbourOffsets.keys().next().value);}
+    const pages=await Promise.allSettled(names.map(a=>this.search(a.name,'song')));
+    for(let i=0;i<pages.length;i++)if(pages[i].status==='fulfilled'){
+      for(const track of pages[i].value.items.filter(t=>artistIdentity(t.artist)===artistIdentity(names[i].name)).slice(0,12))found.set(track.id,{...track,retrievalSources:[...new Set([...track.retrievalSources,'listenbrainz-neighbour'])]});
+    }
+    return {items:[...found.values()],hasMore:false};
+  }
   async releases(artist,offset=0){
     const rows=await this.releaseLookup(artist),found=[];
     const pages=await Promise.allSettled(rows.slice(0,2).map(row=>this.search(row.artistName+' '+row.trackName,'song')));
@@ -86,6 +96,7 @@ export class YouTubeCatalog {
   async request(route,params={}){
     const query=String(params.query||params.genre||'').trim().slice(0,160),offset=Math.max(0,Math.min(800,Number(params.offset)||0));
     try{
+      if(route==='/tracks/neighbours'&&query)return await this.neighbours(query);
       if(route==='/tracks/releases'&&query)return await this.releases(query,offset);
       if(route==='/tracks/search'&&query&&['recent','popular'].includes(params.sort_method))return await this.orderedSearch(query,params.sort_method,offset);
       if(route==='/tracks/search'&&query)return await this.search(query,'song',offset);
