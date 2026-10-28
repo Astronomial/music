@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {SimilarArtistCache, similarArtists, collaborativeMatch} from '../src/core/listenbrainz.mjs';
+import {SimilarArtistCache, similarArtists, collaborativeMatch,collaborativeLink} from '../src/core/listenbrainz.mjs';
 import {initialState,normalizeTrack} from '../src/core/model.mjs';
 import {rankTracks} from '../src/core/recommender.mjs';
 import {YouTubeCatalog} from '../src/core/youtube.mjs';
 import {collectYouTubeCandidates} from '../src/core/catalog.mjs';
+import {portableLibrary,applyPortable} from '../src/core/sync.mjs';
 
 const seedID='3c1b6453-a4a0-4801-9e33-af590e33b875',otherID='b2e4a44e-e105-4325-a085-75d608753f0e';
 const data={ [seedID]:[],[otherID]:[{recording_mbid:'401c1a5d-56e7-434d-b07e-a14d4e7eb83c',similar_artist_mbid:otherID,similar_artist_name:'Новый артист',total_listen_count:8}] };
@@ -39,7 +40,7 @@ test('co-listening requires compatible recording evidence; a search label cannot
  assert.equal(collaborativeMatch(good,seed),true);assert.equal(collaborativeMatch(unknown,seed),false);assert.equal(collaborativeMatch(wrong,seed),false);
 });
 test('a verified collaborative edge opens nearby discoveries without converting it to a direct track link',()=>{
- const seed=song(1),candidate=song(2,{relatedTo:[seed.id],retrievalSources:['listenbrainz-neighbour']});
+ const seed=song(1),candidate=song(2,{relatedTo:[seed.id],retrievalSources:['listenbrainz-neighbour','lb-root:'+seed.videoId]});
  const s=initialState();s.tracks={[seed.id]:seed};s.likes=[seed.id];
  const result=rankTracks([candidate],s,{now:1800000000000});assert.equal(result.length,1);assert.equal(result[0].lane,'nearby');
  const wrong={...candidate,id:'wrong',genre:'Jazz'},unknown={...candidate,id:'unknown',genre:'',discoveryGenres:['Alternative']};
@@ -71,4 +72,10 @@ test('a merged artist-source label cannot corroborate unrelated old graph roots'
  const seed=song(1),candidate=song(2,{relatedTo:[seed.id,'old-root'],retrievalSources:['listenbrainz-neighbour','lb-root:99999999999']});
  const s=initialState();s.tracks={[seed.id]:seed};s.likes=[seed.id];
  assert.deepEqual(rankTracks([candidate],s,{now:1800000000000}),[]);
+});
+test('approved portable sync preserves the same raw recording provenance across PC and mobile IDs',()=>{
+ const seed=song(1),candidate=song(2,{relatedTo:[seed.id],retrievalSources:['listenbrainz-neighbour','lb-root:'+seed.videoId]});
+ const s=initialState();s.tracks={[seed.id]:seed,[candidate.id]:candidate};s.likes=[seed.id];
+ const wire=portableLibrary(s);assert.ok(wire.tracks[candidate.videoId].retrievalSources.includes('lb-root:'+seed.videoId));
+ const restored=applyPortable(initialState(),wire);assert.equal(collaborativeLink(restored.tracks[candidate.id],restored.tracks[seed.id]),true);
 });

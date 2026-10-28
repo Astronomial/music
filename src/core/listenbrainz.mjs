@@ -53,6 +53,11 @@ export function collaborativeMatch(track,seed){
  return similarity!==null&&similarity>=.85;
 }
 
+export function collaborativeLink(track,seed){
+ const id=seed.videoId||String(seed.id||'').replace(/^yt_/,'');
+ return /^[\w-]{11}$/.test(id)&&Boolean(track.retrievalSources?.includes('lb-root:'+id))&&collaborativeMatch(track,seed);
+}
+
 async function boundedJSON(fetcher,url){
  const response=await fetcher(url,{headers:{'User-Agent':'Forma/1.20 (https://github.com/Astronomial/music)','Accept':'application/json'},signal:AbortSignal.timeout(15000),redirect:'error',credentials:'omit'});
  if(!response.ok){await response.body?.cancel();throw new Error('Optional catalogue unavailable');}

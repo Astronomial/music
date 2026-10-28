@@ -109,7 +109,7 @@ actor YouTubeCatalog: MusicCatalogProviding {
             guard let tracks = try? await search(artist.name) else { continue }
             for var track in tracks.filter({ GenreClassifier.artistIdentity($0.artist) == GenreClassifier.artistIdentity(artist.name) }).prefix(12) where seen.insert(track.id).inserted {
                 track.relatedTo = Array(Set(track.relatedTo + [seed.id]))
-                track.retrievalSources = Array(Set(track.retrievalSources + ["listenbrainz-neighbour"]))
+                track.retrievalSources = Array(Set(track.retrievalSources + ["listenbrainz-neighbour", "lb-root:" + seed.id]))
                 result.append(track)
             }
         }

@@ -46,6 +46,9 @@ public enum CollaborativeDiscovery {
         if !GenreClassifier.genres(track).isEmpty, !GenreClassifier.genres(seed).isEmpty { return GenreClassifier.relation(track, seed) > 0 }
         return (audio ?? 0) >= 0.85
     }
+    public static func linked(_ track: Track, seed: Track) -> Bool {
+        VideoID.isValid(seed.id) && track.retrievalSources.contains("lb-root:" + seed.id) && matches(track, seed: seed)
+    }
     public enum Failure: Error { case invalidResponse }
 }
 

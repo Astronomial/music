@@ -83,7 +83,7 @@ public enum PulseEngine {
         let comparable = !genres.isEmpty && !profile.genres.isEmpty
         let artistNeighbour = (track.retrievalSources.contains("artist-neighbour") || track.retrievalSources.contains("listenbrainz-neighbour")) && track.relatedTo.contains { id in
             guard profile.positiveIDs.contains(id), let seed = library.tracks[id] else { return false }
-            if track.retrievalSources.contains("listenbrainz-neighbour"), CollaborativeDiscovery.matches(track, seed: seed) { return true }
+            if track.retrievalSources.contains("listenbrainz-neighbour"), CollaborativeDiscovery.linked(track, seed: seed) { return true }
             guard track.retrievalSources.contains("artist-neighbour"), compatible(seed) else { return false }
             let sourceGenres = liveMetadata ? GenreClassifier.genres(seed) : (index.genres[id] ?? GenreClassifier.genres(seed))
             return genres.isEmpty || sourceGenres.isEmpty || GenreClassifier.relation(genres, sourceGenres) > 0

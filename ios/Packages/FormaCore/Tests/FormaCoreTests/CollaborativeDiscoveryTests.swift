@@ -34,10 +34,11 @@ final class CollaborativeDiscoveryTests: XCTestCase {
     func testVerifiedNeighboursEnterPulseAndUnknownOrBannedOnesCannot() {
         let seed = Track(videoID: "00000000001", title: "Песня 1", artist: "Saved", genre: "Alternative")
         var candidate = Track(videoID: "00000000002", title: "Песня 2", artist: "New", genre: "Alternative")
-        candidate.relatedTo = [seed.id]; candidate.retrievalSources = ["listenbrainz-neighbour"]
+        candidate.relatedTo = [seed.id]; candidate.retrievalSources = ["listenbrainz-neighbour", "lb-root:" + seed.id]
         var library = Library(); library.merge([seed]); library.likedIDs = [seed.id]
         let ranked = PulseEngine.rank([candidate], library: library)
         XCTAssertEqual(ranked.map(\.id), [candidate.id]); XCTAssertEqual(ranked.first?.exposure?.lane, "nearby")
+        XCTAssertTrue(CollaborativeDiscovery.linked(candidate, seed: seed))
         let stale = ranked
         candidate.genre = ""; library.merge([candidate]); XCTAssertTrue(PulseEngine.rank([candidate], library: library).isEmpty)
         XCTAssertNil(PulseEngine.selectCached(stale, library: library, exclude: []))

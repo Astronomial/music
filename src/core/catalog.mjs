@@ -60,7 +60,7 @@ export async function collectYouTubeCandidates(state,request,{context=null,onBat
   // Optional co-listening enrichment runs after the ordinary sources. A cold
   // lookup only warms a cache in the main process and returns immediately.
   const collaborator=anchors.filter(t=>t.source==='youtube'&&artists.includes(t.artist));
-  if(collaborator.length){const seed=collaborator[Math.max(0,round)%collaborator.length];jobs.push({route:'/tracks/neighbours',params:{query:seed.artist},context:{relatedTo:[seed.id],retrievalSources:['listenbrainz-neighbour']}});}
+  if(collaborator.length){const seed=collaborator[Math.max(0,round)%collaborator.length];jobs.push({route:'/tracks/neighbours',params:{query:seed.artist},context:{relatedTo:[seed.id],retrievalSources:['listenbrainz-neighbour','lb-root:'+seed.videoId]}});}
   const found=new Map();let successes=0;
   let expanded=false;const primaryCount=jobs.length;
   for(let i=0;i<jobs.length;){

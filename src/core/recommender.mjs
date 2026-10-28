@@ -2,7 +2,7 @@ import {utilityRecording} from './recording-quality.mjs';
 import {genreRelation} from './genre-evidence.mjs';
 import {recommendationVeto} from './recommendation-policy.mjs';
 import {semanticSimilarity} from './semantic-audio.mjs';
-import {collaborativeMatch} from './listenbrainz.mjs';
+import {collaborativeLink} from './listenbrainz.mjs';
 import {trackPulseFit,sameSong} from './track-pulse.mjs';
 const DAY = 86400000;
 import {createSoundMatcher} from './sound-profile.mjs';
@@ -280,7 +280,7 @@ export function rankTracks(candidates, state, options = {}) {
     // ordinary Pulse is vocal pop; they never become global taste by exposure.
     const focusMatch=context?.mood==='focus'&&moodEvidence(track,context)>=.75&&genresOf(track).values.some(g=>['Ambient','Lo-Fi','Jazz','Classical'].includes(g));
     const artistNeighbour=(track.retrievalSources?.includes('listenbrainz-neighbour')||track.retrievalSources?.includes('artist-neighbour'))&&(track.relatedTo||[]).some(id=>(profile.weights.get(id)||0)>0&&state.tracks[id]&&(
-      track.retrievalSources?.includes('listenbrainz-neighbour')&&collaborativeMatch(track,state.tracks[id])||
+      track.retrievalSources?.includes('listenbrainz-neighbour')&&collaborativeLink(track,state.tracks[id])||
       track.retrievalSources?.includes('artist-neighbour')&&semanticCompatible(track,state.tracks[id])&&(!comparable||genreRelation(track,state.tracks[id])>0)));
     const personal=sameArtist||preferredArtist||direct||audible||artistNeighbour;
     const referenceAllowed=!anchors.length||!track.retrievalSources?.includes('mood-reference')||known||personal||focusMatch;
