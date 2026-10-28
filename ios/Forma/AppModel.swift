@@ -34,6 +34,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var discoveredPages = 0
     private var discoveryPlanner = DiscoveryPlanner()
     private var discoveryTask: Task<Void, Never>?
+    private var neighbourTask: Task<Void, Never>?
     private var catalogueSeen: [String: Date] = [:]
     private var lastAutomaticRefresh = Date.distantPast
     let player: PlaybackController
@@ -142,7 +143,7 @@ final class AppModel: ObservableObject {
         moodWarmTask?.cancel()
         localWiFiMonitor.cancel(); recommendationTask?.cancel(); rankingWork?.cancel()
         settingsTask?.cancel(); persistTask?.cancel(); syncTask?.cancel()
-        pulseWork?.cancel(); linkTask?.cancel(); soundTask?.cancel(); genreTask?.cancel(); discoveryTask?.cancel()
+        pulseWork?.cancel(); linkTask?.cancel(); soundTask?.cancel(); genreTask?.cancel(); discoveryTask?.cancel(); neighbourTask?.cancel()
     }
     private func restoreLibrary() async {
         guard !didLoadLibrary, let storageURL else { isRestoringLibrary = false; return }
@@ -408,6 +409,14 @@ final class AppModel: ObservableObject {
         guard !Task.isCancelled else { planning.cancel(); return }
         discoveryPlanner = nextPlanner
         guard !jobs.isEmpty else { return }
+        if neighbourTask == nil, let seed = jobs.first(where: { $0.roots.contains($0.seed.id) })?.seed {
+            let catalog = self.catalog
+            neighbourTask = Task(priority: .utility) { [weak self] in
+                defer { self?.neighbourTask = nil }
+                guard let nearby = try? await catalog.neighbours(to: seed), !Task.isCancelled, !nearby.isEmpty else { return }
+                self?.merge(nearby)
+            }
+        }
         let catalog = self.catalog
         let parallelism = min(3, player.networkPolicy.catalogParallelism)
         var next = 0, successes = 0

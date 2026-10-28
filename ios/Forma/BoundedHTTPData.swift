@@ -17,6 +17,7 @@ final class BoundedHTTPData: NSObject, URLSessionDataDelegate, @unchecked Sendab
                 if cancelled { lock.unlock(); c.resume(throwing: CancellationError()); return }
                 continuation = c
                 let config = URLSessionConfiguration.ephemeral; config.allowsCellularAccess = true
+                config.allowsExpensiveNetworkAccess = true; config.allowsConstrainedNetworkAccess = true
                 config.timeoutIntervalForRequest = 15; config.timeoutIntervalForResource = 30
                 let queue = OperationQueue(); queue.maxConcurrentOperationCount = 1; queue.qualityOfService = .utility
                 let session = URLSession(configuration: config, delegate: self, delegateQueue: queue); self.session = session

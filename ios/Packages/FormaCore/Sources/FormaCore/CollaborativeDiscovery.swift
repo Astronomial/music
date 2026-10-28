@@ -4,6 +4,11 @@ import Foundation
 /// proof of genre, mood, user preference or a direct recording-to-recording edge.
 public enum CollaborativeDiscovery {
     public struct Artist: Sendable, Equatable { public let mbid: String; public let name: String }
+    public static func window(_ artists: [Artist], offset: Int) -> [Artist] {
+        guard !artists.isEmpty else { return [] }
+        let begin = max(0, offset) % artists.count
+        return (0..<min(2, artists.count)).map { artists[(begin + $0) % artists.count] }
+    }
     private struct Search: Decodable {
         struct Entry: Decodable {
             struct Alias: Decodable { let name: String }
