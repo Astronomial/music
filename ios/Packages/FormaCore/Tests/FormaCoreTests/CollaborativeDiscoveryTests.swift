@@ -80,4 +80,11 @@ final class CollaborativeDiscoveryTests: XCTestCase {
         let count = await transport.count()
         XCTAssertTrue(first.isEmpty); XCTAssertTrue(second.isEmpty); XCTAssertEqual(count, 1)
     }
+    func testMergedSourceLabelsCannotCorroborateAnotherRecordingRoot() {
+        let seed = Track(videoID: "00000000001", title: "Saved", artist: "Saved", genre: "Alternative")
+        var candidate = Track(videoID: "00000000002", title: "New", artist: "New", genre: "Alternative")
+        candidate.relatedTo = [seed.id, "99999999999"]; candidate.retrievalSources = ["listenbrainz-neighbour", "lb-root:99999999999"]
+        var library = Library(); library.merge([seed]); library.likedIDs = [seed.id]
+        XCTAssertTrue(PulseEngine.rank([candidate], library: library).isEmpty)
+    }
 }

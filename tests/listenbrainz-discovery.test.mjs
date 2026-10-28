@@ -67,3 +67,8 @@ test('cached neighbouring artists rotate instead of repeating the same first two
  const seen=new Set();for(let i=0;i<3;i++)for(const track of (await service.request('/tracks/neighbours',{query:'Три дня дождя'})).items)seen.add(track.artist);
  assert.equal(seen.size,6);
 });
+test('a merged artist-source label cannot corroborate unrelated old graph roots',()=>{
+ const seed=song(1),candidate=song(2,{relatedTo:[seed.id,'old-root'],retrievalSources:['listenbrainz-neighbour','lb-root:99999999999']});
+ const s=initialState();s.tracks={[seed.id]:seed};s.likes=[seed.id];
+ assert.deepEqual(rankTracks([candidate],s,{now:1800000000000}),[]);
+});
