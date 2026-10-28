@@ -68,7 +68,7 @@ export async function collectYouTubeCandidates(state,request,{context=null,onBat
     const batch=await Promise.allSettled(batchJobs.map(({route,params})=>request(route,params)));
     const batchTracks=[];
     for(let j=0;j<batch.length;j++){
-      const result=batch[j];if(result.status!=='fulfilled')continue;successes++;
+      const result=batch[j];if(result.status!=='fulfilled')continue;if(batchJobs[j].route!=='/tracks/neighbours'||result.value.length)successes++;
       for(const raw of result.value){
         const t=normalizeTrack(raw);if(!t.streamable)continue;
         const merged={...t};

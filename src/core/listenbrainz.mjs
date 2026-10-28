@@ -18,7 +18,7 @@ export function resolveArtist(data,name){
 export function summariseRadio(data,seedMbid){
  if(!object(data))return {status:'invalid_response'};
  const recordings=new Set(),own=new Set(),neighbours=new Set(),artists=new Set();
- for(const [id,rows] of Object.entries(data)){
+ for(const [id,rows] of Object.entries(data).sort(([a],[b])=>a.localeCompare(b))){
   if(!mbid(id)||!Array.isArray(rows))return {status:'invalid_response'};
   for(const row of rows){
    if(!object(row)||!mbid(row.recording_mbid)||!mbid(row.similar_artist_mbid)||row.similar_artist_mbid.toLowerCase()!==id.toLowerCase()||typeof row.similar_artist_name!=='string'||!Number.isFinite(row.total_listen_count)||row.total_listen_count<0)return {status:'invalid_response'};
@@ -33,7 +33,7 @@ export function summariseRadio(data,seedMbid){
 export function similarArtists(data,seed){
  if(!['ok','empty'].includes(summariseRadio(data,seed).status))return [];
  const seen=new Set(),result=[];
- for(const [id,rows] of Object.entries(data)){
+ for(const [id,rows] of Object.entries(data).sort(([a],[b])=>a.localeCompare(b))){
   if(id.toLowerCase()===seed.toLowerCase()||!rows.length)continue;
   const name=rows[0].similar_artist_name.trim(),key=artistIdentity(name);
   if(!key||name.length>160||seen.has(key))continue;

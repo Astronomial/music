@@ -23,9 +23,11 @@ function nodes(page){return [...(page.contents||[])].flatMap(s=>s.contents||[]);
 
 // Public catalogue metadata. Native audio playback is handled in the main process.
 export class YouTubeCatalog {
-  constructor(createClient,{releaseLookup=async()=>[],neighbourLookup=()=>[]}={}){this.createClient=createClient;this.releaseLookup=releaseLookup;this.neighbourLookup=neighbourLookup;this.client=null;this.searches=new Map();this.artists=new Map();this.relatedCache=new Map();}
+  constructor(createClient,{releaseLookup=async()=>[],neighbourLookup=()=>[]}={}){this.createClient=createClient;this.releaseLookup=releaseLookup;this.neighbourLookup=neighbourLookup;this.neighbourOffsets=new Map();this.client=null;this.searches=new Map();this.artists=new Map();this.relatedCache=new Map();}
   async neighbours(artist){
-    const names=this.neighbourLookup(artist).slice(0,2),found=new Map();
+    const all=this.neighbourLookup(artist),key=artistIdentity(artist),offset=this.neighbourOffsets.get(key)||0,found=new Map();
+    const names=Array.from({length:Math.min(2,all.length)},(_,i)=>all[(offset+i)%all.length]);
+    if(names.length){this.neighbourOffsets.delete(key);this.neighbourOffsets.set(key,(offset+names.length)%all.length);while(this.neighbourOffsets.size>64)this.neighbourOffsets.delete(this.neighbourOffsets.keys().next().value);}
     const pages=await Promise.allSettled(names.map(a=>this.search(a.name,'song')));
     for(let i=0;i<pages.length;i++)if(pages[i].status==='fulfilled'){
       for(const track of pages[i].value.items.filter(t=>artistIdentity(t.artist)===artistIdentity(names[i].name)).slice(0,12))found.set(track.id,{...track,retrievalSources:[...new Set([...track.retrievalSources,'listenbrainz-neighbour'])]});
