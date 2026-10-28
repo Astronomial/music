@@ -1,0 +1,62 @@
+{
+  "kind": "public-catalogue-coverage-not-personal-quality",
+  "requestedArtists": 4,
+  "resolvedArtists": 0,
+  "availableRadioArtists": 0,
+  "emptyRadioArtists": 0,
+  "artistsNotFound": 0,
+  "ambiguousArtists": 0,
+  "unavailableArtists": 4,
+  "personalTasteAccuracy": null,
+  "decision": "do_not_replace_yet",
+  "reason": "Coverage alone does not demonstrate better personal recommendations. A matched baseline, independent relevance feedback, genre evidence and playable recording resolution are required.",
+  "results": [
+    {
+      "artist": "ксюшенька",
+      "lookup": {
+        "url": "https://musicbrainz.org/ws/2/artist/?query=artist%3A%22%D0%BA%D1%81%D1%8E%D1%88%D0%B5%D0%BD%D1%8C%D0%BA%D0%B0%22&fmt=json&limit=100",
+        "checkedAt": "2026-10-28T06:23:18.091Z",
+        "status": "transport_error",
+        "elapsedMs": 32,
+        "errorType": "TypeError"
+      },
+      "status": "lookup_unavailable"
+    },
+    {
+      "artist": "бэя",
+      "lookup": {
+        "url": "https://musicbrainz.org/ws/2/artist/?query=artist%3A%22%D0%B1%D1%8D%D1%8F%22&fmt=json&limit=100",
+        "checkedAt": "2026-10-28T06:23:19.192Z",
+        "status": "transport_error",
+        "elapsedMs": 9,
+        "errorType": "TypeError"
+      },
+      "status": "lookup_unavailable"
+    },
+    {
+      "artist": "Три дня дождя",
+      "lookup": {
+        "url": "https://musicbrainz.org/ws/2/artist/?query=artist%3A%22%D0%A2%D1%80%D0%B8+%D0%B4%D0%BD%D1%8F+%D0%B4%D0%BE%D0%B6%D0%B4%D1%8F%22&fmt=json&limit=100",
+        "checkedAt": "2026-10-28T06:23:20.294Z",
+        "status": "transport_error",
+        "elapsedMs": 8,
+        "errorType": "TypeError"
+      },
+      "status": "lookup_unavailable"
+    },
+    {
+      "artist": "MARKUL",
+      "lookup": {
+        "url": "https://musicbrainz.org/ws/2/artist/?query=artist%3A%22MARKUL%22&fmt=json&limit=100",
+        "checkedAt": "2026-10-28T06:23:21.396Z",
+        "status": "transport_error",
+        "elapsedMs": 8,
+        "errorType": "TypeError"
+      },
+      "status": "lookup_unavailable"
+    }
+  ],
+  "generatedAt": "2026-10-28T06:23:21.404Z",
+  "troiSource": "044398b5b6c6c99fc301f3417e62570b2a408a40",
+  "scope": "Public preferred artists only. Private library and listening history are not read or uploaded."
+}
