@@ -81,8 +81,10 @@ public enum PulseEngine {
         let topSeedWeight = profile.maxSeedWeight
         let rootAffinity = directIDs.compactMap { profile.weights[$0] }.max().map { $0 / max(1, topSeedWeight) } ?? 0
         let comparable = !genres.isEmpty && !profile.genres.isEmpty
-        let artistNeighbour = track.retrievalSources.contains("artist-neighbour") && track.relatedTo.contains { id in
+        let artistNeighbour = track.relatedTo.contains { id in
             guard profile.positiveIDs.contains(id), let seed = library.tracks[id], compatible(seed) else { return false }
+            if track.retrievalSources.contains("listenbrainz-neighbour"), CollaborativeDiscovery.matches(track, seed: seed) { return true }
+            guard track.retrievalSources.contains("artist-neighbour") else { return false }
             let sourceGenres = liveMetadata ? GenreClassifier.genres(seed) : (index.genres[id] ?? GenreClassifier.genres(seed))
             return genres.isEmpty || sourceGenres.isEmpty || GenreClassifier.relation(genres, sourceGenres) > 0
         }

@@ -1,34 +1,7 @@
 // Read-only coverage audit. This module is deliberately outside the app bundle.
 // MusicBrainz identities and public LB Radio pools are not personal relevance labels.
-import {artistIdentity} from '../../src/core/genre-evidence.mjs';
-
-const mbid=value=>typeof value==='string'&&/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value);
-const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
-
-export function resolveArtist(data,name){
- if(!object(data)||!Array.isArray(data.artists))return {status:'invalid_response'};
- if(data.artists.some(a=>!object(a)||!mbid(a.id)||typeof a.name!=='string'||(a.aliases!==undefined&&(!Array.isArray(a.aliases)||a.aliases.some(x=>!object(x)||typeof x.name!=='string')))))return {status:'invalid_response'};
- const key=artistIdentity(name);
- const matches=new Map(data.artists.filter(a=>[a.name,...(a.aliases||[]).map(x=>x.name)].some(n=>artistIdentity(n)===key)).map(a=>[a.id.toLowerCase(),a]));
- if(matches.size>1)return {status:'ambiguous',candidates:[...matches.values()].map(a=>({mbid:a.id,name:a.name,disambiguation:a.disambiguation||''}))};
- if(!matches.size)return {status:'not_found'};
- const a=[...matches.values()][0];return {status:'resolved',mbid:a.id.toLowerCase(),name:a.name};
-}
-
-export function summariseRadio(data,seedMbid){
- if(!object(data))return {status:'invalid_response'};
- const recordings=new Set(),own=new Set(),neighbours=new Set(),artists=new Set();
- for(const [id,rows] of Object.entries(data)){
-  if(!mbid(id)||!Array.isArray(rows))return {status:'invalid_response'};
-  for(const row of rows){
-   if(!object(row)||!mbid(row.recording_mbid)||!mbid(row.similar_artist_mbid)||row.similar_artist_mbid.toLowerCase()!==id.toLowerCase()||typeof row.similar_artist_name!=='string'||!Number.isFinite(row.total_listen_count)||row.total_listen_count<0)return {status:'invalid_response'};
-   const key=row.recording_mbid.toLowerCase();recordings.add(key);
-   if(id.toLowerCase()===seedMbid.toLowerCase())own.add(key);
-   else {neighbours.add(key);artists.add(id.toLowerCase());}
-  }
- }
- return {status:recordings.size?'ok':'empty',recordings:recordings.size,seedRecordings:own.size,neighbourRecordings:neighbours.size,neighbourArtists:artists.size,genreCoverage:null,relevance:null};
-}
+import {resolveArtist, summariseRadio} from '../../src/core/listenbrainz.mjs';
+export {resolveArtist, summariseRadio};
 
 export async function auditSeed(name,request){
  const search=new URL('https://musicbrainz.org/ws/2/artist/');
